@@ -41,4 +41,3 @@ export async function onSendMessage(
   return sendMessage(null, formData);
 }
 
-export { verifyCsrf };
