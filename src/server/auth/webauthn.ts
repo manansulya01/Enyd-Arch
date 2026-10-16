@@ -7,7 +7,7 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from '@simplewebauthn/server';
-import { and, desc, eq, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt } from 'drizzle-orm';
 import { db } from '~db';
 import { deviceCredentials, devices, users, webauthnChallenges } from '~db/schema';
 import { base64url, fromBase64url, sha256 } from '../crypto';
@@ -81,7 +81,7 @@ async function consumeChallenge(
         eq(webauthnChallenges.challenge, challenge),
         eq(webauthnChallenges.purpose, purpose),
         eq(webauthnChallenges.deviceFingerprint, deviceFingerprint),
-        lt(webauthnChallenges.expiresAt, new Date(Date.now() + 60_000)),
+        gt(webauthnChallenges.expiresAt, new Date()),
         isNull(webauthnChallenges.consumedAt),
       ),
     )
@@ -312,10 +312,12 @@ export async function finishAuthentication(input: {
     return { ok: false, reason: 'The device credential could not be verified.' };
   }
 
-  // The signature counter must advance; a repeat or regression indicates a
-  // cloned authenticator, so the credential is refused.
-  if (verification.authenticationInfo.newCounter <= 0) {
-    return { ok: false, reason: 'The device credential did not advance its counter.' };
+  // Some authenticators (including many synced passkeys) always report zero.
+  // Only enforce monotonicity when this authenticator actually uses a counter.
+  // A non-zero counter that repeats or regresses is a possible clone signal.
+  const newCounter = verification.authenticationInfo.newCounter;
+  if (stored.counter > 0 && newCounter > 0 && newCounter <= stored.counter) {
+    return { ok: false, reason: 'The device credential counter did not advance.' };
   }
 
   await db
