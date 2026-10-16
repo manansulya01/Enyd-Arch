@@ -6,6 +6,7 @@ import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { networkFeed, trendingTags } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Network' };
 
@@ -19,9 +20,10 @@ export default async function NetworkPage({
   const sort = params.sort === 'recent' || params.sort === 'discussed' ? params.sort : 'active';
   const tag = params.tag ?? null;
 
-  const [posts, tags] = await Promise.all([
+  const [posts, tags, csrfToken] = await Promise.all([
     networkFeed({ viewerId: actor.userId, sort, topic: tag, limit: 25 }),
     trendingTags(12),
+    sessionCsrfToken(),
   ]);
 
   return (
@@ -36,7 +38,7 @@ export default async function NetworkPage({
     >
       <div className="page-split">
         <div className="stack stack-5">
-          <NetworkComposer />
+          <NetworkComposer csrfToken={csrfToken} />
 
           <div className="row row-wrap row-between">
             <div className="btn-group" role="group" aria-label="Sort posts">

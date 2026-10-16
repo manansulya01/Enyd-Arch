@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { COPY, MARK } from '~/lib/domain';
+import { issueAnonymousCsrf } from '~/server/csrf';
 
 export const metadata: Metadata = {
   title: 'Enter the Arch',
@@ -57,7 +58,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="auth-title">Enter the Arch</h1>
             <p className="t-small t-muted">
-              Four things to begin: a handle, a name, a passphrase, and your age
+              Five things to begin: a handle, a name, a passphrase, an invitation, and your age
               group. Everything else can wait.
             </p>
           </header>
@@ -76,6 +77,9 @@ export default function RegisterPage() {
 }
 
 async function RegisterForm() {
-  const { RegisterCredentialsForm } = await import('~/components/auth/register-credentials-form');
-  return <RegisterCredentialsForm />;
+  const [{ RegisterCredentialsForm }, csrfToken] = await Promise.all([
+    import('~/components/auth/register-credentials-form'),
+    issueAnonymousCsrf(),
+  ]);
+  return <RegisterCredentialsForm csrfToken={csrfToken} />;
 }

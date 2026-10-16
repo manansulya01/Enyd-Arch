@@ -7,7 +7,7 @@ import { formatMemberId } from '~/lib/domain';
 import { browserLabel, platformLabel, randomToken, sha256 } from '../crypto';
 
 export const SESSION_COOKIE = 'enyd_session';
-export const TRAIT_COOKIE = 'enyd_device_traits';
+export const TRAIT_COOKIE = 'enyd_device_binding';
 
 /** Rolling window. Created for 30 days and refreshed as it is used. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;

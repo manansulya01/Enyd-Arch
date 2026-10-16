@@ -1,58 +1,51 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { PageShell } from '~/components/ui/page-shell';
+import { Avatar } from '~/components/ui';
+import { memberByUsername } from '~/server/queries';
+import { requireOnboarded } from '~/server/guard';
+import { ageBandLabel } from '~/lib/domain';
+import { ConnectionRequestComposer } from '~/components/connections/connection-request-composer';
+import { sessionCsrfToken } from '~/server/csrf';
 
-// This is a placeholder for fetching a registry item by id.
-// In a real implementation, this would call a server action.
-async function getRegistryItem(id: string) {
-  // Placeholder data
-  const ITEMS = [
-    { id: '1', title: 'Sample Item 1', description: 'This is a sample registry item.', details: 'More details about item 1.' },
-    { id: '2', title: 'Sample Item 2', description: 'Another sample registry item.', details: 'More details about item 2.' },
-  ];
-
-  return ITEMS.find((item) => item.id === id) || null;
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const { actor } = await requireOnboarded();
+  const member = await memberByUsername(slug, actor.userId);
+  if (!member) return { title: 'Member not found — The Registry' };
+  return { title: `${member.displayName} — The Registry`, description: member.headline ?? `Enyd Arch member @${member.username}` };
 }
 
-export const generateMetadata = async ({ params }: { params: { slug: string } }): Promise<Metadata> => {
-  const item = await getRegistryItem(params.slug);
-  if (!item) {
-    notFound();
-  }
-
-  return {
-    title: item.title,
-    description: item.description,
-  };
-};
-
-export default async function RegistryItemPage({ params }: { params: { slug: string } }) {
-  const item = await getRegistryItem(params.slug);
-
-  if (!item) {
-    notFound();
-  }
+export default async function RegistryMemberPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { actor } = await requireOnboarded();
+  const { slug } = await params;
+  const member = await memberByUsername(slug, actor.userId);
+  if (!member) notFound();
+  const csrfToken = await sessionCsrfToken();
 
   return (
-    <section className="space-y-6">
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{item.title}</h1>
-        <div className="flex space-x-3">
-          <a href="/registry" className="btn-secondary">
-            Back to Registry
-          </a>
-          <a href={`/registry/${item.id}/edit`} className="btn-primary">
-            Edit
-          </a>
+    <PageShell title={member.displayName} sub={member.headline ?? 'Member of Enyd Arch'}>
+      <section className="panel panel-body">
+        <div className="row row-3">
+          <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size="lg" />
+          <div className="grow">
+            <p className="t-small t-muted">@{member.username}</p>
+            <p className="t-meta">{member.memberId}</p>
+            <h2>{member.levelLabel}</h2>
+          </div>
         </div>
-      </header>
-
-      <div className="prose lg:prose-xl">
-        <p>{item.description}</p>
-        <section className="mt-6">
-          <h2 className="text-lg font-semibold mb-2">Details</h2>
-          <p>{item.details}</p>
-        </section>
+        <dl className="stack stack-3" style={{ marginTop: 'var(--sp-5)' }}>
+          <div><dt className="t-label">Standing</dt><dd>{member.levelLabel}</dd></div>
+          <div><dt className="t-label">Age group</dt><dd>{member.ageBandLabel === 'Undisclosed' ? 'Undisclosed' : ageBandLabel(member.ageBand)}</dd></div>
+          {member.region && <div><dt className="t-label">Region</dt><dd>{member.region}</dd></div>}
+          <div><dt className="t-label">Joined</dt><dd>{member.joinedAt.toLocaleDateString()}</dd></div>
+        </dl>
+      </section>
+      {member.userId !== actor.userId && <ConnectionRequestComposer toUserId={member.userId} csrfToken={csrfToken} />}
+      <div className="row row-3">
+        <Link className="btn btn-secondary" href="/registry">Back to the Registry</Link>
       </div>
-    </section>
+    </PageShell>
   );
 }

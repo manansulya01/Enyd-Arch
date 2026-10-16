@@ -10,7 +10,7 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 export async function addFilm(
   _previous: ActionResult<{ slug: string }> | null,
@@ -126,7 +126,8 @@ export async function commentOnFilm(
   return ok();
 }
 
-export async function toggleWatchlist(filmId: string): Promise<ActionResult<{ added: boolean }>> {
+export async function toggleWatchlist(filmId: string, csrf: string): Promise<ActionResult<{ added: boolean }>> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 

@@ -25,7 +25,7 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 export async function createProject(
   _previous: ActionResult<{ slug: string }> | null,
@@ -78,7 +78,8 @@ export async function createProject(
   return ok({ slug: created!.slug });
 }
 
-export async function joinProject(projectId: string): Promise<ActionResult> {
+export async function joinProject(projectId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
@@ -165,7 +166,8 @@ async function countRows(_which: string, projectId: string): Promise<number> {
   return _which === 'openTasks' ? rows.filter((row) => row.status !== 'done').length : rows.length;
 }
 
-export async function setTaskStatus(taskId: string, status: string): Promise<ActionResult> {
+export async function setTaskStatus(taskId: string, status: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 

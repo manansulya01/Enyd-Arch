@@ -10,13 +10,14 @@
  */
 'use server';
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from '~db';
 import {
   devices,
+  deviceCredentials,
   deviceTransferRequests,
   innerArchMembers,
   invitationRedemptions,
@@ -25,7 +26,7 @@ import {
   userSettings,
 } from '~db/schema';
 import { fail, issuesToErrors, ok, type ActionResult, type FormState } from '~/lib/action-result';
-import { AGE_BAND_BY_KEY, formatMemberId, titleCase } from '~/lib/domain';
+import { AGE_BAND_BY_KEY, formatMemberId } from '~/lib/domain';
 import {
   browserLabel,
   ipPseudonym,
@@ -100,15 +101,10 @@ export interface UsernameAvailability {
 }
 
 /**
- * Redeems an invitation code.
- *
- * Codes are optional: an open registration path exists so a member can always
- * get in, but a code is how the Inner Arch and the founding cohorts were
- * actually populated. A bad code is not an error at registration — it is simply
- * not redeemed, because refusing to let someone join over a typo would be worse
- * than ignoring it.
+ * Redeems a required invitation code. Invalid, expired, revoked, exhausted, or
+ * concurrently claimed codes fail closed so registration cannot bypass the gate.
  */
-async function redeemInvitation(code: string, userId: string, ip: string): Promise<void> {
+async function redeemInvitation(code: string, userId: string, ip: string): Promise<boolean> {
   const rows = await db
     .select({
       id: invitations.id,
@@ -118,13 +114,18 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
       expiresAt: invitations.expiresAt,
     })
     .from(invitations)
-    .where(and(eq(invitations.code, code.toUpperCase()), isNull(invitations.revokedAt)))
+    .where(
+      and(
+        eq(invitations.code, code.trim().toUpperCase()),
+        isNull(invitations.revokedAt),
+        lt(invitations.uses, invitations.maxUses),
+        or(isNull(invitations.expiresAt), gt(invitations.expiresAt, new Date())),
+      ),
+    )
     .limit(1);
 
   const invitation = rows[0];
-  if (!invitation) return;
-  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) return;
-  if (invitation.uses >= invitation.maxUses) return;
+  if (!invitation) return false;
 
   // Increment first: a concurrent redemption loses the race rather than both
   // succeeding against the same remaining use.
@@ -136,11 +137,13 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
         eq(invitations.id, invitation.id),
         eq(invitations.uses, invitation.uses),
         isNull(invitations.revokedAt),
+        lt(invitations.uses, invitations.maxUses),
+        or(isNull(invitations.expiresAt), gt(invitations.expiresAt, new Date())),
       ),
     )
     .returning({ id: invitations.id });
 
-  if (!claimed[0]) return;
+  if (!claimed[0]) return false;
 
   await db.insert(invitationRedemptions).values({
     invitationId: invitation.id,
@@ -155,6 +158,7 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
     { id: userId, label: 'registration', ip },
     { action: 'invitation.redeemed', targetType: 'invitation', targetId: invitation.id },
   );
+  return true;
 }
 
 export async function checkUsername(
@@ -212,6 +216,12 @@ export async function registerAction(
   }
 
   const { username, displayName, password, ageBand, invitationCode } = parsed.data;
+
+  if (!invitationCode) {
+    return fail('Enyd Arch is invite-only.', {
+      invitationCode: ['Enter an invitation code from an existing member.'],
+    });
+  }
 
   const policy = checkPasswordPolicy(password);
   if (!policy.ok) {
@@ -297,10 +307,15 @@ export async function registerAction(
 
   await db.insert(userSettings).values({ userId: created!.id });
 
-  // An invitation code, when supplied, is redeemed here rather than at
-  // registration time. `inner_arch` codes grant the Inner Arch on redemption.
-  if (invitationCode) {
-    await redeemInvitation(invitationCode, created!.id, traits.ip);
+  // The code is mandatory. If another registration consumes the final use
+  // between validation and redemption, roll back this not-yet-active account.
+  const invitationRedeemed = await redeemInvitation(invitationCode, created!.id, traits.ip);
+  if (!invitationRedeemed) {
+    await db.delete(userSettings).where(eq(userSettings.userId, created!.id));
+    await db.delete(users).where(eq(users.id, created!.id));
+    return fail('That invitation is invalid, expired, revoked, or has no uses left.', {
+      invitationCode: ['Check the code with the member who invited you.'],
+    });
   }
 
   await writeAudit(
@@ -624,6 +639,94 @@ export async function signInAction(
   return ok();
 }
 
+/**
+ * Passkey sign-in. The credential ID identifies the account; the WebAuthn
+ * assertion proves possession of its enrolled authenticator. The existing
+ * installation binding is checked as a separate account policy.
+ */
+export async function signInWithPasskey(input: {
+  credential: unknown;
+  csrf: string;
+}): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', input.csrf);
+  await verifyCsrf(formData);
+
+  const credential = input.credential as { id?: unknown };
+  if (typeof credential?.id !== 'string' || credential.id.length < 8 || credential.id.length > 2048) {
+    return fail('The passkey response could not be read.');
+  }
+
+  const traits = await requestTraits();
+  const perIp = await acquire('signIn', traits.ipHash);
+  if (!perIp.allowed) return fail('Too many sign-in attempts. Try again shortly.');
+
+  const rows = await db
+    .select({
+      userId: deviceCredentials.userId,
+      credentialStatus: deviceCredentials.status,
+      userStatus: users.status,
+      memberId: users.memberId,
+      username: users.username,
+      onboardedAt: users.onboardedAt,
+    })
+    .from(deviceCredentials)
+    .innerJoin(users, eq(users.id, deviceCredentials.userId))
+    .where(and(
+      eq(deviceCredentials.credentialId, credential.id),
+      eq(deviceCredentials.status, 'active'),
+      isNull(deviceCredentials.revokedAt),
+    ))
+    .limit(1);
+
+  const account = rows[0];
+  if (!account || account.userStatus !== 'active') {
+    return fail('That passkey could not sign in to an active identity.');
+  }
+
+  const perAccount = await acquire('signIn', `user:${account.userId}`);
+  if (!perAccount.allowed) return fail('Too many attempts for this identity. Try again shortly.');
+
+  const { finishAuthentication } = await import('~/server/auth/webauthn');
+  const verified = await finishAuthentication({
+    userId: account.userId,
+    deviceFingerprint: traits.fingerprint,
+    response: input.credential as never,
+  });
+  if (!verified.ok) {
+    await writeAudit(
+      { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+      { action: 'auth.passkey_failed', targetType: 'user', targetId: account.userId, reason: verified.reason },
+    );
+    return fail('The passkey could not be verified. Try again or use your enrolled device.');
+  }
+
+  if (!verified.deviceId) return fail('This passkey has no active device assignment.');
+
+  const [device] = await db
+    .select({ status: devices.status, fingerprint: devices.fingerprint })
+    .from(devices)
+    .where(eq(devices.id, verified.deviceId))
+    .limit(1);
+  if (!device || device.status !== 'active' || device.fingerprint !== traits.fingerprint) {
+    return fail('This passkey is not associated with the current enrolled installation.');
+  }
+
+  await createSession({
+    userId: account.userId,
+    deviceId: verified.deviceId,
+    fingerprint: traits.fingerprint,
+    ipHash: traits.ipHash,
+    userAgent: traits.userAgent,
+  });
+  await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, account.userId));
+  await writeAudit(
+    { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+    { action: 'auth.passkey_succeeded', targetType: 'user', targetId: account.userId },
+  );
+  return ok();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Sign out
 // ═══════════════════════════════════════════════════════════════════════════
@@ -709,10 +812,4 @@ export async function requestDeviceTransferAction(
 
   return ok();
 }
-
-export { titleCase };
-
-// The enrolment ceremony lives in its own module because it takes structured
-// input rather than form fields; re-exported here so client components have one
-// import site for authentication.
-export { completeEnrolment, beginEnrolment } from './enrolment';
+ 

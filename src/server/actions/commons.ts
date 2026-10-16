@@ -57,7 +57,7 @@ export type ReactionTargetType = 'post' | 'comment' | 'archive_object' | 'game' 
  * silently dropped when they do not match — an unresolved mention must not
  * become a notification to nobody.
  */
-export function extractReferences(body: string): { tags: string[]; handles: string[] } {
+function extractReferences(body: string): { tags: string[]; handles: string[] } {
   const tags = new Set<string>();
   const handles = new Set<string>();
 

@@ -11,7 +11,12 @@ import {
   comments as commentTable,
   conversationMembers,
   conversations as conversationTable,
+  connectionRequests,
   events as eventTable,
+  films as filmTable,
+  filmReviews,
+  watchlists,
+  watchlistItems,
   files,
   galleryAttachments,
   galleryPosts as galleryPostTable,
@@ -163,8 +168,34 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
   };
 }
 
+const visibleMemberConditions = (viewerId?: string | null) =>
+  and(
+    eq(users.status, 'active'),
+    isNull(users.removedAt),
+    viewerId ? or(
+      eq(users.id, viewerId),
+      and(
+        eq(userSettings.discoverable, true),
+        inArray(profiles.profileVisibility, ['members', 'public']),
+        inArray(userSettings.profileVisibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
+             or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId})
+        )`,
+      ),
+    ) : and(
+      eq(userSettings.discoverable, true),
+      eq(profiles.profileVisibility, 'public'),
+      eq(userSettings.profileVisibility, 'public'),
+    ),
+  );
+
 export async function memberById(userId: string, viewerId?: string | null): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(eq(users.id, userId)).limit(1);
+  const privacy = viewerId === userId
+    ? eq(users.id, userId)
+    : and(eq(users.id, userId), visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
   return row ? projectMember(row, viewerId) : null;
 }
 
@@ -172,8 +203,27 @@ export async function memberByUsername(
   username: string,
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
+  const identity = sql`lower(${users.username}) = lower(${username})`;
+  const privacy = and(identity, visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
   return row ? projectMember(row, viewerId) : null;
+}
+
+export async function memberDirectory(
+  viewerId: string,
+  options: { query?: string | null; level?: string | null; limit?: number } = {},
+): Promise<MemberSummary[]> {
+  const term = (options.query ?? '').trim().slice(0, 60);
+  const where = and(
+    visibleMemberConditions(viewerId),
+    sql`${users.id} <> ${viewerId}`,
+    options.level ? eq(users.level, options.level as never) : sql`true`,
+    term
+      ? sql`(${users.username} ilike ${'%' + term + '%'} or ${users.displayName} ilike ${'%' + term + '%'})`
+      : sql`true`,
+  );
+  const rows = await memberJoin().where(where).orderBy(desc(users.createdAt)).limit(Math.min(options.limit ?? 60, 100));
+  return rows.map((row) => projectMember(row, viewerId));
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
@@ -1497,6 +1547,77 @@ export async function galleryMedia(slug: string) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Cinema
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CinemaFilmView {
+  id: string;
+  slug: string;
+  title: string;
+  year: number | null;
+  director: string | null;
+  synopsis: string;
+  cineStatus: string;
+  runtimeMinutes: number | null;
+  coverUrl: string | null;
+  watchLinks: Array<{ service: string; url: string; note?: string }>;
+  reviewCount: number;
+  averageRating: number | null;
+  inWatchlist: boolean;
+}
+
+export async function cinemaFilms(
+  viewerId: string,
+  options: { query?: string | null; slug?: string | null; limit?: number } = {},
+): Promise<CinemaFilmView[]> {
+  const term = (options.query ?? '').trim().slice(0, 80);
+  const rows = await db
+    .select({
+      id: filmTable.id,
+      slug: filmTable.slug,
+      title: filmTable.title,
+      year: filmTable.year,
+      director: filmTable.director,
+      synopsis: filmTable.synopsis,
+      cineStatus: filmTable.cineStatus,
+      runtimeMinutes: filmTable.runtimeMinutes,
+      coverObjectId: filmTable.coverObjectId,
+      watchLinks: filmTable.watchLinks,
+      reviewCount: sql<number>`(select count(*)::int from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      averageRating: sql<number | null>`(select avg(r.rating)::float from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      inWatchlist: sql<boolean>`exists (
+        select 1 from ${watchlists} w
+        join ${watchlistItems} wi on wi.watchlist_id = w.id
+        where w.user_id = ${viewerId} and wi.film_id = ${filmTable.id}
+      )`,
+    })
+    .from(filmTable)
+    .where(options.slug
+      ? eq(filmTable.slug, options.slug)
+      : term
+        ? sql`(${filmTable.title} ilike ${'%' + term + '%'} or coalesce(${filmTable.director}, '') ilike ${'%' + term + '%'})`
+        : sql`true`)
+    .orderBy(desc(filmTable.createdAt))
+    .limit(Math.min(options.limit ?? 60, 100));
+
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    year: row.year,
+    director: row.director,
+    synopsis: row.synopsis,
+    cineStatus: row.cineStatus,
+    runtimeMinutes: row.runtimeMinutes,
+    coverUrl: row.coverObjectId ? `/objects/${row.coverObjectId}` : null,
+    watchLinks: row.watchLinks,
+    reviewCount: row.reviewCount,
+    averageRating: row.averageRating === null ? null : Number(row.averageRating),
+    inWatchlist: row.inWatchlist,
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Events
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1919,11 +2040,14 @@ export async function projectList(viewerId: string, limit = 24): Promise<Project
       and(
         isNull(projectTable.removedAt),
         inArray(projectTable.visibility, ['members', 'public']),
-        // A member sees the projects they belong to, plus their own.
-        sql`exists (
-          select 1 from project_members pm
-          where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
-        ) or ${projectTable.ownerId} = ${viewerId}`,
+        // Public projects are discoverable; member-visible projects remain scoped.
+        or(
+          eq(projectTable.visibility, 'public'),
+          sql`exists (
+            select 1 from project_members pm
+            where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
+          ) or ${projectTable.ownerId} = ${viewerId}`,
+        ),
       ),
     )
     .orderBy(desc(projectTable.createdAt))
@@ -2159,6 +2283,35 @@ export interface MatchView {
   conversationId: string | null;
 }
 
+export interface ConnectionRequestView {
+  id: string;
+  mode: string;
+  note: string;
+  createdAt: Date;
+  from: MemberSummary;
+}
+
+export async function connectionRequestInbox(userId: string): Promise<ConnectionRequestView[]> {
+  const rows = await db
+    .select({
+      id: connectionRequests.id,
+      fromUserId: connectionRequests.fromUserId,
+      mode: connectionRequests.mode,
+      note: connectionRequests.note,
+      createdAt: connectionRequests.createdAt,
+    })
+    .from(connectionRequests)
+    .where(and(eq(connectionRequests.toUserId, userId), eq(connectionRequests.state, 'pending')))
+    .orderBy(desc(connectionRequests.createdAt))
+    .limit(60);
+
+  const senders = await Promise.all(rows.map((row) => memberById(row.fromUserId, userId)));
+  return rows.flatMap((row, index) => {
+    const from = senders[index];
+    return from ? [{ id: row.id, mode: row.mode, note: row.note, createdAt: row.createdAt, from }] : [];
+  });
+}
+
 export async function matchesFor(userId: string, status: 'accepted' | 'pending' = 'accepted'): Promise<MatchView[]> {
   const rows = await db
     .select({
@@ -2184,20 +2337,23 @@ export async function matchesFor(userId: string, status: 'accepted' | 'pending' 
   if (rows.length === 0) return [];
 
   const partnerIds = rows.map((row) => (row.userAId === userId ? row.userBId : row.userAId));
-  const partnerMap = await membersByIds(partnerIds, userId);
+  const partnerEntries = await Promise.all(partnerIds.map(async (partnerId) => [partnerId, await memberById(partnerId, userId)] as const));
+  const partnerMap = new Map(partnerEntries.filter((entry): entry is readonly [string, MemberSummary] => entry[1] !== null));
 
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
     const partnerId = partnerIds[index]!;
-    return {
+    const partner = partnerMap.get(partnerId);
+    if (!partner) return [];
+    return [{
       id: row.id,
       mode: row.mode,
       status: row.status,
       createdAt: row.createdAt,
       ageBandAtMatch: row.ageBandAtMatch,
       sharedInterestCount: row.sharedInterestCount,
-      partner: partnerMap.get(partnerId)!,
+      partner,
       conversationId: null,
-    };
+    }];
   });
 }
 

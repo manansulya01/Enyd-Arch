@@ -43,7 +43,7 @@ async function ensureUser(input: {
   const existing = await db
     .select()
     .from(schema.users)
-    .where(sql`lower(${schema.users.username}) = lower(${input.username})`)
+    .where(eq(schema.users.username, input.username.toLowerCase()))
     .limit(1);
   if (existing[0]) return existing[0]!;
 
@@ -80,10 +80,14 @@ function inDays(days: number): Date {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to run the development seed in production.');
+  }
+
   console.log('seeding Enyd Arch…');
 
   for (const role of ADMIN_ROLES) {
-    const found = await db.select().from(schema.adminRoles).where(sql`role = ${role.role}`).limit(1);
+    const found = await db.select().from(schema.adminRoles).where(eq(schema.adminRoles.role, role.role)).limit(1);
     if (found[0]) continue;
     await db.insert(schema.adminRoles).values({
       role: role.role as never,
@@ -95,7 +99,7 @@ async function main() {
   }
 
   for (const achievement of ACHIEVEMENT_DEFS) {
-    const found = await db.select().from(schema.achievements).where(sql`key = ${achievement.key}`).limit(1);
+    const found = await db.select().from(schema.achievements).where(eq(schema.achievements.key, achievement.key)).limit(1);
     if (found[0]) continue;
     await db.insert(schema.achievements).values(achievement);
   }
@@ -125,10 +129,10 @@ async function main() {
     [eden.id, { headline: 'Music and long walks', bio: 'Records things. Recommends records.' }],
   ];
   for (const [userId, values] of bios) {
-    await db.update(schema.profiles).set(values).where(sql`${schema.profiles.userId} = ${userId}`);
+    await db.update(schema.profiles).set(values).where(eq(schema.profiles.userId, userId));
   }
 
-  const ownerRole = await db.select().from(schema.adminRoles).where(sql`role = 'owner'`).limit(1);
+  const ownerRole = await db.select().from(schema.adminRoles).where(eq(schema.adminRoles.role, 'owner')).limit(1);
   if (ownerRole[0]) {
     const existing = await db
       .select()
@@ -389,7 +393,7 @@ ctx.fillStyle='#d8b76a';ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.fill();requestAni
     { projectId: project!.id, title: 'Interview three students', detail: '', createdBy: cass.id, position: 0, status: 'doing' },
     { projectId: project!.id, title: 'Print 200 copies', detail: '', createdBy: cass.id, position: 1, status: 'todo' },
   ]);
-  await db.update(schema.projects).set({ taskCount: 2, openTasks: 2 }).where(sql`${schema.projects.id} = ${project!.id}`);
+  await db.update(schema.projects).set({ taskCount: 2, openTasks: 2 }).where(eq(schema.projects.id, project!.id));
 
   const [dm] = await db.insert(schema.conversations).values({ kind: 'direct', createdById: mira.id }).returning();
   await db.insert(schema.conversationMembers).values([
@@ -400,7 +404,7 @@ ctx.fillStyle='#d8b76a';ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.fill();requestAni
     { conversationId: dm!.id, senderId: mira.id, body: 'The maps are in. You should see the third one.' },
     { conversationId: dm!.id, senderId: eden.id, body: 'The one with the tunnels?? Bringing coffee tomorrow.' },
   ]);
-  await db.update(schema.conversations).set({ lastMessageAt: ago(0.3), lastMessagePreview: 'The one with the tunnels??' }).where(sql`${schema.conversations.id} = ${dm!.id}`);
+  await db.update(schema.conversations).set({ lastMessageAt: ago(0.3), lastMessagePreview: 'The one with the tunnels??' }).where(eq(schema.conversations.id, dm!.id));
 
   await db.insert(schema.chronicleEntries).values([
     { kind: 'public', era: 'October 2026', headline: 'Enyd Arch opened its doors', body: 'The first members entered. The Archive held twelve objects. The Commons held one conversation.', occurredOn: new Date('2026-10-05T00:00:00Z') },
@@ -408,10 +412,6 @@ ctx.fillStyle='#d8b76a';ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.fill();requestAni
     { kind: 'hidden', era: 'October 2026', headline: 'The map with no legend', body: 'Object ARC-000317 was catalogued by no one and curated by no one. It is still on the shelf.', occurredOn: ago(1), unlockLevel: 'archivist', unlockHint: 'Reach Archivist standing to read this entry.' },
   ]);
 
-  await db
-    .insert(schema.invitations)
-    .values({ code: 'ARCH-FOUNDING', tier: 'member', createdBy: owner.id, maxUses: 50, note: 'Founding cohort' })
-    .onConflictDoNothing();
 
   console.log('seed complete');
   await client.end();
