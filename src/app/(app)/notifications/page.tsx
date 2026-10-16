@@ -15,7 +15,7 @@ export default async function NotificationsPage() {
     sessionCsrfToken(),
   ]);
   return (
-    <PageShell title="Notifications" sub={counts.unread ? \`You have \${counts.unread} unread notifications.\` : 'You are all caught up.'} wide>
+    <PageShell title="Notifications" sub={counts.unread ? `You have ${counts.unread} unread notifications.` : 'You are all caught up.'} wide>
       <section className="stack stack-3">
         {items.length === 0 ? <div className="panel panel-body"><h2>No notifications yet</h2><p className="t-small t-muted">Replies, reactions, and invitations will appear here.</p></div> : items.map((item) => (
           <NotificationCard key={item.id} item={{ ...item, createdAt: item.createdAt.toISOString() }} csrfToken={csrfToken} />
