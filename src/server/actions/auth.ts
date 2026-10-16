@@ -664,9 +664,7 @@ export async function signInWithPasskey(input: {
   const rows = await db
     .select({
       userId: deviceCredentials.userId,
-      deviceId: deviceCredentials.deviceId,
       credentialStatus: deviceCredentials.status,
-      credentialRevokedAt: deviceCredentials.revokedAt,
       userStatus: users.status,
       memberId: users.memberId,
       username: users.username,
@@ -703,10 +701,12 @@ export async function signInWithPasskey(input: {
     return fail('The passkey could not be verified. Try again or use your enrolled device.');
   }
 
+  if (!verified.deviceId) return fail('This passkey has no active device assignment.');
+
   const [device] = await db
     .select({ status: devices.status, fingerprint: devices.fingerprint })
     .from(devices)
-    .where(eq(devices.id, verified.deviceId ?? ''))
+    .where(eq(devices.id, verified.deviceId))
     .limit(1);
   if (!device || device.status !== 'active' || device.fingerprint !== traits.fingerprint) {
     return fail('This passkey is not associated with the current enrolled installation.');
