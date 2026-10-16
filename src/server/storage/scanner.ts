@@ -163,7 +163,7 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
 
     socket.on('end', () => {
       const reply = Buffer.concat(chunks).toString('utf8').trim();
-      const matched = /^(.+?):\\s*(.+?)\\s+FOUND$/i.exec(reply);
+      const matched = /^(.+?):\s*(.+?)\s+FOUND$/i.exec(reply);
 
       if (matched) {
         finish({
@@ -188,7 +188,7 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
 
       // Only ClamAV's explicit clean verdict is trusted. Empty, malformed, or
       // unexpected replies must never turn into a clean result.
-      if (/^stream:\\s*OK$/i.test(reply)) {
+      if (/^stream:\s*OK$/i.test(reply)) {
         finish({
           verdict: 'clean',
           provider: 'clamav',
