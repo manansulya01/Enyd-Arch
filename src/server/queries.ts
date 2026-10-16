@@ -13,6 +13,10 @@ import {
   conversations as conversationTable,
   connectionRequests,
   events as eventTable,
+  films as filmTable,
+  filmReviews,
+  watchlists,
+  watchlistItems,
   files,
   galleryAttachments,
   galleryPosts as galleryPostTable,
@@ -1540,6 +1544,75 @@ export async function galleryMedia(slug: string) {
     .innerJoin(files, eq(files.id, galleryAttachments.fileId))
     .where(and(eq(galleryAttachments.postId, post.id), eq(files.state, 'clean')))
     .orderBy(asc(galleryAttachments.position));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Cinema
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CinemaFilmView {
+  id: string;
+  slug: string;
+  title: string;
+  year: number | null;
+  director: string | null;
+  synopsis: string;
+  cineStatus: string;
+  runtimeMinutes: number | null;
+  coverUrl: string | null;
+  watchLinks: Array<{ service: string; url: string; note?: string }>;
+  reviewCount: number;
+  averageRating: number | null;
+  inWatchlist: boolean;
+}
+
+export async function cinemaFilms(
+  viewerId: string,
+  options: { query?: string | null; limit?: number } = {},
+): Promise<CinemaFilmView[]> {
+  const term = (options.query ?? '').trim().slice(0, 80);
+  const rows = await db
+    .select({
+      id: filmTable.id,
+      slug: filmTable.slug,
+      title: filmTable.title,
+      year: filmTable.year,
+      director: filmTable.director,
+      synopsis: filmTable.synopsis,
+      cineStatus: filmTable.cineStatus,
+      runtimeMinutes: filmTable.runtimeMinutes,
+      coverObjectId: filmTable.coverObjectId,
+      watchLinks: filmTable.watchLinks,
+      reviewCount: sql<number>`(select count(*)::int from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      averageRating: sql<number | null>`(select avg(r.rating)::float from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      inWatchlist: sql<boolean>`exists (
+        select 1 from ${watchlists} w
+        join ${watchlistItems} wi on wi.watchlist_id = w.id
+        where w.user_id = ${viewerId} and wi.film_id = ${filmTable.id}
+      )`,
+    })
+    .from(filmTable)
+    .where(term
+      ? sql`(${filmTable.title} ilike ${'%' + term + '%'} or coalesce(${filmTable.director}, '') ilike ${'%' + term + '%'})`
+      : sql`true`)
+    .orderBy(desc(filmTable.createdAt))
+    .limit(Math.min(options.limit ?? 60, 100));
+
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    year: row.year,
+    director: row.director,
+    synopsis: row.synopsis,
+    cineStatus: row.cineStatus,
+    runtimeMinutes: row.runtimeMinutes,
+    coverUrl: row.coverObjectId ? `/objects/${row.coverObjectId}` : null,
+    watchLinks: row.watchLinks,
+    reviewCount: row.reviewCount,
+    averageRating: row.averageRating === null ? null : Number(row.averageRating),
+    inWatchlist: row.inWatchlist,
+  }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
