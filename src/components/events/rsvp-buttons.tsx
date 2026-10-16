@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { rsvpToEvent } from '~/server/actions/events';
 
-export function RSVPButtons({ eventId, current }: { eventId: string; current: string | null }) {
+export function RSVPButtons({ eventId, current, csrfToken }: { eventId: string; current: string | null; csrfToken: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -12,7 +12,7 @@ export function RSVPButtons({ eventId, current }: { eventId: string; current: st
     setBusy(true);
     setMessage('');
     try {
-      const result = await rsvpToEvent(eventId, status);
+      const result = await rsvpToEvent(eventId, status, csrfToken);
       if (!result.ok) setMessage(result.message ?? 'Could not update your RSVP.');
       else router.refresh();
     } catch {
