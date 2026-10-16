@@ -126,7 +126,8 @@ export async function commentOnFilm(
   return ok();
 }
 
-export async function toggleWatchlist(filmId: string): Promise<ActionResult<{ added: boolean }>> {
+export async function toggleWatchlist(filmId: string, csrf: string): Promise<ActionResult<{ added: boolean }>> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
