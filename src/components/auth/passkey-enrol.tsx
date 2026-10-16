@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   PasskeyCancelled,
   browserSupportsPasskeys,
-  readCsrfToken,
   startRegistration,
 } from './passkey';
 import { completeEnrolment } from '~/server/actions/auth';
@@ -23,8 +22,10 @@ import { completeEnrolment } from '~/server/actions/auth';
  */
 export function PasskeyEnrol({
   identity,
+  csrfToken,
 }: {
   identity: { username: string; memberId: string };
+  csrfToken: string;
 }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
@@ -35,13 +36,13 @@ export function PasskeyEnrol({
     setLocalError(null);
 
     try {
-      const credential = await startRegistration(identity.username);
+      const credential = await startRegistration(identity.username, csrfToken);
 
       startTransition(async () => {
         const result = await completeEnrolment({
           username: identity.username,
           credential,
-          csrf: readCsrfToken(),
+          csrf: csrfToken,
         });
 
         if (result.ok) {
