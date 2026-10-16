@@ -1,0 +1,44 @@
+{
+  "name": "enyd-arch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Enyd Arch — a private digital society for students.",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "node --conditions=react-server --import tsx --env-file=.env.local db/seed.ts",
+    "db:reset": "drizzle-kit push --force && tsx --env-file=.env.local db/bootstrap.ts && node --conditions=react-server --import tsx --env-file=.env.local db/seed.ts",
+    "db:bootstrap": "tsx --env-file=.env.local db/bootstrap.ts",
+    "dev:sandbox": "tsx --env-file=.env.local sandbox/server.mts",
+    "clock:start": "node scripts/crypto-clock.mjs start",
+    "clock:stop": "node scripts/crypto-clock.mjs stop"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3",
+    "drizzle-orm": "^0.45.3",
+    "file-type": "^22.1.1",
+    "next": "^15.5.27",
+    "postgres": "^3.4.9",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3"
+  }
+}

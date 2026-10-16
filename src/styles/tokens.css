@@ -1,0 +1,221 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Enyd Arch · design tokens
+
+   The visual language is a reading room at night: deep ink-blue paper, warm
+   brass rules, and a single restrained accent. Gold is used sparingly — for
+   the mark, for emphasis, for state — never as decoration.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Ink (backgrounds) ─────────────────────────────────────────────────── */
+  --ink-950: #06080d;
+  --ink-900: #0a0d14;
+  --ink-850: #0d1119;
+  --ink-800: #111623;
+  --ink-750: #151b2a;
+  --ink-700: #1a2131;
+  --ink-650: #202839;
+  --ink-600: #2a3348;
+
+  /* ── Parchment (text) ─────────────────────────────────────────────────── */
+  --paper-050: #f7f4ec;
+  --paper-100: #ece7db;
+  --paper-200: #d9d3c5;
+  --paper-300: #bcb6a8;
+  --paper-400: #96918a;
+  --paper-500: #76746f;
+  --paper-600: #57575a;
+
+  /* ── Brass accent ─────────────────────────────────────────────────────── */
+  --brass-050: #f6ecd2;
+  --brass-100: #ecd9ab;
+  --brass-200: #dcc084;
+  --brass-300: #c9a961;
+  --brass-400: #b08f4a;
+  --brass-500: #8f7239;
+  --brass-600: #6d5729;
+  --brass-700: #4a3b1c;
+
+  /* ── Verdigris (interactive / archival) ───────────────────────────────── */
+  --verd-100: #cfe4e0;
+  --verd-200: #9ec6c1;
+  --verd-300: #6fa8a3;
+  --verd-400: #4d8681;
+  --verd-500: #366764;
+  --verd-600: #274b49;
+  --verd-700: #193231;
+
+  /* ── Oxblood (danger, reported, removed) ──────────────────────────────── */
+  --ox-100: #f0d2cd;
+  --ox-200: #dda39a;
+  --ox-300: #c4786c;
+  --ox-400: #a55a4e;
+  --ox-500: #83453b;
+  --ox-600: #5e322b;
+
+  /* ── Moss (approval, verified, safe) ──────────────────────────────────── */
+  --moss-100: #d5e3cd;
+  --moss-200: #a8c699;
+  --moss-300: #7ea86e;
+  --moss-400: #5d8a4f;
+  --moss-500: #456b3b;
+  --moss-600: #334e2c;
+
+  /* ── Iris (connections / social) ──────────────────────────────────────── */
+  --iris-100: #dcd9ef;
+  --iris-200: #bab4de;
+  --iris-300: #968ecd;
+  --iris-400: #7467b4;
+  --iris-500: #564a8e;
+  --iris-600: #3d3468;
+
+  /* ── Semantic aliases ─────────────────────────────────────────────────── */
+  --bg-app: var(--ink-900);
+  --bg-sunken: var(--ink-950);
+  --bg-surface: var(--ink-850);
+  --bg-surface-raised: var(--ink-800);
+  --bg-surface-hover: var(--ink-750);
+  --bg-inset: rgb(0 0 0 / 28%);
+
+  --fg: var(--paper-100);
+  --fg-strong: var(--paper-050);
+  --fg-muted: var(--paper-400);
+  --fg-subtle: var(--paper-500);
+  --fg-inverted: var(--ink-900);
+
+  --accent: var(--brass-300);
+  --accent-strong: var(--brass-200);
+  --accent-muted: var(--brass-500);
+  --accent-ink: var(--ink-950);
+
+  --line: rgb(220 192 132 / 13%);
+  --line-strong: rgb(220 192 132 / 24%);
+  --line-faint: rgb(220 192 132 / 7%);
+  --line-inset: rgb(0 0 0 / 35%);
+
+  --danger: var(--ox-300);
+  --danger-strong: var(--ox-200);
+  --danger-bg: rgb(165 90 78 / 13%);
+  --success: var(--moss-300);
+  --success-bg: rgb(125 168 110 / 12%);
+  --warning: var(--brass-300);
+  --warning-bg: rgb(201 169 97 / 12%);
+  --info: var(--verd-300);
+  --info-bg: rgb(111 168 163 / 12%);
+  --social: var(--iris-300);
+  --social-bg: rgb(150 142 205 / 12%);
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-display: var(--font-editorial), 'Iowan Old Style', 'Palatino Linotype',
+    Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif;
+  --font-sans: var(--font-interface), -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: var(--font-code), ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo,
+    Consolas, 'Liberation Mono', monospace;
+
+  --fs-3xs: 0.6875rem; /* 11 */
+  --fs-2xs: 0.75rem; /* 12 */
+  --fs-xs: 0.8125rem; /* 13 */
+  --fs-sm: 0.875rem; /* 14 */
+  --fs-md: 0.9375rem; /* 15 */
+  --fs-base: 1rem; /* 16 */
+  --fs-lg: 1.0625rem; /* 17 */
+  --fs-xl: 1.25rem; /* 20 */
+  --fs-2xl: 1.5rem; /* 24 */
+  --fs-3xl: 1.875rem; /* 30 */
+  --fs-4xl: 2.375rem; /* 38 */
+  --fs-5xl: 3rem; /* 48 */
+  --fs-6xl: 4rem; /* 64 */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.32;
+  --lh-normal: 1.55;
+  --lh-relaxed: 1.72;
+
+  --tracking-tight: -0.018em;
+  --tracking-snug: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
+  --tracking-caps: 0.14em;
+
+  /* ── Space ────────────────────────────────────────────────────────────── */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-7: 1.75rem;
+  --sp-8: 2rem;
+  --sp-10: 2.5rem;
+  --sp-12: 3rem;
+  --sp-16: 4rem;
+  --sp-20: 5rem;
+  --sp-24: 6rem;
+
+  /* ── Radii ────────────────────────────────────────────────────────────── */
+  --r-none: 0;
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
+  --r-pill: 999px;
+  --r-circle: 50%;
+
+  /* ── Shadow (used sparingly; depth via surface tone mostly) ───────────── */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 32%);
+  --shadow-sm: 0 2px 6px -1px rgb(0 0 0 / 38%);
+  --shadow-md: 0 8px 22px -8px rgb(0 0 0 / 52%);
+  --shadow-lg: 0 24px 56px -20px rgb(0 0 0 / 62%);
+  --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 3.5%);
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
+  --dur-1: 110ms;
+  --dur-2: 180ms;
+  --dur-3: 280ms;
+  --dur-4: 460ms;
+
+  /* ── Layout metrics ───────────────────────────────────────────────────── */
+  --rail-w: 250px;
+  --rail-w-compact: 74px;
+  --aside-w: 322px;
+  --content-max: 748px;
+  --content-wide: 1120px;
+  --header-h: 60px;
+  --bottomnav-h: 62px;
+  --z-base: 1;
+  --z-sticky: 20;
+  --z-header: 60;
+  --z-drawer: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+
+  /* ── Texture ──────────────────────────────────────────────────────────── */
+  --grain-opacity: 0.026;
+  --vignette: radial-gradient(
+    120% 90% at 50% -12%,
+    rgb(201 169 97 / 5%) 0%,
+    transparent 58%
+  );
+}
+
+/* Members may reduce motion globally; the OS preference is honoured too. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-4: 0ms;
+  }
+}
+
+[data-motion='calm'] {
+  --dur-1: 0ms;
+  --dur-2: 0ms;
+  --dur-3: 0ms;
+  --dur-4: 0ms;
+}
