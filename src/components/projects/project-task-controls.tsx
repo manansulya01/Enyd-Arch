@@ -27,7 +27,7 @@ export function ProjectTaskStatusButton({ taskId, status, csrfToken }: { taskId:
   const [error, setError] = useState('');
   async function update() {
     setPending(true); setError('');
-    const next = status === 'done' ? 'open' : 'done';
+    const next = status === 'done' ? 'todo' : 'done';
     try {
       const result = await setTaskStatus(taskId, next, csrfToken);
       if (result.ok) router.refresh();
