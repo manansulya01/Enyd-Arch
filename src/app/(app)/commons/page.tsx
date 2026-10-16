@@ -6,6 +6,7 @@ import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { feed, trendingTopics } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'The Commons' };
 
@@ -19,9 +20,10 @@ export default async function CommonsPage({
   const sort = params.sort === 'recent' || params.sort === 'discussed' ? params.sort : 'active';
   const topic = params.topic ?? null;
 
-  const [posts, topics] = await Promise.all([
+  const [posts, topics, csrfToken] = await Promise.all([
     feed({ viewerId: actor.userId, sort, topic, limit: 25 }),
     trendingTopics(12),
+    sessionCsrfToken(),
   ]);
 
   return (
@@ -36,7 +38,7 @@ export default async function CommonsPage({
     >
       <div className="page-split">
         <div className="stack stack-5">
-          <Composer />
+          <Composer csrfToken={csrfToken} />
 
           <div className="row row-wrap row-between">
             <div className="btn-group" role="group" aria-label="Sort posts">
