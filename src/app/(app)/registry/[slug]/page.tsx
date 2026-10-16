@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { actor } = await requireOnboarded();
   const member = await memberByUsername(slug, actor.userId);
   if (!member) return { title: 'Member not found — The Registry' };
-  return { title: \`\${member.displayName} — The Registry\`, description: member.headline ?? \`Enyd Arch member @\${member.username}\` };
+  return { title: `${member.displayName} — The Registry`, description: member.headline ?? `Enyd Arch member @${member.username}` };
 }
 
 export default async function RegistryMemberPage({ params }: { params: Promise<{ slug: string }> }) {
