@@ -1964,11 +1964,14 @@ export async function projectList(viewerId: string, limit = 24): Promise<Project
       and(
         isNull(projectTable.removedAt),
         inArray(projectTable.visibility, ['members', 'public']),
-        // A member sees the projects they belong to, plus their own.
-        sql`exists (
-          select 1 from project_members pm
-          where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
-        ) or ${projectTable.ownerId} = ${viewerId}`,
+        // Public projects are discoverable; member-visible projects remain scoped.
+        or(
+          eq(projectTable.visibility, 'public'),
+          sql`exists (
+            select 1 from project_members pm
+            where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
+          ) or ${projectTable.ownerId} = ${viewerId}`,
+        ),
       ),
     )
     .orderBy(desc(projectTable.createdAt))
