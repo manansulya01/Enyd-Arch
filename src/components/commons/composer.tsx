@@ -1,10 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
+import { useRef, useState, useTransition, type ReactNode } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
 import { onUploadFile } from '~/server/actions/exchange-client';
-import { CsrfField } from '~/components/shell/csrf-field';
 import { formatBytes } from '~/lib/format';
 
 /**
@@ -12,7 +11,7 @@ import { formatBytes } from '~/lib/format';
  * which is uploaded through the validated pipeline first, then referenced by id
  * so the browser never dictates where bytes land.
  */
-export function Composer() {
+export function Composer({ csrf }: { csrf?: ReactNode }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -43,11 +42,12 @@ export function Composer() {
     }
 
     startTransition(async () => {
+      const csrfToken = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
       const result = await onCreatePost({
         body: body.trim(),
         poll: cleanPoll,
         attachmentFileIds: attachment ? [attachment.fileId] : [],
-      });
+      }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
@@ -187,7 +187,7 @@ export function Composer() {
           }}
         />
 
-        <CsrfField />
+        {csrf}
 
         <div className="row row-end" style={{ marginLeft: 'auto' }}>
           {error && (
