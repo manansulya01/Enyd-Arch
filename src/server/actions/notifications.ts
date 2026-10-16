@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { notificationTable } from '~db/schema';
+import { notifications as notificationTable } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { currentActor } from '~/server/auth/session';
 import { verifyCsrfValue } from '~/server/csrf';
