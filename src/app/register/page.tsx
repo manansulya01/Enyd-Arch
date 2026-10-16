@@ -57,7 +57,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="auth-title">Enter the Arch</h1>
             <p className="t-small t-muted">
-              Four things to begin: a handle, a name, a passphrase, and your age
+              Five things to begin: a handle, a name, a passphrase, an invitation, and your age
               group. Everything else can wait.
             </p>
           </header>
