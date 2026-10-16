@@ -147,6 +147,13 @@ export function RegisterCredentialsForm() {
         error={fieldError(credentials, 'password')}
       />
 
+      <div className="field">
+        <label className="field-label" htmlFor="invitationCode">Invitation code</label>
+        <input className="input" id="invitationCode" name="invitationCode" type="text" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false} required maxLength={32} aria-invalid={Boolean(fieldError(credentials, 'invitationCode'))} aria-describedby="invitationCode-hint" />
+        <p className="field-hint" id="invitationCode-hint">Enyd Arch is invite-only. Ask an existing member for a code.</p>
+        {fieldError(credentials, 'invitationCode') && <p className="field-error" role="alert">{fieldError(credentials, 'invitationCode')}</p>}
+      </div>
+
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="field-label" style={{ padding: 0, marginBottom: 'var(--sp-2)' }}>
           Age group
