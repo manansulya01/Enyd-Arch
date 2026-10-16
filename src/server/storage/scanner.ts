@@ -233,7 +233,7 @@ export async function scanBytes(data: Uint8Array): Promise<ScanOutcome> {
   let scanPort: number;
   try {
     const endpoint = new URL(configured);
-    if (!['tcp:', 'http:', 'https:'].includes(endpoint.protocol)) {
+    if (!['tcp:', 'clamav:'].includes(endpoint.protocol)) {
       throw new Error('Unsupported scanner URL protocol.');
     }
     hostname = endpoint.hostname;
