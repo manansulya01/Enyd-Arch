@@ -4,13 +4,13 @@ import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { userSettings } from '~db/schema';
+import { profiles, userSettings } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { currentActor } from '~/server/auth/session';
 import { verifyCsrf } from '~/server/csrf';
 
 const PROFILE_VISIBILITY = new Set(['public', 'members', 'connections', 'private']);
-const MESSAGE_POLICIES = new Set(['members', 'nobody']);
+const MESSAGE_POLICIES = new Set(['members', 'connections', 'nobody']);
 const THEMES = new Set(['dark', 'light']);
 
 const checked = (formData: FormData, key: string) => formData.get(key) === 'on';
@@ -64,6 +64,10 @@ export async function savePrivacySettings(
       target: userSettings.userId,
       set: values,
     });
+
+  await db.insert(profiles)
+    .values({ userId: actor.userId, profileVisibility: values.profileVisibility })
+    .onConflictDoUpdate({ target: profiles.userId, set: { profileVisibility: values.profileVisibility, updatedAt: new Date() } });
 
   revalidatePath('/settings');
   revalidatePath('/home');
