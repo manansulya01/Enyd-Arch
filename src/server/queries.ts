@@ -115,6 +115,7 @@ export interface MemberRow {
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
   profileVisibility?: 'public' | 'members' | 'connections' | 'private' | null;
+  settingsProfileVisibility?: 'public' | 'members' | 'connections' | 'private' | null;
   discoverable?: boolean | null;
   showActivity?: boolean | null;
   showCreations?: boolean | null;
@@ -134,7 +135,8 @@ const MEMBER_COLUMNS = {
   avatarObjectId: profiles.avatarObjectId,
   showRegion: userSettings.showRegion,
   hideAgeBand: userSettings.hideAgeBand,
-  profileVisibility: userSettings.profileVisibility,
+  profileVisibility: profiles.profileVisibility,
+  settingsProfileVisibility: userSettings.profileVisibility,
   discoverable: userSettings.discoverable,
   showActivity: userSettings.showActivity,
   showCreations: userSettings.showCreations,
@@ -193,7 +195,14 @@ export async function memberByUsername(
 
   // Profile visibility is an access-control decision, not just a display preference.
   if (viewerId !== row.id) {
-    const visibility = row.profileVisibility ?? 'members';
+    const visibilities = [row.profileVisibility ?? 'members', row.settingsProfileVisibility ?? 'members'];
+    const visibility = visibilities.includes('private')
+      ? 'private'
+      : visibilities.includes('connections')
+        ? 'connections'
+        : visibilities.includes('members')
+          ? 'members'
+          : 'public';
     if (visibility === 'private') return null;
     if (!viewerId && visibility !== 'public') return null;
     if (visibility === 'connections') {
@@ -245,8 +254,9 @@ export async function searchMembers(query: string, viewerId: string): Promise<Me
       sql`(${users.id} <> ${viewerId})`,
       or(isNull(userSettings.discoverable), eq(userSettings.discoverable, true)),
       or(ilike(users.username, pattern), ilike(users.displayName, pattern)),
+      sql`coalesce(${profiles.profileVisibility}, 'members') <> 'private'`,
       sql`coalesce(${userSettings.profileVisibility}, 'members') <> 'private'`,
-      sql`(coalesce(${userSettings.profileVisibility}, 'members') <> 'connections' or exists (
+      sql`((coalesce(${profiles.profileVisibility}, 'members') <> 'connections' and coalesce(${userSettings.profileVisibility}, 'members') <> 'connections') or exists (
         select 1 from matches m
         where m.status = 'accepted'
           and ((m.user_a_id = ${viewerId} and m.user_b_id = ${users.id})
