@@ -192,9 +192,12 @@ export async function memberByUsername(
   if (!row) return null;
 
   // Profile visibility is an access-control decision, not just a display preference.
-  if (viewerId && viewerId !== row.id) {
-    if (row.profileVisibility === 'private') return null;
-    if (row.profileVisibility === 'connections') {
+  if (viewerId !== row.id) {
+    const visibility = row.profileVisibility ?? 'members';
+    if (visibility === 'private') return null;
+    if (!viewerId && visibility !== 'public') return null;
+    if (visibility === 'connections') {
+      if (!viewerId) return null;
       const [connection] = await db
         .select({ id: matchTable.id })
         .from(matchTable)
@@ -206,12 +209,14 @@ export async function memberByUsername(
       if (!connection) return null;
     }
 
-    const [blocked] = await db
-      .select({ id: blocks.id })
-      .from(blocks)
-      .where(sql`((${blocks.blockerId} = ${viewerId} and ${blocks.blockedId} = ${row.id}) or (${blocks.blockerId} = ${row.id} and ${blocks.blockedId} = ${viewerId}))`)
-      .limit(1);
-    if (blocked) return null;
+    if (viewerId) {
+      const [blocked] = await db
+        .select({ id: blocks.id })
+        .from(blocks)
+        .where(sql`((${blocks.blockerId} = ${viewerId} and ${blocks.blockedId} = ${row.id}) or (${blocks.blockerId} = ${row.id} and ${blocks.blockedId} = ${viewerId}))`)
+        .limit(1);
+      if (blocked) return null;
+    }
   }
 
   return projectMember(row, viewerId);
