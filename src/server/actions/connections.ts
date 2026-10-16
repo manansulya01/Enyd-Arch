@@ -23,6 +23,7 @@ import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { checkPairEligibility, orderPair } from '~/server/safety/connections';
 import { notify } from '~/server/notify';
+import { verifyCsrfValue } from '~/server/csrf';
 
 const MODES = ['friendship', 'collaboration', 'dating'] as const;
 type Mode = (typeof MODES)[number];
@@ -69,7 +70,9 @@ export async function sendConnectionRequest(input: {
   toUserId: string;
   mode: Mode;
   note?: string;
+  csrf: string;
 }): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
@@ -134,7 +137,8 @@ export async function sendConnectionRequest(input: {
   return ok();
 }
 
-export async function respondToRequest(requestId: string, accept: boolean): Promise<ActionResult> {
+export async function respondToRequest(requestId: string, accept: boolean, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
@@ -184,7 +188,8 @@ export async function respondToRequest(requestId: string, accept: boolean): Prom
   return ok();
 }
 
-export async function unmatch(matchId: string): Promise<ActionResult> {
+export async function unmatch(matchId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
@@ -205,7 +210,8 @@ export async function unmatch(matchId: string): Promise<ActionResult> {
   return ok();
 }
 
-export async function blockUser(userId: string): Promise<ActionResult> {
+export async function blockUser(userId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (userId === actor.userId) return fail('You cannot block yourself.');
@@ -228,7 +234,8 @@ export async function blockUser(userId: string): Promise<ActionResult> {
   return ok();
 }
 
-export async function unblockUser(userId: string): Promise<ActionResult> {
+export async function unblockUser(userId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   await db.delete(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, userId)));
