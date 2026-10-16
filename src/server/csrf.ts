@@ -106,8 +106,8 @@ export async function verifyCsrfValue(presented: unknown): Promise<void> {
 }
 
 /**
- * Issues an anonymous token and mirrors it in a readable cookie, so a form
- * rendered before sign-in can embed it.
+ * Reads the anonymous CSRF token initialized by middleware so a server-rendered
+ * form can embed it without mutating cookies during render.
  */
 export async function issueAnonymousCsrf(): Promise<string> {
   const store = await cookies();
