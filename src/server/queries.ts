@@ -163,8 +163,25 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
   };
 }
 
+const visibleMemberConditions = (viewerId?: string | null) =>
+  and(
+    eq(users.status, 'active'),
+    isNull(users.removedAt),
+    eq(userSettings.discoverable, true),
+    inArray(profiles.profileVisibility, ['members', 'public']),
+    inArray(userSettings.profileVisibility, ['members', 'public']),
+    sql`not exists (
+      select 1 from ${blocks} b
+      where (b.blocker_id = ${viewerId ?? ''} and b.blocked_id = ${users.id})
+         or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId ?? ''})
+    )`,
+  );
+
 export async function memberById(userId: string, viewerId?: string | null): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(eq(users.id, userId)).limit(1);
+  const privacy = viewerId === userId
+    ? eq(users.id, userId)
+    : and(eq(users.id, userId), visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
   return row ? projectMember(row, viewerId) : null;
 }
 
@@ -172,8 +189,27 @@ export async function memberByUsername(
   username: string,
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
+  const identity = sql`lower(${users.username}) = lower(${username})`;
+  const privacy = and(identity, visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
   return row ? projectMember(row, viewerId) : null;
+}
+
+export async function memberDirectory(
+  viewerId: string,
+  options: { query?: string | null; level?: string | null; limit?: number } = {},
+): Promise<MemberSummary[]> {
+  const term = (options.query ?? '').trim().slice(0, 60);
+  const where = and(
+    visibleMemberConditions(viewerId),
+    sql`${users.id} <> ${viewerId}`,
+    options.level ? eq(users.level, options.level) : sql`true`,
+    term
+      ? sql`(${users.username} ilike ${'%' + term + '%'} or ${users.displayName} ilike ${'%' + term + '%'})`
+      : sql`true`,
+  );
+  const rows = await memberJoin().where(where).orderBy(desc(users.createdAt)).limit(Math.min(options.limit ?? 60, 100));
+  return rows.map((row) => projectMember(row, viewerId));
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
