@@ -714,8 +714,6 @@ export async function requestDeviceTransferAction(
   return ok();
 }
 
-export { titleCase };
-
 // Keep the client-facing exports as async server-action wrappers. Next.js does
 // not allow re-exporting imported actions from a `use server` module.
 export async function beginEnrolment(username: string) {
