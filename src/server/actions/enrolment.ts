@@ -32,6 +32,7 @@ export async function completeEnrolment(input: {
   credential: unknown;
   csrf: string;
 }): Promise<ActionResult<{ memberId: string }>> {
+  await verifyCsrfValue(input.csrf);
   const traits = await requestTraits();
 
   const limiter = await gate('deviceEnroll', traits.ipHash);
