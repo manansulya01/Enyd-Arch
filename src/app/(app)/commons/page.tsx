@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Composer } from '~/components/commons/composer';
+import { CsrfField } from '~/components/shell/csrf-field';
 import { PostCard } from '~/components/commons/post-card';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
@@ -36,7 +37,7 @@ export default async function CommonsPage({
     >
       <div className="page-split">
         <div className="stack stack-5">
-          <Composer />
+          <Composer csrf={<CsrfField />} />
 
           <div className="row row-wrap row-between">
             <div className="btn-group" role="group" aria-label="Sort posts">
