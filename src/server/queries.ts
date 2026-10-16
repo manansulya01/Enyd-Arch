@@ -1568,7 +1568,7 @@ export interface CinemaFilmView {
 
 export async function cinemaFilms(
   viewerId: string,
-  options: { query?: string | null; limit?: number } = {},
+  options: { query?: string | null; slug?: string | null; limit?: number } = {},
 ): Promise<CinemaFilmView[]> {
   const term = (options.query ?? '').trim().slice(0, 80);
   const rows = await db
@@ -1592,9 +1592,11 @@ export async function cinemaFilms(
       )`,
     })
     .from(filmTable)
-    .where(term
-      ? sql`(${filmTable.title} ilike ${'%' + term + '%'} or coalesce(${filmTable.director}, '') ilike ${'%' + term + '%'})`
-      : sql`true`)
+    .where(options.slug
+      ? eq(filmTable.slug, options.slug)
+      : term
+        ? sql`(${filmTable.title} ilike ${'%' + term + '%'} or coalesce(${filmTable.director}, '') ilike ${'%' + term + '%'})`
+        : sql`true`)
     .orderBy(desc(filmTable.createdAt))
     .limit(Math.min(options.limit ?? 60, 100));
 
