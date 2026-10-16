@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { COPY, MARK } from '~/lib/domain';
+import { CsrfField } from '~/components/shell/csrf-field';
 
 export const metadata: Metadata = {
   title: 'Enter the Arch',
@@ -77,5 +78,5 @@ export default function RegisterPage() {
 
 async function RegisterForm() {
   const { RegisterCredentialsForm } = await import('~/components/auth/register-credentials-form');
-  return <RegisterCredentialsForm />;
+  return <RegisterCredentialsForm csrf={<CsrfField />} />;
 }
