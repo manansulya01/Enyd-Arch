@@ -30,7 +30,7 @@ export function InvitationManager({
   }, [created, revoked, router]);
 
   return (
-    <div className="stack-lg">
+    <div className="stack-8">
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -41,7 +41,7 @@ export function InvitationManager({
         <p className="t-small t-muted">
           Codes are single-purpose entry passes. Share them privately; anyone who obtains a valid code may use one of its remaining places.
         </p>
-        <form action={createAction} className="form-grid" style={{ marginTop: 'var(--sp-4)' }}>
+        <form action={createAction} className="stack-3" style={{ marginTop: 'var(--sp-4)' }}>
           <input type="hidden" name="__csrf" value={csrfToken} />
           <label className="field">
             <span className="field-label">Invitation tier</span>
@@ -88,7 +88,7 @@ export function InvitationManager({
         {initialInvitations.length === 0 ? (
           <p className="t-small t-muted">No invitations have been issued yet. Create one above to admit the first member.</p>
         ) : (
-          <div className="table-scroll">
+          <div className="data-table-scroll">
             <table className="data-table">
               <thead><tr><th>Code</th><th>Tier</th><th>Uses</th><th>Expires</th><th>Status</th><th /></tr></thead>
               <tbody>
@@ -108,7 +108,7 @@ export function InvitationManager({
                           <form action={revokeAction}>
                             <input type="hidden" name="__csrf" value={csrfToken} />
                             <input type="hidden" name="invitationId" value={invite.id} />
-                            <button className="btn btn-quiet" type="submit" disabled={revoking}>Revoke</button>
+                            <button className="btn btn-ghost" type="submit" disabled={revoking}>Revoke</button>
                           </form>
                         )}
                       </td>
