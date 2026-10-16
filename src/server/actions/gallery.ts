@@ -5,7 +5,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { files, galleryAttachments, galleryPosts } from '~db/schema';
+import { blocks, files, galleryAttachments, galleryPosts } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
@@ -93,11 +93,25 @@ export async function commentOnGalleryPost(
   if (!postId || !body) return fail('Write something first.');
 
   const [post] = await db
-    .select({ slug: galleryPosts.slug })
+    .select({
+      slug: galleryPosts.slug,
+      authorId: galleryPosts.authorId,
+      status: galleryPosts.status,
+      visibility: galleryPosts.visibility,
+    })
     .from(galleryPosts)
     .where(and(eq(galleryPosts.id, postId), isNull(galleryPosts.removedAt)))
     .limit(1);
-  if (!post) return fail('That piece is not available.');
+  if (!post || post.status !== 'published' || !['members', 'public'].includes(post.visibility)) {
+    return fail('That piece is not available.');
+  }
+
+  const [blocked] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`((${blocks.blockerId} = ${actor.userId} and ${blocks.blockedId} = ${post.authorId}) or (${blocks.blockerId} = ${post.authorId} and ${blocks.blockedId} = ${actor.userId}))`)
+    .limit(1);
+  if (blocked) return fail('That piece is not available.');
 
   const { galleryComments } = await import('~db/schema');
   await db.insert(galleryComments).values({ postId, authorId: actor.userId, body });
