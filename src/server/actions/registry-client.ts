@@ -1,6 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import { currentActor } from '~/server/auth/session';
 import { verifyCsrf } from '~/server/csrf';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
@@ -20,9 +19,9 @@ export async function onCreateRegistryItem(formData: FormData): Promise<ActionRe
   await verifyCsrf(formData);
 
   const data = {
-    title: formData.get('title') as string,
-    description: formData.get('description') as string,
-    details: formData.get('details') as string | undefined,
+    title: String(formData.get('title') ?? ''),
+    description: String(formData.get('description') ?? ''),
+    details: String(formData.get('details') ?? ''),
   };
 
   return createRegistryItem(data);
@@ -41,11 +40,11 @@ export async function onUpdateRegistryItem(formData: FormData): Promise<ActionRe
   // Verify CSRF token
   await verifyCsrf(formData);
 
-  const id = formData.get('id') as string;
+  const id = String(formData.get('id') ?? '');
   const data = {
-    title: formData.get('title') as string | undefined,
-    description: formData.get('description') as string | undefined,
-    details: formData.get('details') as string | undefined,
+    title: String(formData.get('title') ?? ''),
+    description: String(formData.get('description') ?? ''),
+    details: String(formData.get('details') ?? ''),
   };
 
   return updateRegistryItem(id, data);
@@ -64,7 +63,7 @@ export async function onDeleteRegistryItem(formData: FormData): Promise<ActionRe
   // Verify CSRF token
   await verifyCsrf(formData);
 
-  const id = formData.get('id') as string;
+  const id = String(formData.get('id') ?? '');
   return deleteRegistryItem(id);
 }
 
