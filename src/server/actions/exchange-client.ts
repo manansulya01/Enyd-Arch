@@ -100,4 +100,3 @@ export interface UploadResult {
   contentType: string;
 }
 
-export { uploadFile };
