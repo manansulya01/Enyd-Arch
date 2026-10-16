@@ -46,7 +46,7 @@ export function Composer({ csrfToken }: { csrfToken: string }) {
         body: body.trim(),
         poll: cleanPoll,
         attachmentFileIds: attachment ? [attachment.fileId] : [],
-      });
+      }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
@@ -63,8 +63,7 @@ export function Composer({ csrfToken }: { csrfToken: string }) {
     setError(null);
     setUploading(true);
     const formData = new FormData();
-    const csrf = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value;
-    if (csrf) formData.set('__csrf', csrf);
+    formData.set('__csrf', csrfToken);
     formData.set('file', file);
     try {
       const result = await onUploadFile(formData);
