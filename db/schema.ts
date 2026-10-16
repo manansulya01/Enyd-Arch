@@ -10,7 +10,7 @@
  *  - Deletable user data is soft-retained (`removedAt`) so moderation history
  *    stays coherent without keeping content publicly reachable.
  */
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -446,6 +446,8 @@ export const deviceCredentials = pgTable(
   },
   (t) => [
     uniqueIndex('device_credentials_cred_key').on(t.credentialId),
+    // Enforce one live authenticator per account at the database boundary.
+    uniqueIndex('device_credentials_active_user_key').on(t.userId).where(sql`${t.revokedAt} is null`),
     index('device_credentials_user_idx').on(t.userId),
     index('device_credentials_device_idx').on(t.deviceId),
   ],
