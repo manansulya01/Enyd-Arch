@@ -3,7 +3,7 @@
 import type { ReactNode, FormEvent } from 'react';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { onCreateRegistryItem, onUpdateRegistryItem } from '~/server/actions/registry-client';
+import { onCreateRegistryItem, onUpdateRegistryItem, onDeleteRegistryItem } from '~/server/actions/registry-client';
 
 export interface RegistryEditorItem {
   id: string;
@@ -118,13 +118,11 @@ export function RegistryDeleteButton({ slug, csrf }: { slug: string; csrf: React
     if (!window.confirm('Remove this Registry entry? This cannot be undone from the interface.')) return;
     const formData = new FormData();
     formData.set('id', slug);
-    const container = document.createElement('div');
     // The token is supplied by the server-rendered form below; avoid reading
     // arbitrary page state or putting CSRF material in a URL.
     const token = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
     formData.set('__csrf', token);
     startTransition(async () => {
-      const { onDeleteRegistryItem } = await import('~/server/actions/registry-client');
       const result = await onDeleteRegistryItem(formData);
       if (!result.ok) {
         setError(result.message ?? 'The entry could not be removed.');
