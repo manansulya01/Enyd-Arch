@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'Archive collection' };
 export default async function ArchiveCollectionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
-  const collection = await collectionBySlug(slug);
+  const collection = await collectionBySlug(slug, actor.userId);
   if (!collection) notFound();
   const contents = await collectionContents(collection.id, actor.userId, 0, 48);
 
