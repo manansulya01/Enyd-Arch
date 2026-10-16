@@ -217,7 +217,7 @@ export async function memberDirectory(
   const where = and(
     visibleMemberConditions(viewerId),
     sql`${users.id} <> ${viewerId}`,
-    options.level ? eq(users.level, options.level) : sql`true`,
+    options.level ? eq(users.level, options.level as never) : sql`true`,
     term
       ? sql`(${users.username} ilike ${'%' + term + '%'} or ${users.displayName} ilike ${'%' + term + '%'})`
       : sql`true`,
