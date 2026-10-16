@@ -43,7 +43,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         {isMember && <ProjectTaskComposer projectId={project.id} csrfToken={csrfToken} />}
       </section>
 
-      {project.resources.length > 0 && <section className="stack stack-3"><h2 className="section-heading">Resources</h2>{project.resources.map((resource) => <a key={resource.fileId} className="panel panel-body row row-3" href={'/files/' + resource.fileId}><span className="grow">{resource.displayName}</span><span className="t-meta">{resource.caption}</span></a>)}</section>}
+      {project.resources.length > 0 && <section className="stack stack-3"><h2 className="section-heading">Resources</h2>{project.resources.map((resource) => <a key={resource.fileId} className="panel panel-body row row-3" href={'/objects/' + resource.fileId}><span className="grow">{resource.displayName}</span><span className="t-meta">{resource.caption}</span></a>)}</section>}
       <Link className="btn btn-ghost" href="/projects">Back to Projects</Link>
     </PageShell>
   );
