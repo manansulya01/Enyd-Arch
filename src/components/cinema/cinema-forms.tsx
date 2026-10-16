@@ -3,7 +3,7 @@
 import type { FormEvent, ReactNode } from 'react';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { addFilm, reviewFilm, toggleWatchlist } from '~/server/actions/cinema';
+import { addFilm, reviewFilm, commentOnFilm, toggleWatchlist } from '~/server/actions/cinema';
 
 export function FilmCreateForm({ csrf }: { csrf: ReactNode }) {
   const router = useRouter();
@@ -69,6 +69,39 @@ export function FilmReviewForm({ filmId, csrf, initialRating = 7 }: { filmId: st
       <label className="row row-2"><input type="checkbox" name="spoilers" /><span className="t-small">Contains spoilers</span></label>
       {error && <p className="t-danger" role="alert">{error}</p>}
       <button className="btn btn-primary" disabled={pending} type="submit">{pending ? 'Saving…' : 'Save review'}</button>
+    </form>
+  );
+}
+
+export function FilmCommentForm({ filmId, csrf }: { filmId: string; csrf: ReactNode }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const data = new FormData(event.currentTarget);
+    data.set('filmId', filmId);
+    startTransition(async () => {
+      const result = await commentOnFilm(null, data);
+      if (!result.ok) {
+        setError(result.message ?? 'Your comment could not be saved.');
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <form className="panel panel-body stack stack-3" onSubmit={submit}>
+      {csrf}
+      <h2 className="t-heading">Discuss a scene</h2>
+      <label className="field"><span className="field-label">Scene label (optional)</span><input className="input" name="sceneLabel" maxLength={120} /></label>
+      <label className="field"><span className="field-label">Comment</span><textarea className="textarea" name="body" maxLength={2000} rows={3} required /></label>
+      <label className="row row-2"><input type="checkbox" name="spoilers" /><span className="t-small">Contains spoilers</span></label>
+      {error && <p className="t-danger" role="alert">{error}</p>}
+      <button className="btn btn-primary" disabled={pending} type="submit">{pending ? 'Posting…' : 'Post comment'}</button>
     </form>
   );
 }
