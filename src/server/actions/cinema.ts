@@ -10,7 +10,7 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 export async function addFilm(
   _previous: ActionResult<{ slug: string }> | null,
