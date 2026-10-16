@@ -9,13 +9,13 @@ export const metadata: Metadata = {
   description:
     'Enyd Arch is a private digital society for students. Talk to people, exchange things, build things, discover things.',
   applicationName: 'Enyd Arch',
-  referrer: 'strict-origin-when-cross-origin',
+  referrer: 'no-referrer',
   robots: {
-    // A private society should not be indexed. This is deliberate, not an
-    // oversight: discoverability here means invitation, not search engines.
     index: false,
     follow: false,
     nocache: true,
+    noarchive: true,
+    nosnippet: true,
   },
   formatDetection: { telephone: false, address: false, email: false },
   icons: {
@@ -40,7 +40,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark">
-      <head />/head>
+      <head />
       <body>
         <a className="skip-link" href="#main">
           Skip to main content
