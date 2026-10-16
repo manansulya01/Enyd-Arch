@@ -120,8 +120,8 @@ export async function verifyCsrfValue(presented: unknown): Promise<void> {
 }
 
 /**
- * Issues an anonymous token and mirrors it in a readable cookie, so a form
- * rendered before sign-in can embed it.
+ * Issues a short-lived signed anonymous token for forms rendered before sign-in.
+ * The token can be verified without mutating cookies during Server Component rendering.
  */
 export async function issueAnonymousCsrf(): Promise<string> {
   const issuedAt = Date.now().toString(36);
