@@ -20,11 +20,12 @@ export function NetworkForm() {
     }
 
     startTransition(async () => {
+      const csrfToken = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
       const result = await onCreatePost({
         body: text,
         poll: null,
         attachmentFileIds: [],
-      });
+      }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
