@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { completeEnrolment } from '~/server/actions/auth';
+import { completeEnrolment } from '~/server/actions/enrolment';
 import { startRegistration, PasskeyCancelled } from './passkey';
 
 export function ExistingEnrollmentForm({ csrfToken }: { csrfToken: string }) {
@@ -12,7 +12,7 @@ export function ExistingEnrollmentForm({ csrfToken }: { csrfToken: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError(null);
