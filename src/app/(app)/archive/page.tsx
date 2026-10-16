@@ -38,7 +38,7 @@ export default async function ArchivePage({
       sort,
       limit: 36,
     }),
-    collections({ limit: 6 }),
+    collections({ viewerId: actor.userId, limit: 6 }),
   ]);
 
   return (
