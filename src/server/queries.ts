@@ -1085,7 +1085,25 @@ export interface CollectionView {
   createdAt: Date;
 }
 
-export async function collections(options: { featuredOnly?: boolean; limit?: number } = {}): Promise<CollectionView[]> {
+export async function collections(options: {
+  featuredOnly?: boolean;
+  limit?: number;
+  viewerId?: string | null;
+} = {}): Promise<CollectionView[]> {
+  const visible = options.viewerId
+    ? or(
+        eq(collectionTable.visibility, 'public'),
+        eq(collectionTable.visibility, 'members'),
+        eq(collectionTable.curatorId, options.viewerId),
+        sql`(${collectionTable.visibility} = 'connections' and exists (
+          select 1 from matches m
+          where m.status = 'accepted'
+            and ((m.user_a_id = ${options.viewerId} and m.user_b_id = ${collectionTable.curatorId})
+              or (m.user_a_id = ${collectionTable.curatorId} and m.user_b_id = ${options.viewerId}))
+        ))`,
+      )
+    : eq(collectionTable.visibility, 'public');
+
   const rows = await db
     .select({
       id: collectionTable.id,
@@ -1099,18 +1117,32 @@ export async function collections(options: { featuredOnly?: boolean; limit?: num
       createdAt: collectionTable.createdAt,
     })
     .from(collectionTable)
-    .where(options.featuredOnly ? eq(collectionTable.featured, true) : sql`true`)
+    .where(and(visible, options.featuredOnly ? eq(collectionTable.featured, true) : sql`true`))
     .orderBy(desc(collectionTable.featured), desc(collectionTable.updatedAt))
     .limit(options.limit ?? 12);
 
   return rows;
 }
 
-export async function collectionBySlug(slug: string): Promise<CollectionView | null> {
+export async function collectionBySlug(slug: string, viewerId?: string | null): Promise<CollectionView | null> {
+  const visible = viewerId
+    ? or(
+        eq(collectionTable.visibility, 'public'),
+        eq(collectionTable.visibility, 'members'),
+        eq(collectionTable.curatorId, viewerId),
+        sql`(${collectionTable.visibility} = 'connections' and exists (
+          select 1 from matches m
+          where m.status = 'accepted'
+            and ((m.user_a_id = ${viewerId} and m.user_b_id = ${collectionTable.curatorId})
+              or (m.user_a_id = ${collectionTable.curatorId} and m.user_b_id = ${viewerId}))
+        ))`,
+      )
+    : eq(collectionTable.visibility, 'public');
+
   const [row] = await db
     .select()
     .from(collectionTable)
-    .where(eq(collectionTable.slug, slug))
+    .where(and(eq(collectionTable.slug, slug), visible))
     .limit(1);
   if (!row) return null;
   return {
