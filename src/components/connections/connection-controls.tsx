@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { sendConnectionRequest } from '~/server/actions/connections';
+import { sendConnectionRequest, respondToRequest } from '~/server/actions/connections';
 
 export function ConnectionRequestForm({ toUserId }: { toUserId: string }) {
   const router = useRouter();
@@ -48,7 +48,6 @@ export function ConnectionResponseButton({ requestId, accept }: { requestId: str
   return (
     <div className="stack stack-1">
       <button type="button" className={accept ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} disabled={pending} onClick={() => startTransition(async () => {
-        const { respondToRequest } = await import('~/server/actions/connections');
         const result = await respondToRequest(requestId, accept);
         if (!result.ok) {
           setMessage(result.message ?? 'Could not update the request.');
