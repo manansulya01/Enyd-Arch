@@ -2067,9 +2067,37 @@ export const adminSessions = pgTable(
   (t) => [index('admin_sessions_user_idx'.concat('')).on(t.userId, t.expiresAt)],
 );
 
+/** Member-authored entries in the Registry. Soft deletion preserves references and moderation history. */
+export const registryItems = pgTable(
+  'registry_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: varchar('slug', { length: 64 }).notNull(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 120 }).notNull(),
+    description: text('description').notNull(),
+    details: text('details').notNull().default(''),
+    visibility: visibilityEnum('visibility').notNull().default('members'),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('registry_items_slug_key').on(t.slug),
+    index('registry_items_owner_idx').on(t.ownerId, t.createdAt),
+    index('registry_items_visibility_idx').on(t.visibility, t.createdAt),
+  ],
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 // Relations (only where they earn their keep)
 // ════════════════════════════════════════════════════════════════════════════
+
+export const registryItemsRelations = relations(registryItems, ({ one }) => ({
+  owner: one(users, { fields: [registryItems.ownerId], references: [users.id] }),
+}));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, { fields: [users.id], references: [profiles.userId] }),
