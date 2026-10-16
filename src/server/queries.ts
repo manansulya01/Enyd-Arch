@@ -167,14 +167,23 @@ const visibleMemberConditions = (viewerId?: string | null) =>
   and(
     eq(users.status, 'active'),
     isNull(users.removedAt),
-    eq(userSettings.discoverable, true),
-    inArray(profiles.profileVisibility, ['members', 'public']),
-    inArray(userSettings.profileVisibility, ['members', 'public']),
-    sql`not exists (
-      select 1 from ${blocks} b
-      where (b.blocker_id = ${viewerId ?? ''} and b.blocked_id = ${users.id})
-         or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId ?? ''})
-    )`,
+    viewerId ? or(
+      eq(users.id, viewerId),
+      and(
+        eq(userSettings.discoverable, true),
+        inArray(profiles.profileVisibility, ['members', 'public']),
+        inArray(userSettings.profileVisibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
+             or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId})
+        )`,
+      ),
+    ) : and(
+      eq(userSettings.discoverable, true),
+      eq(profiles.profileVisibility, 'public'),
+      eq(userSettings.profileVisibility, 'public'),
+    ),
   );
 
 export async function memberById(userId: string, viewerId?: string | null): Promise<MemberSummary | null> {
