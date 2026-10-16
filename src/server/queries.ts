@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '~db';
 import {
   achievements,
@@ -226,6 +226,37 @@ export async function membersByIds(ids: string[], viewerId?: string | null): Pro
 
 export function toMemberRows(rows: MemberRow[]): Map<string, MemberRow> {
   return new Map(rows.map((row) => [row.id, row]));
+}
+
+/** Search only discoverable active members; never search email, legal name, or private account fields. */
+export async function searchMembers(query: string, viewerId: string): Promise<MemberSummary[]> {
+  const term = query.trim().slice(0, 64).replace(/[%_]/g, '');
+  if (term.length < 2) return [];
+
+  const pattern = `%${term}%`;
+  const rows = await memberJoin()
+    .where(and(
+      eq(users.status, 'active'),
+      sql`(${users.id} <> ${viewerId})`,
+      or(isNull(userSettings.discoverable), eq(userSettings.discoverable, true)),
+      or(ilike(users.username, pattern), ilike(users.displayName, pattern)),
+      sql`coalesce(${userSettings.profileVisibility}, 'members') <> 'private'`,
+      sql`(coalesce(${userSettings.profileVisibility}, 'members') <> 'connections' or exists (
+        select 1 from matches m
+        where m.status = 'accepted'
+          and ((m.user_a_id = ${viewerId} and m.user_b_id = ${users.id})
+            or (m.user_a_id = ${users.id} and m.user_b_id = ${viewerId}))
+      ))`,
+      sql`not exists (
+        select 1 from blocks b
+        where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
+           or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId})
+      )`,
+    ))
+    .orderBy(asc(users.username))
+    .limit(40);
+
+  return rows.map((row) => projectMember(row, viewerId));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
