@@ -28,7 +28,7 @@ export default async function RegistryMemberPage({ params }: { params: Promise<{
     <PageShell title={member.displayName} sub={member.headline ?? 'Member of Enyd Arch'}>
       <section className="panel panel-body">
         <div className="row row-3">
-          <Avatar member={{ displayName: member.displayName, avatarUrl: member.avatarUrl }} size="lg" />
+          <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size="lg" />
           <div className="grow">
             <p className="t-small t-muted">@{member.username}</p>
             <p className="t-meta">{member.memberId}</p>
