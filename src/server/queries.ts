@@ -2262,20 +2262,23 @@ export async function matchesFor(userId: string, status: 'accepted' | 'pending' 
   if (rows.length === 0) return [];
 
   const partnerIds = rows.map((row) => (row.userAId === userId ? row.userBId : row.userAId));
-  const partnerMap = await membersByIds(partnerIds, userId);
+  const partnerEntries = await Promise.all(partnerIds.map(async (partnerId) => [partnerId, await memberById(partnerId, userId)] as const));
+  const partnerMap = new Map(partnerEntries.filter((entry): entry is readonly [string, MemberSummary] => entry[1] !== null));
 
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
     const partnerId = partnerIds[index]!;
-    return {
+    const partner = partnerMap.get(partnerId);
+    if (!partner) return [];
+    return [{
       id: row.id,
       mode: row.mode,
       status: row.status,
       createdAt: row.createdAt,
       ageBandAtMatch: row.ageBandAtMatch,
       sharedInterestCount: row.sharedInterestCount,
-      partner: partnerMap.get(partnerId)!,
+      partner,
       conversationId: null,
-    };
+    }];
   });
 }
 
