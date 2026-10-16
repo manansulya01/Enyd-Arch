@@ -42,7 +42,7 @@ export default async function GalleryDetailPage({ params }: { params: Promise<{ 
         {post.body && <div className="card card-pad-lg prose"><p>{post.body}</p></div>}
         <div className="row row-wrap row-between">
           <span className="t-meta">{post.mediaCount} attached files · {post.viewCount} views</span>
-          <ReactionBar targetType="gallery_post" targetId={post.id} myReactions={post.myReactions} />
+          <ReactionBar targetType="gallery_post" targetId={post.id} myReactions={post.myReactions} count={post.reactionCount} />
         </div>
         <section className="stack stack-3">
           <h2 className="t-heading">Comments</h2>
