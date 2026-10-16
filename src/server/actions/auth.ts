@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { db } from '~db';
 import {
   devices,
+  deviceCredentials,
   deviceTransferRequests,
   innerArchMembers,
   invitationRedemptions,
@@ -635,6 +636,94 @@ export async function signInAction(
     { action: 'auth.succeeded', targetType: 'user', targetId: account.id },
   );
 
+  return ok();
+}
+
+/**
+ * Passkey sign-in. The credential ID identifies the account; the WebAuthn
+ * assertion proves possession of its enrolled authenticator. The existing
+ * installation binding is checked as a separate account policy.
+ */
+export async function signInWithPasskey(input: {
+  credential: unknown;
+  csrf: string;
+}): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', input.csrf);
+  await verifyCsrf(formData);
+
+  const credential = input.credential as { id?: unknown };
+  if (typeof credential?.id !== 'string' || credential.id.length < 8 || credential.id.length > 2048) {
+    return fail('The passkey response could not be read.');
+  }
+
+  const traits = await requestTraits();
+  const perIp = await acquire('signIn', traits.ipHash);
+  if (!perIp.allowed) return fail('Too many sign-in attempts. Try again shortly.');
+
+  const rows = await db
+    .select({
+      userId: deviceCredentials.userId,
+      deviceId: deviceCredentials.deviceId,
+      credentialStatus: deviceCredentials.status,
+      credentialRevokedAt: deviceCredentials.revokedAt,
+      userStatus: users.status,
+      memberId: users.memberId,
+      username: users.username,
+      onboardedAt: users.onboardedAt,
+    })
+    .from(deviceCredentials)
+    .innerJoin(users, eq(users.id, deviceCredentials.userId))
+    .where(and(
+      eq(deviceCredentials.credentialId, credential.id),
+      eq(deviceCredentials.status, 'active'),
+      isNull(deviceCredentials.revokedAt),
+    ))
+    .limit(1);
+
+  const account = rows[0];
+  if (!account || account.userStatus !== 'active') {
+    return fail('That passkey could not sign in to an active identity.');
+  }
+
+  const perAccount = await acquire('signIn', `user:${account.userId}`);
+  if (!perAccount.allowed) return fail('Too many attempts for this identity. Try again shortly.');
+
+  const { finishAuthentication } = await import('~/server/auth/webauthn');
+  const verified = await finishAuthentication({
+    userId: account.userId,
+    deviceFingerprint: traits.fingerprint,
+    response: input.credential as never,
+  });
+  if (!verified.ok) {
+    await writeAudit(
+      { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+      { action: 'auth.passkey_failed', targetType: 'user', targetId: account.userId, reason: verified.reason },
+    );
+    return fail('The passkey could not be verified. Try again or use your enrolled device.');
+  }
+
+  const [device] = await db
+    .select({ status: devices.status, fingerprint: devices.fingerprint })
+    .from(devices)
+    .where(eq(devices.id, verified.deviceId ?? ''))
+    .limit(1);
+  if (!device || device.status !== 'active' || device.fingerprint !== traits.fingerprint) {
+    return fail('This passkey is not associated with the current enrolled installation.');
+  }
+
+  await createSession({
+    userId: account.userId,
+    deviceId: verified.deviceId,
+    fingerprint: traits.fingerprint,
+    ipHash: traits.ipHash,
+    userAgent: traits.userAgent,
+  });
+  await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, account.userId));
+  await writeAudit(
+    { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+    { action: 'auth.passkey_succeeded', targetType: 'user', targetId: account.userId },
+  );
   return ok();
 }
 
