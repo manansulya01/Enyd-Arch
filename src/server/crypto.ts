@@ -95,6 +95,24 @@ export interface DeviceTraits {
   colorDepth: number;
 }
 
+export function platformLabel(userAgent: string): string {
+  if (/Windows/i.test(userAgent)) return 'Windows';
+  if (/Mac OS X|Macintosh/i.test(userAgent)) return 'macOS';
+  if (/Android/i.test(userAgent)) return 'Android';
+  if (/(iPhone|iPad|iPod)/i.test(userAgent)) return 'iOS';
+  if (/Linux/i.test(userAgent)) return 'Linux';
+  return 'Unknown device';
+}
+
+export function browserLabel(userAgent: string): string {
+  if (/Edg\//i.test(userAgent)) return 'Edge';
+  if (/OPR\//i.test(userAgent)) return 'Opera';
+  if (/Firefox\//i.test(userAgent)) return 'Firefox';
+  if (/Chrome\//i.test(userAgent)) return 'Chrome';
+  if (/Safari\//i.test(userAgent)) return 'Safari';
+  return 'Browser';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Request identity
 // ═══════════════════════════════════════════════════════════════════════════
