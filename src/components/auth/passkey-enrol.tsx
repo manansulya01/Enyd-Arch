@@ -30,13 +30,14 @@ export function PasskeyEnrol({
   const router = useRouter();
   const [busy, startTransition] = useTransition();
   const [localError, setLocalError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const supported = browserSupportsPasskeys();
 
   async function enrol() {
     setLocalError(null);
 
     try {
-      const credential = await startRegistration(identity.username, csrfToken);
+      const credential = await startRegistration(identity.username, password, csrfToken);
 
       startTransition(async () => {
         const result = await completeEnrolment({
@@ -115,11 +116,24 @@ export function PasskeyEnrol({
         </p>
       )}
 
+      <label className="field">
+        <span className="field-label">Confirm your passphrase</span>
+        <input
+          className="input"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+        />
+        <span className="field-hint">Re-enter your passphrase to prove you own this pending identity before a device credential can be issued.</span>
+      </label>
+
       <button
         type="button"
         className="btn btn-primary btn-lg btn-mark"
         onClick={enrol}
-        disabled={busy || !supported}
+        disabled={busy || !supported || password.length === 0}
       >
         {busy && <span className="spinner" aria-hidden="true" />}
         {busy ? 'Waiting for your device…' : 'Enrol this device'}
