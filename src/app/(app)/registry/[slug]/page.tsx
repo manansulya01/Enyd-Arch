@@ -6,6 +6,8 @@ import { Avatar } from '~/components/ui';
 import { memberByUsername } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { ageBandLabel } from '~/lib/domain';
+import { ConnectionRequestComposer } from '~/components/connections/connection-request-composer';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -20,6 +22,7 @@ export default async function RegistryMemberPage({ params }: { params: Promise<{
   const { slug } = await params;
   const member = await memberByUsername(slug, actor.userId);
   if (!member) notFound();
+  const csrfToken = await sessionCsrfToken();
 
   return (
     <PageShell title={member.displayName} sub={member.headline ?? 'Member of Enyd Arch'}>
@@ -39,6 +42,7 @@ export default async function RegistryMemberPage({ params }: { params: Promise<{
           <div><dt className="t-label">Joined</dt><dd>{member.joinedAt.toLocaleDateString()}</dd></div>
         </dl>
       </section>
+      {member.userId !== actor.userId && <ConnectionRequestComposer toUserId={member.userId} csrfToken={csrfToken} />}
       <div className="row row-3">
         <Link className="btn btn-secondary" href="/registry">Back to the Registry</Link>
       </div>
