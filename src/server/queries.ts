@@ -11,6 +11,7 @@ import {
   comments as commentTable,
   conversationMembers,
   conversations as conversationTable,
+  connectionRequests,
   events as eventTable,
   files,
   galleryAttachments,
@@ -2205,6 +2206,35 @@ export interface MatchView {
   sharedInterestCount: number;
   partner: MemberSummary;
   conversationId: string | null;
+}
+
+export interface ConnectionRequestView {
+  id: string;
+  mode: string;
+  note: string;
+  createdAt: Date;
+  from: MemberSummary;
+}
+
+export async function connectionRequestInbox(userId: string): Promise<ConnectionRequestView[]> {
+  const rows = await db
+    .select({
+      id: connectionRequests.id,
+      fromUserId: connectionRequests.fromUserId,
+      mode: connectionRequests.mode,
+      note: connectionRequests.note,
+      createdAt: connectionRequests.createdAt,
+    })
+    .from(connectionRequests)
+    .where(and(eq(connectionRequests.toUserId, userId), eq(connectionRequests.state, 'pending')))
+    .orderBy(desc(connectionRequests.createdAt))
+    .limit(60);
+
+  const senders = await Promise.all(rows.map((row) => memberById(row.fromUserId, userId)));
+  return rows.flatMap((row, index) => {
+    const from = senders[index];
+    return from ? [{ id: row.id, mode: row.mode, note: row.note, createdAt: row.createdAt, from }] : [];
+  });
 }
 
 export async function matchesFor(userId: string, status: 'accepted' | 'pending' = 'accepted'): Promise<MatchView[]> {
