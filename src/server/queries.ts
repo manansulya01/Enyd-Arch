@@ -114,11 +114,11 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
-  profileVisibility: 'public' | 'members' | 'connections' | 'private' | null;
-  discoverable: boolean | null;
-  showActivity: boolean | null;
-  showCreations: boolean | null;
-  showArchiveContributions: boolean | null;
+  profileVisibility?: 'public' | 'members' | 'connections' | 'private' | null;
+  discoverable?: boolean | null;
+  showActivity?: boolean | null;
+  showCreations?: boolean | null;
+  showArchiveContributions?: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
