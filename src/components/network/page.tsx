@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { NetworkComposer } from './composer';
+import { CsrfField } from '~/components/shell/csrf-field';
 import { NetworkCard } from './network-card';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
@@ -36,7 +37,7 @@ export default async function NetworkPage({
     >
       <div className="page-split">
         <div className="stack stack-5">
-          <NetworkComposer />
+          <NetworkComposer csrf={<CsrfField />} />
 
           <div className="row row-wrap row-between">
             <div className="btn-group" role="group" aria-label="Sort posts">
