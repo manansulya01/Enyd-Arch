@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { PageShell } from '~/components/ui/page-shell';
 import { InvitationManager } from '~/components/admin/invitation-manager';
 import { adminCan, adminContextFor } from '~/server/security/audit';
 import { currentActor } from '~/server/auth/session';
@@ -18,14 +19,7 @@ export default async function AdminPage() {
 
   const [invitations, csrfToken] = await Promise.all([listInvitations(), sessionCsrfToken()]);
   return (
-    <main className="page-shell">
-      <header className="page-head">
-        <div>
-          <p className="eyebrow">The Inner Arch</p>
-          <h1 className="page-title">Administration</h1>
-          <p className="t-small t-muted">Invitation access is restricted to administrators with explicit invitation-management authority.</p>
-        </div>
-      </header>
+    <PageShell title="Administration" sub="Invitation access is restricted to administrators with explicit invitation-management authority.">
       <InvitationManager
         csrfToken={csrfToken}
         initialInvitations={invitations.map((invite) => ({
@@ -35,6 +29,6 @@ export default async function AdminPage() {
           revokedAt: invite.revokedAt?.toISOString() ?? null,
         }))}
       />
-    </main>
+    </PageShell>
   );
 }
