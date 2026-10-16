@@ -812,10 +812,4 @@ export async function requestDeviceTransferAction(
 
   return ok();
 }
-
-export { titleCase };
-
-// The enrolment ceremony lives in its own module because it takes structured
-// input rather than form fields; re-exported here so client components have one
-// import site for authentication.
-export { completeEnrolment, beginEnrolment } from './enrolment';
+ 
