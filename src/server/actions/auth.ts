@@ -26,7 +26,7 @@ import {
   userSettings,
 } from '~db/schema';
 import { fail, issuesToErrors, ok, type ActionResult, type FormState } from '~/lib/action-result';
-import { AGE_BAND_BY_KEY, formatMemberId, titleCase } from '~/lib/domain';
+import { AGE_BAND_BY_KEY, formatMemberId } from '~/lib/domain';
 import {
   browserLabel,
   ipPseudonym,
