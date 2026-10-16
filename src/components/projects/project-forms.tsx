@@ -64,7 +64,8 @@ export function ProjectTaskForm({ projectId, csrf }: { projectId: string; csrf: 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     data.set('projectId', projectId);
     startTransition(async () => {
       const result = await addProjectTask(null, data);
@@ -72,7 +73,7 @@ export function ProjectTaskForm({ projectId, csrf }: { projectId: string; csrf: 
         setError(result.message ?? 'The task could not be added.');
         return;
       }
-      event.currentTarget?.reset?.();
+      form.reset();
       router.refresh();
     });
   }
