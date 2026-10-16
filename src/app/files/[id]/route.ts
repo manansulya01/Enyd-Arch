@@ -9,7 +9,7 @@ import { resolveFileAccess } from '~/server/storage/uploads';
 /**
  * Serves a stored file to a member who is entitled to it.
  *
- * The rule lives entirely server-side in `resolveFileAccess`: an upload is
+ * The rule lives entirely server-side in resolveFileAccess: an upload is
  * reachable by its owner, and by members only once it is attached to something
  * published. URLs are unguessable UUIDs, but the UUID is never the
  * authorisation.
@@ -20,7 +20,10 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
-    return new NextResponse('Not found', { status: 404 });
+    return new NextResponse('Not found', {
+      status: 404,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+    });
   }
 
   const actor = await currentActor();
@@ -31,7 +34,10 @@ export async function GET(
       decision.verdict === 'quarantined'
         ? 'This file is not available.'
         : 'You do not have access to this file.',
-      { status: decision.verdict === 'missing' ? 404 : 403 },
+      {
+        status: decision.verdict === 'missing' ? 404 : 403,
+        headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+      },
     );
   }
 
@@ -40,10 +46,20 @@ export async function GET(
     .from(files)
     .where(eq(files.id, decision.fileId ?? id))
     .limit(1);
-  if (!row?.storageObjectId) return new NextResponse('Not found', { status: 404 });
+  if (!row?.storageObjectId) {
+    return new NextResponse('Not found', {
+      status: 404,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+    });
+  }
 
   const object = await readObject(row.storageObjectId);
-  if (!object) return new NextResponse('Not found', { status: 404 });
+  if (!object) {
+    return new NextResponse('Not found', {
+      status: 404,
+      headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+    });
+  }
 
   // Only inert media renders in place; everything else is a download so a
   // hostile document can never execute against the app origin.
@@ -57,8 +73,10 @@ export async function GET(
     headers: {
       'Content-Type': object.contentType,
       'Content-Length': String(object.byteSize),
-      'Cache-Control': 'private, max-age=120',
+      'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+      'Pragma': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-origin',
       ...(asDownload ? { 'Content-Disposition': 'attachment' } : {}),
     },
   });
