@@ -7,7 +7,7 @@ import {
   browserSupportsPasskeys,
   startRegistration,
 } from './passkey';
-import { completeEnrolment } from '~/server/actions/auth';
+import { completeEnrolment } from '~/server/actions/enrolment';
 
 /**
  * Device enrolment.
