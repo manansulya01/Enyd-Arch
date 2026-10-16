@@ -19,8 +19,8 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const stats = [
     ['Posts', activity.posts],
     ['Comments', activity.comments],
-    ['Archive contributions', activity.archiveContributions],
-    ['Gallery pieces', activity.galleryPieces],
+    ...(member.showArchiveContributions ? [['Archive contributions', activity.archiveContributions] as const] : []),
+    ...(member.showCreations ? [['Gallery pieces', activity.galleryPieces] as const, ['Games', activity.games] as const] : []),
     ['Projects', activity.projects],
     ['Events hosted', activity.eventsHosted],
     ['Connections', activity.connections],
@@ -39,7 +39,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               {member.region && <div><dt className="t-label">Region</dt><dd>{member.region}</dd></div>}
             </dl>
           </article>
-          <section className="stack stack-3">
+          {member.showActivity && <section className="stack stack-3">
             <h2 className="t-heading">Activity</h2>
             <div className="archive-grid">
               {stats.map(([label, value]) => (
@@ -49,7 +49,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
                 </article>
               ))}
             </div>
-          </section>
+          </section>}
         </section>
         {!ownProfile && <aside><ConnectionRequestForm toUserId={member.userId} /></aside>}
       </div>
