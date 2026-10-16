@@ -1,14 +1,36 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInAction } from '~/server/actions/auth';
+import { signInAction, signInWithPasskey } from '~/server/actions/auth';
+import { PasskeyCancelled, browserSupportsPasskeys, startPasskeyAuthentication } from './passkey';
 import { fieldError } from '~/lib/action-result';
 import { PasswordField } from './password-field';
 
 export function SignInForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const [result, formAction, pending] = useActionState(signInAction, null);
+  const [passkeyPending, setPasskeyPending] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  async function passkeySignIn() {
+    setPasskeyPending(true);
+    setPasskeyError(null);
+    try {
+      const credential = await startPasskeyAuthentication(csrfToken);
+      const outcome = await signInWithPasskey({ credential, csrf: csrfToken });
+      if (outcome.ok) {
+        router.replace('/home');
+        router.refresh();
+      } else {
+        setPasskeyError(outcome.message ?? 'The passkey could not sign in.');
+      }
+    } catch (error) {
+      setPasskeyError(error instanceof PasskeyCancelled ? 'Passkey sign-in was cancelled.' : (error as Error).message || 'Passkey sign-in failed.');
+    } finally {
+      setPasskeyPending(false);
+    }
+  }
 
   // A successful sign-in is a redirect decided by the action; reaching here
   // with ok means the cookie landed and we can refresh the shell.
@@ -84,6 +106,14 @@ export function SignInForm({ csrfToken }: { csrfToken: string }) {
         {pending && <span className="spinner" aria-hidden="true" />}
         {pending ? 'Checking…' : 'Sign in'}
       </button>
+
+      <div className="stack stack-2">
+        <button className="btn btn-secondary btn-lg" type="button" onClick={() => void passkeySignIn()} disabled={pending || passkeyPending || !browserSupportsPasskeys()}>
+          {passkeyPending && <span className="spinner" aria-hidden="true" />}
+          {passkeyPending ? 'Waiting for passkey…' : 'Sign in with passkey'}
+        </button>
+        {passkeyError && <p className="notice notice-danger" role="alert">{passkeyError}</p>}
+      </div>
 
       <p className="auth-foot">
         Enrolment is completed during registration. If you are moving to a new
