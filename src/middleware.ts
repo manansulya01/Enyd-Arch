@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -11,7 +10,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = randomBytes(24).toString('base64url');
+  const token = crypto.randomUUID().replace(/-/g, '');
   request.cookies.set('enyd_csrf', token);
 
   const requestHeaders = new Headers(request.headers);
