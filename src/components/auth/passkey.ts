@@ -50,7 +50,7 @@ export class PasskeyUnavailable extends Error {
  * `username` is required by the ceremony and is echoed back in the challenge
  * that binds the credential to this account.
  */
-export async function startRegistration(username: string): Promise<unknown> {
+export async function startRegistration(username: string, csrfToken: string): Promise<unknown> {
   if (!browserSupportsPasskeys()) {
     throw new PasskeyUnavailable(
       'This browser cannot create a passkey, so a device cannot be enrolled here.',
@@ -60,7 +60,7 @@ export async function startRegistration(username: string): Promise<unknown> {
   const response = await fetch('/api/device/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ username, csrf: csrfToken }),
   });
 
   const payload = (await response.json()) as {
