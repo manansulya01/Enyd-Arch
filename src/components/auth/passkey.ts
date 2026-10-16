@@ -1,6 +1,6 @@
 'use client';
 
-import { startRegistration as webauthnStartRegistration } from '@simplewebauthn/browser';
+import { startAuthentication as webauthnStartAuthentication, startRegistration as webauthnStartRegistration } from '@simplewebauthn/browser';
 
 /**
  * Reads the CSRF token the server placed in a readable cookie.
@@ -83,6 +83,33 @@ export async function startRegistration(username: string, csrfToken: string): Pr
     if (name === 'NotAllowedError' || name === 'AbortError') {
       throw new PasskeyCancelled();
     }
+    throw error;
+  }
+}
+
+/** Runs a discoverable-passkey sign-in ceremony on the current installation. */
+export async function startPasskeyAuthentication(csrfToken: string): Promise<unknown> {
+  if (!browserSupportsPasskeys()) {
+    throw new PasskeyUnavailable('This browser cannot use passkeys.');
+  }
+  const response = await fetch('/api/device/authenticate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrf: csrfToken }),
+  });
+  const payload = (await response.json()) as {
+    ok: boolean;
+    options?: Record<string, unknown>;
+    error?: string;
+  };
+  if (!response.ok || !payload.ok || !payload.options) {
+    throw new PasskeyUnavailable(payload.error ?? 'Could not begin passkey sign-in.');
+  }
+  try {
+    return await webauthnStartAuthentication({ optionsJSON: payload.options as never });
+  } catch (error) {
+    const name = (error as Error).name;
+    if (name === 'NotAllowedError' || name === 'AbortError') throw new PasskeyCancelled();
     throw error;
   }
 }
