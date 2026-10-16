@@ -12,7 +12,6 @@ import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
 import { notify } from '~/server/notify';
-import { verifyCsrf } from '~/server/csrf';
 
 const KINDS = new Set([
   'game_night', 'movie_night', 'competition', 'creative_challenge',
