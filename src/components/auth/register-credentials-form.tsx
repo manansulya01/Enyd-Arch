@@ -23,7 +23,7 @@ import { PasskeyEnrol } from './passkey-enrol';
  * unexplained field error on a form the member has already filled in.
  */
 
-export function RegisterCredentialsForm() {
+export function RegisterCredentialsForm({ csrfToken }: { csrfToken: string }) {
   const [identity, setIdentity] = useState<{ username: string; memberId: string } | null>(null);
   const [availability, setAvailability] = useState<UsernameAvailability | null>(null);
   const [credentials, credentialsAction, pending] = useActionState<
@@ -42,13 +42,14 @@ export function RegisterCredentialsForm() {
     }
   }, [credentials]);
 
-  if (identity) return <PasskeyEnrol identity={identity} />;
+  if (identity) return <PasskeyEnrol identity={identity} csrfToken={csrfToken} />;
 
   const usernameError = fieldError(credentials, 'username');
   const deviceBlocked = Boolean(fieldError(credentials, 'device'));
 
   return (
     <form action={credentialsAction} className="auth-form" noValidate>
+      <input type="hidden" name="__csrf" value={csrfToken} />
       {credentials?.message && !deviceBlocked && (
         <p className="notice notice-danger" role="alert">
           <span className="notice-glyph" aria-hidden="true">
