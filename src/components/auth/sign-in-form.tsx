@@ -1,12 +1,12 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInAction } from '~/server/actions/auth';
 import { fieldError } from '~/lib/action-result';
 import { PasswordField } from './password-field';
 
-export function SignInForm() {
+export function SignInForm({ csrf }: { csrf: ReactNode }) {
   const router = useRouter();
   const [result, formAction, pending] = useActionState(signInAction, null);
 
@@ -23,6 +23,7 @@ export function SignInForm() {
 
   return (
     <form action={formAction} className="auth-form" noValidate>
+      {csrf}
       {result?.message && !identifierError && !passwordError && !deviceError && (
         <p className="notice notice-danger" role="alert">
           <span className="notice-glyph" aria-hidden="true">
