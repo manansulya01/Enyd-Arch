@@ -56,5 +56,4 @@ export async function onRepost(postId: string) {
   return repostPost(await actor(), postId);
 }
 
-export { verifyCsrf };
 export type { ActionResult };
