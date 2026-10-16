@@ -77,54 +77,15 @@ export function safeEqual(a: string, b: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Device fingerprinting
+// Opaque installation binding
 //
-// Privacy position: the fingerprint is a keyed hash of coarse, already-public
-// browser characteristics (user agent family, screen class, language, timezone
-// bucket). It is never sent to a third party, never shown to other members, and
-// cannot be reversed to recover the inputs. It exists so a session cannot be
-// lifted onto a different browser profile — it is not a tracking identifier.
+// Do not fingerprint browser hardware, screen dimensions, locale, or timezone.
+// A random first-party cookie is a privacy-preserving browser-profile binding,
+// not proof of a physical device. WebAuthn remains the authentication credential.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface DeviceTraits {
-  userAgent: string;
-  language: string;
-  timezone: string;
-  screenWidth: number;
-  screenHeight: number;
-  hardwareConcurrency: number;
-  colorDepth: number;
-}
-
-const screenBucket = (width: number, height: number): string => {
-  const longest = Math.max(width, height);
-  const shortest = Math.min(width, height);
-  if (longest >= 2400) return 'xl';
-  if (longest >= 1800) return 'lg';
-  if (longest >= 1280) return 'md';
-  if (longest >= 900) return 'sm';
-  return 'xs';
-};
-
-const timezoneBucket = (timezone: string): string => {
-  try {
-    const offset = new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return offset.replace(/\s/g, '');
-  } catch {
-    return 'unknown';
-  }
-};
-
-export function deviceFingerprint(traits: DeviceTraits): string {
-  const material = [
-    traits.userAgent.slice(0, 180),
-    (traits.language || 'und').slice(0, 12),
-    timezoneBucket(traits.timezone),
-    screenBucket(traits.screenWidth, traits.screenHeight),
-    String(traits.hardwareConcurrency || 0),
-    String(traits.colorDepth || 0),
-  ].join('|');
-  return hmacHex('device-fingerprint', material);
+export function deviceFingerprint(installationToken: string): string {
+  return hmacHex('device-binding', installationToken);
 }
 
 export function platformLabel(userAgent: string): string {
@@ -180,7 +141,6 @@ export async function requestTraits(): Promise<{
   ipHash: string;
   userAgent: string;
   origin: string;
-  traits: DeviceTraits;
   fingerprint: string;
 }> {
   const headerList = await headers();
@@ -191,36 +151,20 @@ export async function requestTraits(): Promise<{
   const protocol = headerList.get('x-forwarded-proto') ?? (isProd ? 'https' : 'http');
   const origin = `${protocol}://${host}`;
 
-  // The browser supplies its coarse traits through a cookie set once at boot.
+  // This random value identifies a browser profile only. It contains no device
+  // characteristics and is HttpOnly so client scripts cannot read it.
   const cookieStore = await cookies();
-  const encoded = cookieStore.get('enyd_device_traits')?.value;
-  let traits: DeviceTraits = {
-    userAgent,
-    language: '',
-    timezone: '',
-    screenWidth: 0,
-    screenHeight: 0,
-    hardwareConcurrency: 0,
-    colorDepth: 0,
-  };
-
-  if (encoded) {
-    try {
-      const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<
-        DeviceTraits
-      >;
-      traits = {
-        userAgent: parsed.userAgent?.slice(0, 180) ?? userAgent,
-        language: String(parsed.language ?? '').slice(0, 12),
-        timezone: String(parsed.timezone ?? '').slice(0, 64),
-        screenWidth: Number(parsed.screenWidth ?? 0) || 0,
-        screenHeight: Number(parsed.screenHeight ?? 0) || 0,
-        hardwareConcurrency: Number(parsed.hardwareConcurrency ?? 0) || 0,
-        colorDepth: Number(parsed.colorDepth ?? 0) || 0,
-      };
-    } catch {
-      /* corrupt cookie: fall back to server-derived traits */
-    }
+  const cookieName = 'enyd_device_id';
+  let installationToken = cookieStore.get(cookieName)?.value ?? '';
+  if (!/^[A-Za-z0-9_-]{40,64}$/.test(installationToken)) {
+    installationToken = randomToken(32);
+    cookieStore.set(cookieName, installationToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isProd,
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+    });
   }
 
   return {
@@ -228,8 +172,7 @@ export async function requestTraits(): Promise<{
     ipHash: ipPseudonym(ip),
     userAgent,
     origin,
-    traits,
-    fingerprint: deviceFingerprint(traits),
+    fingerprint: deviceFingerprint(installationToken),
   };
 }
 
