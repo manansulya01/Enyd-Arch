@@ -6,7 +6,7 @@ import { signInAction } from '~/server/actions/auth';
 import { fieldError } from '~/lib/action-result';
 import { PasswordField } from './password-field';
 
-export function SignInForm() {
+export function SignInForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const [result, formAction, pending] = useActionState(signInAction, null);
 
@@ -23,6 +23,7 @@ export function SignInForm() {
 
   return (
     <form action={formAction} className="auth-form" noValidate>
+      <input type="hidden" name="__csrf" value={csrfToken} />
       {result?.message && !identifierError && !passwordError && !deviceError && (
         <p className="notice notice-danger" role="alert">
           <span className="notice-glyph" aria-hidden="true">
