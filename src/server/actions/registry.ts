@@ -37,7 +37,7 @@ function validateFields(data: {
 }): { title?: string; description?: string; details?: string; error?: ActionResult<never> } {
   const title = data.title?.trim();
   const description = data.description?.trim();
-  const details = data.details?.trim() ?? '';
+  const details = data.details === undefined ? undefined : data.details.trim();
 
   if (title !== undefined && (title.length < 2 || title.length > 120)) {
     return { error: fail('Use a title between 2 and 120 characters.', { title: ['Use 2–120 characters.'] }) };
@@ -45,7 +45,7 @@ function validateFields(data: {
   if (description !== undefined && (description.length < 5 || description.length > 2000)) {
     return { error: fail('Use a description between 5 and 2000 characters.', { description: ['Use 5–2000 characters.'] }) };
   }
-  if (details.length > 10000) {
+  if (details !== undefined && details.length > 10000) {
     return { error: fail('Keep details under 10000 characters.', { details: ['Keep details under 10000 characters.'] }) };
   }
   return { title, description, details };
