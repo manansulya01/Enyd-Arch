@@ -29,7 +29,7 @@ export default async function GalleryPiecePage({ params }: { params: Promise<{ s
           <div className="stack stack-3">
             <h2 className="section-heading">Attached media</h2>
             {media.map((file) => (
-              <a key={file.fileId} className="row row-3" href={'/files/' + file.fileId}>
+              <a key={file.fileId} className="row row-3" href={'/objects/' + file.fileId}>
                 <span className="grow">{file.displayName}</span>
                 <span className="t-meta">{Math.round(file.byteSize / 1024)} KB</span>
               </a>
