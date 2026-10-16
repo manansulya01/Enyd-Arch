@@ -96,6 +96,9 @@ export interface MemberSummary {
   ageBandLabel: string;
   region: string | null;
   joinedAt: Date;
+  showActivity: boolean;
+  showCreations: boolean;
+  showArchiveContributions: boolean;
 }
 
 export interface MemberRow {
@@ -111,6 +114,11 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
+  profileVisibility: 'public' | 'members' | 'connections' | 'private' | null;
+  discoverable: boolean | null;
+  showActivity: boolean | null;
+  showCreations: boolean | null;
+  showArchiveContributions: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
@@ -126,6 +134,11 @@ const MEMBER_COLUMNS = {
   avatarObjectId: profiles.avatarObjectId,
   showRegion: userSettings.showRegion,
   hideAgeBand: userSettings.hideAgeBand,
+  profileVisibility: userSettings.profileVisibility,
+  discoverable: userSettings.discoverable,
+  showActivity: userSettings.showActivity,
+  showCreations: userSettings.showCreations,
+  showArchiveContributions: userSettings.showArchiveContributions,
 };
 
 const memberJoin = () =>
@@ -160,6 +173,9 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
     ageBandLabel: hideAge ? 'Undisclosed' : ageBandLabel(row.ageBand),
     region: row.showRegion ? row.region : null,
     joinedAt: row.createdAt,
+    showActivity: isSelf || row.showActivity !== false,
+    showCreations: isSelf || row.showCreations !== false,
+    showArchiveContributions: isSelf || row.showArchiveContributions !== false,
   };
 }
 
@@ -173,7 +189,32 @@ export async function memberByUsername(
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
   const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
-  return row ? projectMember(row, viewerId) : null;
+  if (!row) return null;
+
+  // Profile visibility is an access-control decision, not just a display preference.
+  if (viewerId && viewerId !== row.id) {
+    if (row.profileVisibility === 'private') return null;
+    if (row.profileVisibility === 'connections') {
+      const [connection] = await db
+        .select({ id: matchTable.id })
+        .from(matchTable)
+        .where(and(
+          eq(matchTable.status, 'accepted'),
+          sql`((${matchTable.userAId} = ${viewerId} and ${matchTable.userBId} = ${row.id}) or (${matchTable.userAId} = ${row.id} and ${matchTable.userBId} = ${viewerId}))`,
+        ))
+        .limit(1);
+      if (!connection) return null;
+    }
+
+    const [blocked] = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(sql`((${blocks.blockerId} = ${viewerId} and ${blocks.blockedId} = ${row.id}) or (${blocks.blockerId} = ${row.id} and ${blocks.blockedId} = ${viewerId}))`)
+      .limit(1);
+    if (blocked) return null;
+  }
+
+  return projectMember(row, viewerId);
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
