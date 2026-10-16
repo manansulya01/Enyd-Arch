@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { beginEnrolment } from '~/server/actions/enrolment';
+import { verifyCsrf } from '~/server/csrf';
 
 /**
  * Issues the WebAuthn registration challenge.
@@ -12,12 +13,20 @@ import { beginEnrolment } from '~/server/actions/enrolment';
  * deliberately uniform.
  */
 export async function POST(request: Request) {
-  let payload: { username?: string };
+  let payload: { username?: string; csrf?: string };
 
   try {
-    payload = (await request.json()) as { username?: string };
+    payload = (await request.json()) as { username?: string; csrf?: string };
   } catch {
     return NextResponse.json({ ok: false, error: 'Malformed request.' }, { status: 400 });
+  }
+
+  const formData = new FormData();
+  formData.set('__csrf', String(payload.csrf ?? ''));
+  try {
+    await verifyCsrf(formData);
+  } catch {
+    return NextResponse.json({ ok: false, error: 'This request could not be verified.' }, { status: 403 });
   }
 
   const username = String(payload.username ?? '').trim();
