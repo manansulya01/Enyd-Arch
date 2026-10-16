@@ -36,6 +36,8 @@ const transportSecurityHeaders =
 
 const privateNoStore = [
   '/api/:path*',
+  '/objects/:path*',
+  '/files/:path*',
   '/home',
   '/messages/:path*',
   '/commons/:path*',
@@ -52,7 +54,13 @@ const privateNoStore = [
   '/connections/:path*',
   '/chronicle/:path*',
   '/gallery/:path*',
+  '/events/:path*',
+  '/cinema/:path*',
+  '/watch/:path*',
+  '/search/:path*',
   '/admin/:path*',
+  '/sign-in',
+  '/register',
 ];
 
 const nextConfig: NextConfig = {
@@ -95,12 +103,7 @@ const nextConfig: NextConfig = {
         ],
       })),
       {
-        // Immutable hashed asset storage
-        source: '/objects/:path*',
-        headers: [{ key: 'Cache-Control', value: 'private, max-age=31536000, immutable' }],
-      },
-      {
-        // Never cache the game sandbox bootstrap from a shared cache
+        // Never cache the isolated game sandbox bootstrap.
         source: '/arcade/play/:path*',
         headers: [{ key: 'Cache-Control', value: 'no-store, private' }],
       },
