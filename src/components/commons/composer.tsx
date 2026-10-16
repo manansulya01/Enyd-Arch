@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
 import { onUploadFile } from '~/server/actions/exchange-client';
-import { CsrfField } from '~/components/shell/csrf-field';
 import { formatBytes } from '~/lib/format';
 
 /**
@@ -12,7 +11,7 @@ import { formatBytes } from '~/lib/format';
  * which is uploaded through the validated pipeline first, then referenced by id
  * so the browser never dictates where bytes land.
  */
-export function Composer() {
+export function Composer({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -187,7 +186,6 @@ export function Composer() {
           }}
         />
 
-        <CsrfField />
 
         <div className="row row-end" style={{ marginLeft: 'auto' }}>
           {error && (
