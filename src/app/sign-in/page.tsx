@@ -60,6 +60,9 @@ export default async function SignInPage() {
             No identity yet? <Link href="/register">Enter the Arch</Link> ·{' '}
             <Link href="/about">What is this place?</Link>
           </p>
+          <p className="auth-foot">
+            Existing pending identity? <Link href="/register/enrol">Finish device enrollment</Link>
+          </p>
 
           <p className="t-meta" style={{ textAlign: 'center' }}>
             {COPY.device.body}
