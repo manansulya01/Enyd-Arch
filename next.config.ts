@@ -56,6 +56,8 @@ const privateNoStore = [
   '/gallery/:path*',
   '/events/:path*',
   '/cinema/:path*',
+  '/inner-arch/:path*',
+  '/me',
   '/watch/:path*',
   '/search/:path*',
   '/admin/:path*',
