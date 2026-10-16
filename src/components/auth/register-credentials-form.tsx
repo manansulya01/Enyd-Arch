@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useEffect, useState, type ReactNode } from 'react';
 import {
   checkUsername,
   registerAction,
@@ -23,7 +23,7 @@ import { PasskeyEnrol } from './passkey-enrol';
  * unexplained field error on a form the member has already filled in.
  */
 
-export function RegisterCredentialsForm() {
+export function RegisterCredentialsForm({ csrf }: { csrf: ReactNode }) {
   const [identity, setIdentity] = useState<{ username: string; memberId: string } | null>(null);
   const [availability, setAvailability] = useState<UsernameAvailability | null>(null);
   const [credentials, credentialsAction, pending] = useActionState<
@@ -42,13 +42,14 @@ export function RegisterCredentialsForm() {
     }
   }, [credentials]);
 
-  if (identity) return <PasskeyEnrol identity={identity} />;
+  if (identity) return <>{csrf}<PasskeyEnrol identity={identity} /></>;
 
   const usernameError = fieldError(credentials, 'username');
   const deviceBlocked = Boolean(fieldError(credentials, 'device'));
 
   return (
     <form action={credentialsAction} className="auth-form" noValidate>
+      {csrf}
       {credentials?.message && !deviceBlocked && (
         <p className="notice notice-danger" role="alert">
           <span className="notice-glyph" aria-hidden="true">
