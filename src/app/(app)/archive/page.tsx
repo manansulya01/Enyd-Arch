@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState, Avatar } from '~/components/ui';
+import { EmptyState } from '~/components/ui';
 import { archiveObjects, collections } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { ARCHIVE_CATEGORIES, COPY, MARK } from '~/lib/domain';
@@ -194,4 +194,3 @@ export default async function ArchivePage({
   );
 }
 
-export { Avatar };
