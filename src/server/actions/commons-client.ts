@@ -25,7 +25,10 @@ async function actor() {
   return resolved;
 }
 
-export async function onCreatePost(input: Parameters<typeof createPost>[1]) {
+export async function onCreatePost(input: Parameters<typeof createPost>[1], csrf: string) {
+  const formData = new FormData();
+  formData.set('__csrf', csrf);
+  await verifyCsrf(formData);
   return createPost(await actor(), input);
 }
 
