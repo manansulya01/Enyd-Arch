@@ -95,6 +95,7 @@ export function SettingsForm({ csrf, initial }: { csrf: ReactNode; initial: Sett
           <span className="field-label">Who can message me?</span>
           <select className="select" name="messagePolicy" defaultValue={initial.messagePolicy}>
             <option value="members">Signed-in members</option>
+            <option value="connections">Accepted connections</option>
             <option value="nobody">Nobody</option>
           </select>
         </label>
