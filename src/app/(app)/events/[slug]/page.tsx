@@ -10,16 +10,23 @@ import { sessionCsrfToken } from '~/server/csrf';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const { actor } = await requireOnboarded();
-  const [upcoming, past, csrfToken] = await Promise.all([events({ viewerId: actor.userId, limit: 40 }), events({ viewerId: actor.userId, limit: 40, past: true }), sessionCsrfToken()]);
-  const event = [...upcoming, ...past].find((item) => item.slug === slug);
+  const all = await Promise.all([
+    events({ viewerId: actor.userId, limit: 40 }),
+    events({ viewerId: actor.userId, limit: 40, past: true }),
+  ]);
+  const event = all.flat().find((item) => item.slug === slug);
   return event ? { title: event.title, description: event.description } : { title: 'Event not found' };
 }
 
 export default async function EventDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
-  const all = await Promise.all([events({ viewerId: actor.userId, limit: 40 }), events({ viewerId: actor.userId, limit: 40, past: true })]);
-  const event = all.flat().find((item) => item.slug === slug);
+  const [upcoming, past, csrfToken] = await Promise.all([
+    events({ viewerId: actor.userId, limit: 40 }),
+    events({ viewerId: actor.userId, limit: 40, past: true }),
+    sessionCsrfToken(),
+  ]);
+  const event = [...upcoming, ...past].find((item) => item.slug === slug);
   if (!event) notFound();
 
   return (
