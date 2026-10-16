@@ -1,0 +1,46 @@
+name: Verify Enyd Arch
+
+on:
+  pull_request:
+  push:
+    branches: [main, "fix/**"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: enyd
+          POSTGRES_PASSWORD: enyd_ci_only_password
+          POSTGRES_DB: enyd_arch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U enyd -d enyd_arch"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://enyd:enyd_ci_only_password@127.0.0.1:5432/enyd_arch
+      AUTH_SECRET: ci-only-secret-do-not-use-in-production-0123456789
+      APP_ORIGIN: http://localhost:3000
+      ARCH_GAME_ORIGIN: http://localhost:3101
+      STORAGE_DRIVER: local
+      STORAGE_ROOT: ./storage
+      SANDBOX_SECRET: ci-only-sandbox-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type-check
+        run: pnpm lint
+      - name: Production build
+        run: pnpm build
