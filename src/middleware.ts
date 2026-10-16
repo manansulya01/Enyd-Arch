@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * middleware creates the cookie and forwards it on the current request.
  */
 export function middleware(request: NextRequest) {
-  if (request.cookies.has('enyd_session') || request.cookies.has('enyd_csrf')) {
+  if (request.cookies.has('enyd_csrf')) {
     return NextResponse.next();
   }
 
