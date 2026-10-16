@@ -10,6 +10,7 @@ import { createSession } from '~/server/auth/session';
 import { verifyPassword } from '~/server/auth/password';
 import { writeAudit } from '~/server/security/audit';
 import { beginRegistration, finishRegistration } from '~/server/auth/webauthn';
+import { verifyCsrfValue } from '~/server/csrf';
 
 /**
  * Device enrolment
