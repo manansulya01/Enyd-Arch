@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import { onUploadFile } from '~/server/actions/exchange-client';
 import { formatBytes } from '~/lib/format';
-import { CsrfField } from '~/components/shell/csrf-field';
 
 /**
  * The Exchange upload panel. Validation findings from the server are shown
@@ -108,7 +107,6 @@ export function ExchangeUploader() {
         </p>
       )}
 
-      <CsrfField />
     </section>
   );
 }
