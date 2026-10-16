@@ -4,8 +4,39 @@ import type { FormEvent, ReactNode } from 'react';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { GALLERY_KINDS } from '~/lib/domain';
-import { createGalleryPost } from '~/server/actions/gallery';
+import { createGalleryPost, commentOnGalleryPost } from '~/server/actions/gallery';
 import { onUploadFile } from '~/server/actions/exchange-client';
+
+export function GalleryCommentForm({ postId, csrf }: { postId: string; csrf: ReactNode }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const data = new FormData(event.currentTarget);
+    data.set('postId', postId);
+    startTransition(async () => {
+      const result = await commentOnGalleryPost(null, data);
+      if (!result.ok) {
+        setError(result.message ?? 'The comment could not be posted.');
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <form className="panel panel-body stack stack-3" onSubmit={submit}>
+      {csrf}
+      <h2 className="t-heading">Leave a comment</h2>
+      <textarea className="textarea" name="body" maxLength={2000} rows={3} required placeholder="Be kind. Do not share private information." />
+      {error && <p className="t-danger" role="alert">{error}</p>}
+      <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? 'Posting…' : 'Post comment'}</button>
+    </form>
+  );
+}
 
 export function GalleryCreateForm({ csrf }: { csrf: ReactNode }) {
   const router = useRouter();
