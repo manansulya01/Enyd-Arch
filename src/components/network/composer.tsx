@@ -1,11 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type ReactNode } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
-import { CsrfField } from '~/components/shell/csrf-field';
 
-export function NetworkComposer() {
+export function NetworkComposer({ csrf }: { csrf?: ReactNode }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -21,11 +20,12 @@ export function NetworkComposer() {
     }
 
     startTransition(async () => {
+      const csrfToken = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
       const result = await onCreatePost({
         body: text,
         poll: null,
         attachmentFileIds: [],
-      });
+      }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
@@ -37,6 +37,7 @@ export function NetworkComposer() {
 
   return (
     <form className="composer card card-inset" onSubmit={submit}>
+      {csrf}
       <label className="sr-only" htmlFor="network-composer-body">
         Write a post
       </label>

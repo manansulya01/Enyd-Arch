@@ -25,7 +25,10 @@ async function actor() {
   return resolved;
 }
 
-export async function onCreatePost(input: Parameters<typeof createPost>[1]) {
+export async function onCreatePost(input: Parameters<typeof createPost>[1], csrfToken: string) {
+  const formData = new FormData();
+  formData.set('__csrf', csrfToken);
+  await verifyCsrf(formData);
   return createPost(await actor(), input);
 }
 
@@ -53,5 +56,4 @@ export async function onRepost(postId: string) {
   return repostPost(await actor(), postId);
 }
 
-export { verifyCsrf };
 export type { ActionResult };

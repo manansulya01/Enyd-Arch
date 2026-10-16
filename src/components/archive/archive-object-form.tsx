@@ -5,7 +5,6 @@ import { useRef, useState, useTransition } from 'react';
 import { onCreateArchiveObject, onUploadFile } from '~/server/actions/exchange-client';
 import { ARCHIVE_CATEGORIES } from '~/lib/domain';
 import { formatBytes } from '~/lib/format';
-import { CsrfField } from '~/components/shell/csrf-field';
 
 /**
  * Contributing an Archive object. The file is uploaded through the validated
@@ -186,7 +185,6 @@ export function ArchiveObjectForm() {
       )}
 
       <div className="row row-end">
-        <CsrfField />
         <button className="btn btn-primary" type="submit" disabled={busy}>
           {busy ? 'Cataloguing…' : 'Catalogue this object'}
         </button>

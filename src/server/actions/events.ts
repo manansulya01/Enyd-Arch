@@ -5,7 +5,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { eventComments, events, rsvps } from '~db/schema';
+import { blocks, eventComments, events, rsvps } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
@@ -76,11 +76,18 @@ export async function rsvpToEvent(eventId: string, status: 'going' | 'interested
   if (!['going', 'interested', 'declined'].includes(status)) return fail('Unknown RSVP.');
 
   const [event] = await db
-    .select({ id: events.id, slug: events.slug, hostId: events.hostId, attendingCount: events.attendingCount, interestedCount: events.interestedCount })
+    .select({ id: events.id, slug: events.slug, hostId: events.hostId, visibility: events.visibility, attendingCount: events.attendingCount, interestedCount: events.interestedCount })
     .from(events)
     .where(and(eq(events.id, eventId), isNull(events.removedAt), isNull(events.cancelledAt)))
     .limit(1);
-  if (!event) return fail('That event is not available.');
+  if (!event || !['members', 'public'].includes(event.visibility)) return fail('That event is not available.');
+
+  const [blockedHost] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`((${blocks.blockerId} = ${actor.userId} and ${blocks.blockedId} = ${event.hostId}) or (${blocks.blockerId} = ${event.hostId} and ${blocks.blockedId} = ${actor.userId}))`)
+    .limit(1);
+  if (blockedHost && event.hostId !== actor.userId) return fail('That event is not available.');
 
   const [existing] = await db
     .select({ status: rsvps.status })
@@ -138,8 +145,19 @@ export async function commentOnEvent(
   const body = String(formData.get('body') ?? '').trim().slice(0, 2000);
   if (!eventId || !body) return fail('Write something first.');
 
-  const [event] = await db.select({ slug: events.slug }).from(events).where(eq(events.id, eventId)).limit(1);
-  if (!event) return fail('That event is not available.');
+  const [event] = await db
+    .select({ slug: events.slug, hostId: events.hostId, visibility: events.visibility })
+    .from(events)
+    .where(and(eq(events.id, eventId), isNull(events.removedAt), isNull(events.cancelledAt)))
+    .limit(1);
+  if (!event || !['members', 'public'].includes(event.visibility)) return fail('That event is not available.');
+
+  const [blockedHost] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`((${blocks.blockerId} = ${actor.userId} and ${blocks.blockedId} = ${event.hostId}) or (${blocks.blockerId} = ${event.hostId} and ${blocks.blockedId} = ${actor.userId}))`)
+    .limit(1);
+  if (blockedHost && event.hostId !== actor.userId) return fail('That event is not available.');
 
   await db.insert(eventComments).values({ eventId, authorId: actor.userId, body });
   revalidatePath(`/events/${event.slug}`);

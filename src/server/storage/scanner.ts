@@ -5,7 +5,7 @@ import { createConnection } from 'node:net';
 /**
  * Malware scanning
  *
- * Uploads land in `quarantined` state and are not downloadable, linkable, or
+ * Uploads land in quarantined state and are not downloadable, linkable, or
  * previewable until a clean verdict comes back. Two providers are supported:
  *
  *   · ClamAV over TCP INSTREAM (the default when MALWARE_SCANNER_URL is set)
@@ -13,7 +13,7 @@ import { createConnection } from 'node:net';
  *
  * The fallback is deliberately conservative. It is not a substitute for a real
  * engine, so in production a missing scanner configuration makes uploads
- * *fail closed* rather than silently pass. Development is the only environment
+ * fail closed rather than silently pass. Development is the only environment
  * where the built-in signature set is trusted.
  */
 
@@ -104,7 +104,7 @@ function scanDevelopment(data: Uint8Array): ScanOutcome {
   };
 }
 
-/** Streams the payload to a ClamAV instance and parses the verdict reply. */
+/** Streams the payload to a ClamAV instance and parses its verdict reply. */
 function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<ScanOutcome> {
   return new Promise((resolve) => {
     const socket = createConnection({ host, port });
@@ -115,6 +115,7 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
     const finish = (outcome: ScanOutcome) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       socket.destroy();
       resolve(outcome);
     };
@@ -152,7 +153,6 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
     });
 
     socket.on('error', () => {
-      clearTimeout(timer);
       finish({
         verdict: 'error',
         provider: 'clamav',
@@ -162,10 +162,8 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
     });
 
     socket.on('end', () => {
-      clearTimeout(timer);
       const reply = Buffer.concat(chunks).toString('utf8').trim();
-      const matched = /^(.+?):\s*(.+?)\s+FOUND$/.exec(reply);
-      const errored = reply.includes('ERROR') || reply.includes('INSTREAM size limit');
+      const matched = /^(.+?):\s*(.+?)\s+FOUND$/i.exec(reply);
 
       if (matched) {
         finish({
@@ -177,7 +175,8 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
         });
         return;
       }
-      if (errored) {
+
+      if (/ERROR|INSTREAM size limit/i.test(reply)) {
         finish({
           verdict: 'error',
           provider: 'clamav',
@@ -186,11 +185,24 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
         });
         return;
       }
+
+      // Only ClamAV's explicit clean verdict is trusted. Empty, malformed, or
+      // unexpected replies must never turn into a clean result.
+      if (/^stream:\s*OK$/i.test(reply)) {
+        finish({
+          verdict: 'clean',
+          provider: 'clamav',
+          detail: `No threat found (${(uploaded / 1024).toFixed(0)} KB scanned).`,
+          release: true,
+        });
+        return;
+      }
+
       finish({
-        verdict: 'clean',
+        verdict: 'error',
         provider: 'clamav',
-        detail: `No threat found (${(uploaded / 1024).toFixed(0)} KB scanned).`,
-        release: true,
+        detail: `Unrecognised scanner response: ${reply.slice(0, 180) || 'empty response'}`,
+        release: false,
       });
     });
   });
@@ -217,24 +229,38 @@ export async function scanBytes(data: Uint8Array): Promise<ScanOutcome> {
     return scanDevelopment(data);
   }
 
-  const { hostname, port } = new URL(configured);
-  const scanPort = Number(port) || 3310;
+  let hostname: string;
+  let scanPort: number;
+  try {
+    const endpoint = new URL(configured);
+    if (!['tcp:', 'clamav:'].includes(endpoint.protocol)) {
+      throw new Error('Unsupported scanner URL protocol.');
+    }
+    hostname = endpoint.hostname;
+    scanPort = Number(endpoint.port) || 3310;
+  } catch {
+    return {
+      verdict: 'error',
+      provider: 'clamav',
+      detail: 'MALWARE_SCANNER_URL is invalid.',
+      release: false,
+    };
+  }
+
   const token = process.env.MALWARE_SCANNER_TOKEN;
 
   try {
     const outcome = await scanWithClamAv(data, hostname, scanPort);
     if (token) {
-      // Attaches a keyed digest so a misconfigured proxy cannot silently swap
-      // the scanner verdict without invalidating the token.
       const stamp = createHmac('sha256', token).update(outcome.detail).digest('hex').slice(0, 8);
       outcome.detail = `${outcome.detail} [${stamp}]`;
     }
     return outcome;
-  } catch (error) {
+  } catch {
     return {
       verdict: 'error',
       provider: 'clamav',
-      detail: `Scan failed: ${(error as Error).message}`,
+      detail: 'The scanner request failed.',
       release: false,
     };
   }

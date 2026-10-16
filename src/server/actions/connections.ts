@@ -77,6 +77,18 @@ export async function sendConnectionRequest(input: {
   const limiter = await acquire('connectionRequest', actor.userId);
   if (!limiter.allowed) return fail('Too many requests. Wait a little while.');
 
+  const [targetSettings] = await db
+    .select({
+      connectionsEnabled: userSettings.connectionsEnabled,
+      allowFriendRequests: userSettings.allowFriendRequests,
+    })
+    .from(userSettings)
+    .where(eq(userSettings.userId, input.toUserId))
+    .limit(1);
+  if (!targetSettings?.connectionsEnabled || !targetSettings.allowFriendRequests) {
+    return fail('That member is not accepting connection requests.');
+  }
+
   const ctx = await eligibilityContext(actor.userId);
   if (!ctx) return fail('Your Connections settings are incomplete.');
 

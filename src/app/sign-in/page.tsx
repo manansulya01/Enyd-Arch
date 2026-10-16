@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { COPY, MARK } from '~/lib/domain';
 import { currentActor } from '~/server/auth/session';
 import { SignInForm } from '~/components/auth/sign-in-form';
+import { CsrfField } from '~/components/shell/csrf-field';
 
 export const metadata: Metadata = {
   title: 'Sign in',
@@ -52,7 +53,7 @@ export default async function SignInPage() {
             </p>
           </header>
 
-          <SignInForm />
+          <SignInForm csrf={<CsrfField />} />
 
           <p className="auth-foot">
             No identity yet? <Link href="/register">Enter the Arch</Link> ·{' '}

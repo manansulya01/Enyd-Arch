@@ -7,14 +7,16 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
 import {
+  blocks,
   conversationMembers,
   conversations,
   files,
+  matches,
   messages,
   userSettings,
   users,
@@ -41,6 +43,25 @@ export async function startDirectConversation(
   if (!recipient) return fail('That member is not available.');
   if (recipient.messagePolicy === 'nobody') {
     return fail('That member is not accepting messages right now.');
+  }
+
+  const [blocked] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`((${blocks.blockerId} = ${actor.userId} and ${blocks.blockedId} = ${otherUserId}) or (${blocks.blockerId} = ${otherUserId} and ${blocks.blockedId} = ${actor.userId}))`)
+    .limit(1);
+  if (blocked) return fail('That member is not available.');
+
+  if (recipient.messagePolicy === 'connections') {
+    const [connection] = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(
+        eq(matches.status, 'accepted'),
+        sql`((${matches.userAId} = ${actor.userId} and ${matches.userBId} = ${otherUserId}) or (${matches.userAId} = ${otherUserId} and ${matches.userBId} = ${actor.userId}))`,
+      ))
+      .limit(1);
+    if (!connection) return fail('That member accepts messages from connections only.');
   }
 
   // Reuse an existing direct thread between the same pair.

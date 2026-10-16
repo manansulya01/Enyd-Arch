@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '~db';
 import {
   achievements,
@@ -96,6 +96,9 @@ export interface MemberSummary {
   ageBandLabel: string;
   region: string | null;
   joinedAt: Date;
+  showActivity: boolean;
+  showCreations: boolean;
+  showArchiveContributions: boolean;
 }
 
 export interface MemberRow {
@@ -111,6 +114,12 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
+  profileVisibility?: 'public' | 'members' | 'connections' | 'private' | null;
+  settingsProfileVisibility?: 'public' | 'members' | 'connections' | 'private' | null;
+  discoverable?: boolean | null;
+  showActivity?: boolean | null;
+  showCreations?: boolean | null;
+  showArchiveContributions?: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
@@ -126,6 +135,12 @@ const MEMBER_COLUMNS = {
   avatarObjectId: profiles.avatarObjectId,
   showRegion: userSettings.showRegion,
   hideAgeBand: userSettings.hideAgeBand,
+  profileVisibility: profiles.profileVisibility,
+  settingsProfileVisibility: userSettings.profileVisibility,
+  discoverable: userSettings.discoverable,
+  showActivity: userSettings.showActivity,
+  showCreations: userSettings.showCreations,
+  showArchiveContributions: userSettings.showArchiveContributions,
 };
 
 const memberJoin = () =>
@@ -160,6 +175,9 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
     ageBandLabel: hideAge ? 'Undisclosed' : ageBandLabel(row.ageBand),
     region: row.showRegion ? row.region : null,
     joinedAt: row.createdAt,
+    showActivity: isSelf || row.showActivity !== false,
+    showCreations: isSelf || row.showCreations !== false,
+    showArchiveContributions: isSelf || row.showArchiveContributions !== false,
   };
 }
 
@@ -173,7 +191,44 @@ export async function memberByUsername(
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
   const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
-  return row ? projectMember(row, viewerId) : null;
+  if (!row) return null;
+
+  // Profile visibility is an access-control decision, not just a display preference.
+  if (viewerId !== row.id) {
+    const visibilities = [row.profileVisibility ?? 'members', row.settingsProfileVisibility ?? 'members'];
+    const visibility = visibilities.includes('private')
+      ? 'private'
+      : visibilities.includes('connections')
+        ? 'connections'
+        : visibilities.includes('members')
+          ? 'members'
+          : 'public';
+    if (visibility === 'private') return null;
+    if (!viewerId && visibility !== 'public') return null;
+    if (visibility === 'connections') {
+      if (!viewerId) return null;
+      const [connection] = await db
+        .select({ id: matchTable.id })
+        .from(matchTable)
+        .where(and(
+          eq(matchTable.status, 'accepted'),
+          sql`((${matchTable.userAId} = ${viewerId} and ${matchTable.userBId} = ${row.id}) or (${matchTable.userAId} = ${row.id} and ${matchTable.userBId} = ${viewerId}))`,
+        ))
+        .limit(1);
+      if (!connection) return null;
+    }
+
+    if (viewerId) {
+      const [blocked] = await db
+        .select({ id: blocks.id })
+        .from(blocks)
+        .where(sql`((${blocks.blockerId} = ${viewerId} and ${blocks.blockedId} = ${row.id}) or (${blocks.blockerId} = ${row.id} and ${blocks.blockedId} = ${viewerId}))`)
+        .limit(1);
+      if (blocked) return null;
+    }
+  }
+
+  return projectMember(row, viewerId);
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
@@ -185,6 +240,38 @@ export async function membersByIds(ids: string[], viewerId?: string | null): Pro
 
 export function toMemberRows(rows: MemberRow[]): Map<string, MemberRow> {
   return new Map(rows.map((row) => [row.id, row]));
+}
+
+/** Search only discoverable active members; never search email, legal name, or private account fields. */
+export async function searchMembers(query: string, viewerId: string): Promise<MemberSummary[]> {
+  const term = query.trim().slice(0, 64).replace(/[%_]/g, '');
+  if (term.length < 2) return [];
+
+  const pattern = `%${term}%`;
+  const rows = await memberJoin()
+    .where(and(
+      eq(users.status, 'active'),
+      sql`(${users.id} <> ${viewerId})`,
+      or(isNull(userSettings.discoverable), eq(userSettings.discoverable, true)),
+      or(ilike(users.username, pattern), ilike(users.displayName, pattern)),
+      sql`coalesce(${profiles.profileVisibility}, 'members') <> 'private'`,
+      sql`coalesce(${userSettings.profileVisibility}, 'members') <> 'private'`,
+      sql`((coalesce(${profiles.profileVisibility}, 'members') <> 'connections' and coalesce(${userSettings.profileVisibility}, 'members') <> 'connections') or exists (
+        select 1 from matches m
+        where m.status = 'accepted'
+          and ((m.user_a_id = ${viewerId} and m.user_b_id = ${users.id})
+            or (m.user_a_id = ${users.id} and m.user_b_id = ${viewerId}))
+      ))`,
+      sql`not exists (
+        select 1 from blocks b
+        where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
+           or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId})
+      )`,
+    ))
+    .orderBy(asc(users.username))
+    .limit(40);
+
+  return rows.map((row) => projectMember(row, viewerId));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -998,7 +1085,25 @@ export interface CollectionView {
   createdAt: Date;
 }
 
-export async function collections(options: { featuredOnly?: boolean; limit?: number } = {}): Promise<CollectionView[]> {
+export async function collections(options: {
+  featuredOnly?: boolean;
+  limit?: number;
+  viewerId?: string | null;
+} = {}): Promise<CollectionView[]> {
+  const visible = options.viewerId
+    ? or(
+        eq(collectionTable.visibility, 'public'),
+        eq(collectionTable.visibility, 'members'),
+        eq(collectionTable.curatorId, options.viewerId),
+        sql`(${collectionTable.visibility} = 'connections' and exists (
+          select 1 from matches m
+          where m.status = 'accepted'
+            and ((m.user_a_id = ${options.viewerId} and m.user_b_id = ${collectionTable.curatorId})
+              or (m.user_a_id = ${collectionTable.curatorId} and m.user_b_id = ${options.viewerId}))
+        ))`,
+      )
+    : eq(collectionTable.visibility, 'public');
+
   const rows = await db
     .select({
       id: collectionTable.id,
@@ -1012,18 +1117,32 @@ export async function collections(options: { featuredOnly?: boolean; limit?: num
       createdAt: collectionTable.createdAt,
     })
     .from(collectionTable)
-    .where(options.featuredOnly ? eq(collectionTable.featured, true) : sql`true`)
+    .where(and(visible, options.featuredOnly ? eq(collectionTable.featured, true) : sql`true`))
     .orderBy(desc(collectionTable.featured), desc(collectionTable.updatedAt))
     .limit(options.limit ?? 12);
 
   return rows;
 }
 
-export async function collectionBySlug(slug: string): Promise<CollectionView | null> {
+export async function collectionBySlug(slug: string, viewerId?: string | null): Promise<CollectionView | null> {
+  const visible = viewerId
+    ? or(
+        eq(collectionTable.visibility, 'public'),
+        eq(collectionTable.visibility, 'members'),
+        eq(collectionTable.curatorId, viewerId),
+        sql`(${collectionTable.visibility} = 'connections' and exists (
+          select 1 from matches m
+          where m.status = 'accepted'
+            and ((m.user_a_id = ${viewerId} and m.user_b_id = ${collectionTable.curatorId})
+              or (m.user_a_id = ${collectionTable.curatorId} and m.user_b_id = ${viewerId}))
+        ))`,
+      )
+    : eq(collectionTable.visibility, 'public');
+
   const [row] = await db
     .select()
     .from(collectionTable)
-    .where(eq(collectionTable.slug, slug))
+    .where(and(eq(collectionTable.slug, slug), visible))
     .limit(1);
   if (!row) return null;
   return {

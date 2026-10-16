@@ -244,4 +244,4 @@ export default async function HomePage() {
   );
 }
 
-export { excerpt };
+

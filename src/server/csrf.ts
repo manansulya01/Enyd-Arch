@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 /**
  * Shared helpers for client components that talk to server actions directly.
@@ -106,23 +106,17 @@ export async function verifyCsrfValue(presented: unknown): Promise<void> {
 }
 
 /**
- * Issues an anonymous token and mirrors it in a readable cookie, so a form
- * rendered before sign-in can embed it.
+ * Reads the anonymous CSRF token initialized by middleware so a server-rendered
+ * form can embed it without mutating cookies during render.
  */
 export async function issueAnonymousCsrf(): Promise<string> {
   const store = await cookies();
   const existing = store.get('enyd_csrf')?.value;
-  if (existing) return existing;
+  if (existing && existing.length >= 16) return existing;
 
-  const token = randomBytes(24).toString('base64url');
-  store.set('enyd_csrf', token, {
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 4,
-  });
-  return token;
+  // Cookie creation belongs to middleware/route handlers, not Server Components.
+  // Fail closed if this request bypassed the middleware initialization path.
+  throw new CsrfError('The security token could not be initialized. Reload the page and try again.');
 }
 
 /** The current session's CSRF secret, for embedding in a hidden field. */

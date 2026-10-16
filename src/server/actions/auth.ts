@@ -39,6 +39,10 @@ import { writeAudit } from '~/server/security/audit';
 import { verifyCsrf } from '~/server/csrf';
 import { grantInnerArch } from '~/server/society';
 import { nextMemberNumber } from '~/server/member-number';
+import {
+  beginEnrolment as beginEnrolmentImpl,
+  completeEnrolment as completeEnrolmentImpl,
+} from './enrolment';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Schemas
@@ -710,9 +714,14 @@ export async function requestDeviceTransferAction(
   return ok();
 }
 
-export { titleCase };
+// Keep the client-facing exports as async server-action wrappers. Next.js does
+// not allow re-exporting imported actions from a `use server` module.
+export async function beginEnrolment(username: string) {
+  return beginEnrolmentImpl(username);
+}
 
-// The enrolment ceremony lives in its own module because it takes structured
-// input rather than form fields; re-exported here so client components have one
-// import site for authentication.
-export { completeEnrolment, beginEnrolment } from './enrolment';
+export async function completeEnrolment(
+  input: Parameters<typeof completeEnrolmentImpl>[0],
+) {
+  return completeEnrolmentImpl(input);
+}
