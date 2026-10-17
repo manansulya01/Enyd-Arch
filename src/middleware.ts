@@ -35,9 +35,14 @@ function createNonce(): string {
 export function middleware(request: NextRequest) {
   const nonce = createNonce();
   const gameOrigin = trustedGameOrigin();
+  const scriptSources = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    ...(process.env.NODE_ENV !== 'production' ? ["'unsafe-eval'"] : []),
+  ].join(' ');
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -64,6 +69,7 @@ export function middleware(request: NextRequest) {
   // Member pages and API responses can contain private conversations, profile
   // data, and invitation material. Never let a shared cache retain them.
   response.headers.set('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
 
   return response;
 }
