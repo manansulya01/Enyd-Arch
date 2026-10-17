@@ -13,15 +13,16 @@ This file records implementation facts, not promises. A route or interface is no
 - Browser screen, timezone, and hardware-concurrency fingerprint collection was removed. A random first-party installation cookie is used instead. This cookie is a browser-profile binding, not proof of physical hardware identity.
 - Anonymous forms use short-lived signed CSRF tokens; same-origin checks remain in place.
 - The middleware creates a per-response CSP nonce and removes the script `unsafe-inline` exception. Style inline allowances remain for application compatibility.
-- Referrer policy is set to `no-referrer`; private responses and object downloads are marked `private, no-store`.
+- Referrer policy is set to `no-referrer`; private responses and object/file downloads are marked `private, no-store`.
 - A privacy notice explains the limits of anonymity, message confidentiality, and deployment-level logging.
-- A robots route asks search engines not to index the site. This is not access control.
+- A robots route and `X-Robots-Tag` ask search engines not to index the site. These are not access controls.
 - CI runs TypeScript checking and a production build.
 
 ## Not yet complete — do not claim otherwise
 
 - **Private messages are not end-to-end encrypted.** Message bodies are currently readable by the application server and database. HTTPS and database/volume encryption do not change that. Do not advertise E2EE until a vetted protocol/library, device-key lifecycle, multi-device/recovery behavior, and adversarial tests are implemented.
 - The installation cookie is not hardware attestation. Passkeys prove possession of a credential, but the broader account-recovery and device-transfer process still needs end-to-end testing.
+- **Object-level visibility still needs a focused audit.** `/objects/[id]` requires sign-in but serves stored objects to any signed-in member without independently checking the visibility of every parent entity that references an object. Do not rely on an unguessable UUID as authorization; test and close any path where a private entity's media can be fetched by another member.
 - The one-active-credential database index requires the schema to be applied to the deployment database. Back up first and inspect existing credentials before applying schema changes.
 - Email verification, push delivery, external storage, malware scanning, and production monitoring are not assumed to be configured merely because related code or environment variables exist.
 - The repository is public unless its owner changes visibility in GitHub settings. Search-engine directives do not protect source code or private data.
