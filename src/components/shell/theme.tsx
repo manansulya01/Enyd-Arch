@@ -1,14 +1,18 @@
+import { headers } from 'next/headers';
+
 /**
  * Respects the member's motion preference before first paint.
  *
- * Without this the page would animate once and then snap to the calm state,
- * which is worse for anyone who asked for reduced motion than not honouring it
- * at all. The script is tiny, synchronous, and reads a data attribute the server
- * already set.
+ * The per-response nonce is supplied by middleware. Without it, the inline
+ * bootstrap script would be correctly blocked by the strict Content Security
+ * Policy.
  */
-export function ThemeScript({ reduceMotion }: { reduceMotion: boolean }) {
+export async function ThemeScript({ reduceMotion }: { reduceMotion: boolean }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <script
+      nonce={nonce}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{
         __html: `(function(){try{if(${reduceMotion ? 'true' : 'false'})document.documentElement.setAttribute('data-motion','calm');}catch(e){}})();`,
