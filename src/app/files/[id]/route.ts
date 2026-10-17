@@ -20,7 +20,7 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
-    return new NextResponse('Not found', { status: 404 });
+    return new NextResponse('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   }
 
   const actor = await currentActor();
@@ -31,7 +31,10 @@ export async function GET(
       decision.verdict === 'quarantined'
         ? 'This file is not available.'
         : 'You do not have access to this file.',
-      { status: decision.verdict === 'missing' ? 404 : 403 },
+      {
+        status: decision.verdict === 'missing' ? 404 : 403,
+        headers: { 'Cache-Control': 'private, no-store, max-age=0' },
+      },
     );
   }
 
@@ -40,10 +43,10 @@ export async function GET(
     .from(files)
     .where(eq(files.id, decision.fileId ?? id))
     .limit(1);
-  if (!row?.storageObjectId) return new NextResponse('Not found', { status: 404 });
+  if (!row?.storageObjectId) return new NextResponse('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 
   const object = await readObject(row.storageObjectId);
-  if (!object) return new NextResponse('Not found', { status: 404 });
+  if (!object) return new NextResponse('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 
   // Only inert media renders in place; everything else is a download so a
   // hostile document can never execute against the app origin.
@@ -57,8 +60,9 @@ export async function GET(
     headers: {
       'Content-Type': object.contentType,
       'Content-Length': String(object.byteSize),
-      'Cache-Control': 'private, max-age=120',
+      'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'same-origin',
       ...(asDownload ? { 'Content-Disposition': 'attachment' } : {}),
     },
   });
