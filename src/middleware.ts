@@ -1,5 +1,5 @@
-import { randomBytes } from 'node:crypto';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 function trustedGameOrigin(): string {
   const configured = process.env.ARCH_GAME_ORIGIN ?? 'http://localhost:3101';
@@ -14,6 +14,16 @@ function trustedGameOrigin(): string {
   }
 }
 
+function createNonce(): string {
+  // Middleware runs in the Edge runtime by default; use Web Crypto rather than
+  // importing Node-only crypto APIs.
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 /**
  * Per-response CSP nonce. Next.js reads the CSP from the forwarded request and
  * applies the nonce to its own inline bootstrap scripts, so the application
@@ -23,7 +33,7 @@ function trustedGameOrigin(): string {
  * handling of member-generated content.
  */
 export function middleware(request: NextRequest) {
-  const nonce = randomBytes(18).toString('base64');
+  const nonce = createNonce();
   const gameOrigin = trustedGameOrigin();
   const directives = [
     "default-src 'self'",
