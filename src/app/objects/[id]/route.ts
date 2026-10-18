@@ -13,6 +13,7 @@ import {
   games,
   galleryPosts,
   galleryAttachments,
+  matches,
   messages,
   posts,
   postAttachments,
@@ -30,6 +31,22 @@ const noBlockBetween = (owner: unknown, viewerId: string) => sql`not exists (
   select 1 from ${blocks} b
   where (b.blocker_id = ${viewerId} and b.blocked_id = ${owner as never})
      or (b.blocker_id = ${owner as never} and b.blocked_id = ${viewerId})
+)`;
+
+const visibleToViewer = (visibility: unknown, owner: unknown, viewerId: string) => sql`(
+  ${owner as never} = ${viewerId}
+  or ${visibility as never} in ('public', 'members')
+  or (
+    ${visibility as never} = 'connections'
+    and exists (
+      select 1 from ${matches} m
+      where m.status = 'accepted'
+        and (
+          (m.user_a_id = ${owner as never} and m.user_b_id = ${viewerId})
+          or (m.user_b_id = ${owner as never} and m.user_a_id = ${viewerId})
+        )
+    )
+  )
 )`;
 
 /**
@@ -57,8 +74,8 @@ export async function GET(
         .innerJoin(userSettings, eq(userSettings.userId, profiles.userId))
         .where(and(
           or(eq(profiles.avatarObjectId, id), eq(profiles.bannerObjectId, id)),
-          inArray(profiles.profileVisibility, ['public', 'members']),
-          inArray(userSettings.profileVisibility, ['public', 'members']),
+          visibleToViewer(profiles.profileVisibility, profiles.userId, actor.userId),
+          visibleToViewer(userSettings.profileVisibility, profiles.userId, actor.userId),
           eq(users.status, 'active'),
           isNull(users.removedAt),
           noBlockBetween(profiles.userId, actor.userId),
@@ -69,7 +86,7 @@ export async function GET(
         .from(archiveObjects)
         .where(and(
           eq(archiveObjects.previewObjectId, id),
-          inArray(archiveObjects.visibility, ['public', 'members']),
+          visibleToViewer(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
           isNull(archiveObjects.removedAt),
           noBlockBetween(archiveObjects.contributorId, actor.userId),
         )),
@@ -79,7 +96,7 @@ export async function GET(
         .from(collections)
         .where(and(
           eq(collections.coverObjectId, id),
-          inArray(collections.visibility, ['public', 'members']),
+          visibleToViewer(collections.visibility, collections.curatorId, actor.userId),
           noBlockBetween(collections.curatorId, actor.userId),
         )),
     ),
@@ -92,8 +109,7 @@ export async function GET(
           eq(projects.status, 'active'),
           noBlockBetween(projects.ownerId, actor.userId),
           or(
-            inArray(projects.visibility, ['public', 'members']),
-            eq(projects.ownerId, actor.userId),
+            visibleToViewer(projects.visibility, projects.ownerId, actor.userId),
             exists(db.select({ one: projectMembers.projectId }).from(projectMembers).where(and(
               eq(projectMembers.projectId, projects.id),
               eq(projectMembers.userId, actor.userId),
@@ -136,8 +152,13 @@ export async function GET(
         .from(galleryPosts)
         .where(and(
           eq(galleryPosts.coverObjectId, id),
-          eq(galleryPosts.status, 'published'),
-          inArray(galleryPosts.visibility, ['public', 'members']),
+          or(
+            eq(galleryPosts.authorId, actor.userId),
+            and(
+              eq(galleryPosts.status, 'published'),
+              visibleToViewer(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
+            ),
+          ),
           isNull(galleryPosts.removedAt),
           noBlockBetween(galleryPosts.authorId, actor.userId),
         )),
@@ -147,9 +168,14 @@ export async function GET(
         .from(events)
         .where(and(
           eq(events.coverObjectId, id),
-          inArray(events.visibility, ['public', 'members']),
+          or(
+            eq(events.hostId, actor.userId),
+            and(
+              visibleToViewer(events.visibility, events.hostId, actor.userId),
+              isNull(events.cancelledAt),
+            ),
+          ),
           isNull(events.removedAt),
-          isNull(events.cancelledAt),
           noBlockBetween(events.hostId, actor.userId),
         )),
     ),
@@ -180,8 +206,13 @@ export async function GET(
                 .innerJoin(postAttachments, eq(postAttachments.postId, posts.id))
                 .where(and(
                   eq(postAttachments.fileId, files.id),
-                  eq(posts.status, 'published'),
-                  inArray(posts.visibility, ['public', 'members']),
+                  or(
+                    eq(posts.authorId, actor.userId),
+                    and(
+                      eq(posts.status, 'published'),
+                      visibleToViewer(posts.visibility, posts.authorId, actor.userId),
+                    ),
+                  ),
                   isNull(posts.removedAt),
                   noBlockBetween(posts.authorId, actor.userId),
                 )),
@@ -192,8 +223,13 @@ export async function GET(
                 .innerJoin(galleryAttachments, eq(galleryAttachments.postId, galleryPosts.id))
                 .where(and(
                   eq(galleryAttachments.fileId, files.id),
-                  eq(galleryPosts.status, 'published'),
-                  inArray(galleryPosts.visibility, ['public', 'members']),
+                  or(
+                    eq(galleryPosts.authorId, actor.userId),
+                    and(
+                      eq(galleryPosts.status, 'published'),
+                      visibleToViewer(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
+                    ),
+                  ),
                   isNull(galleryPosts.removedAt),
                   noBlockBetween(galleryPosts.authorId, actor.userId),
                 )),
@@ -203,7 +239,7 @@ export async function GET(
                 .from(archiveObjects)
                 .where(and(
                   eq(archiveObjects.fileId, files.id),
-                  inArray(archiveObjects.visibility, ['public', 'members']),
+                  visibleToViewer(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
                   isNull(archiveObjects.removedAt),
                   noBlockBetween(archiveObjects.contributorId, actor.userId),
                 )),
