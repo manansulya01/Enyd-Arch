@@ -46,5 +46,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Type-check
         run: pnpm lint
+      - name: Security regression tests
+        run: pnpm test
       - name: Production build
         run: pnpm build
