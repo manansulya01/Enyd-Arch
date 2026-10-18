@@ -10,12 +10,29 @@ import {
   files,
   galleryAttachments,
   galleryPosts,
+  matches,
   messages,
   postAttachments,
   posts,
   storageObjects,
   userRestrictions,
 } from '~db/schema';
+const visibleToViewer = (visibility: unknown, owner: unknown, viewerId: string) => sql`(
+  ${owner as never} = ${viewerId}
+  or ${visibility as never} in ('public', 'members')
+  or (
+    ${visibility as never} = 'connections'
+    and exists (
+      select 1 from ${matches} m
+      where m.status = 'accepted'
+        and (
+          (m.user_a_id = ${owner as never} and m.user_b_id = ${viewerId})
+          or (m.user_b_id = ${owner as never} and m.user_a_id = ${viewerId})
+        )
+    )
+  )
+)`;
+
 import { putObject } from './driver';
 import { scanBytes } from './scanner';
 import {
@@ -216,7 +233,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(postAttachments.fileId, fileId),
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
-        viewerId ? inArray(posts.visibility, ['members', 'public']) : eq(posts.visibility, 'public'),
+        viewerId ? visibleToViewer(posts.visibility, posts.authorId, viewerId) : eq(posts.visibility, 'public'),
         viewerId ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${posts.authorId})
@@ -236,7 +253,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(galleryAttachments.fileId, fileId),
         eq(galleryPosts.status, 'published'),
         isNull(galleryPosts.removedAt),
-        viewerId ? inArray(galleryPosts.visibility, ['members', 'public']) : eq(galleryPosts.visibility, 'public'),
+        viewerId ? visibleToViewer(galleryPosts.visibility, galleryPosts.authorId, viewerId) : eq(galleryPosts.visibility, 'public'),
         viewerId ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${galleryPosts.authorId})
@@ -254,7 +271,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
       and(
         eq(archiveObjects.fileId, fileId),
         isNull(archiveObjects.removedAt),
-        viewerId ? inArray(archiveObjects.visibility, ['members', 'public']) : eq(archiveObjects.visibility, 'public'),
+        viewerId ? visibleToViewer(archiveObjects.visibility, archiveObjects.contributorId, viewerId) : eq(archiveObjects.visibility, 'public'),
         viewerId ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${archiveObjects.contributorId})
