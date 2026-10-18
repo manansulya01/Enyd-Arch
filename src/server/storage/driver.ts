@@ -7,6 +7,7 @@ import { db } from '~db';
 import { storageObjects } from '~db/schema';
 import { randomHex, sha256 } from '../crypto';
 import { buildKey, type StoragePurpose } from './keys';
+import { decryptObject, encryptObject } from './envelope';
 export { buildKey, type StoragePurpose } from './keys';
 
 /**
@@ -213,7 +214,7 @@ export async function putObject(input: {
 }): Promise<{ id: string; objectKey: string; byteSize: number; checksum: string; contentType: string; urlPrefix: string }> {
   const active = storage();
   const key = buildKey(input.purpose, input.id, input.extension);
-  await active.put(key, input.data, input.contentType);
+  await active.put(key, encryptObject(input.data), input.contentType);
 
   const checksum = sha256(input.data);
   const [record] = await db
@@ -247,9 +248,32 @@ export async function readObject(objectId: string): Promise<{ data: Uint8Array; 
     .limit(1);
   if (!record || record.removedAt) return null;
 
-  const data = await storage().get(record.objectKey);
-  if (!data) return null;
-  return { data, contentType: record.contentType, byteSize: record.byteSize };
+  const active = storage();
+  const stored = await active.get(record.objectKey);
+  if (!stored) return null;
+
+  let decoded: { data: Uint8Array; encrypted: boolean };
+  try {
+    decoded = decryptObject(stored);
+  } catch {
+    // Authentication failures, truncated envelopes, and wrong keys fail
+    // closed; never return ciphertext or corrupted plaintext to a caller.
+    return null;
+  }
+
+  // The checksum and byte size are over the original plaintext. This both
+  // verifies integrity for legacy objects and detects corruption after decrypt.
+  if (decoded.data.byteLength !== record.byteSize || sha256(decoded.data) !== record.checksum) {
+    return null;
+  }
+
+  if (!decoded.encrypted) {
+    // One-time lazy migration: verify a legacy plaintext object first, then
+    // replace it with the authenticated envelope without changing its URL/ID.
+    await active.put(record.objectKey, encryptObject(decoded.data), record.contentType);
+  }
+
+  return { data: decoded.data, contentType: record.contentType, byteSize: record.byteSize };
 }
 
 export async function removeObject(objectId: string): Promise<void> {
