@@ -28,11 +28,17 @@ export function deriveCapabilities(input: {
   onboarded: boolean;
   restricted: string[];
 }): string[] {
-  const capabilities = new Set<string>();
   if (input.status !== 'active') return [];
 
-  capabilities.add('read');
-  if (input.onboarded) for (const capability of BASE_CAPABILITIES) capabilities.add(capability);
+  // An active account that has not completed onboarding may read the app, but
+  // must not gain write, social, or role-based powers from its account level.
+  const capabilities = new Set<string>(['read']);
+  if (!input.onboarded) {
+    for (const restricted of input.restricted) capabilities.delete(restricted);
+    return [...capabilities];
+  }
+
+  for (const capability of BASE_CAPABILITIES) capabilities.add(capability);
 
   // Dating capability alone is not consent; the Connections service also
   // requires explicit per-mode opt-in and applies age-gap safety checks.
