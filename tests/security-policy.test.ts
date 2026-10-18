@@ -16,6 +16,19 @@ test('inactive identities receive no capabilities', () => {
   );
 });
 
+test('unonboarded identities receive read-only capabilities even with elevated roles', () => {
+  assert.deepEqual(
+    deriveCapabilities({
+      status: 'active',
+      level: 'inner_arch',
+      isMinor: false,
+      onboarded: false,
+      restricted: [],
+    }),
+    ['read'],
+  );
+});
+
 test('minor identities never receive dating capability', () => {
   const capabilities = deriveCapabilities({
     status: 'active',
