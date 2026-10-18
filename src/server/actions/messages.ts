@@ -22,7 +22,7 @@ import {
   users,
 } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
-import { currentActor } from '~/server/auth/session';
+import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 
 import { verifyCsrf } from '~/server/csrf';
@@ -74,6 +74,7 @@ export async function startDirectConversation(
 ): Promise<ActionResult<{ conversationId: string }>> {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
 
   const limiter = await acquire('write', actor.userId);
@@ -134,6 +135,7 @@ export async function createGroupConversation(input: {
 }): Promise<ActionResult<{ conversationId: string }>> {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
 
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
@@ -176,6 +178,7 @@ export async function sendMessage(
   await verifyCsrf(formData);
   const actor = await currentActor();
   if (!actor) return fail('Sign in to send messages.');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
 
   const conversationId = String(formData.get('conversationId') ?? '');
   const body = String(formData.get('body') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 4000);
