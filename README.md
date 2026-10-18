@@ -15,7 +15,7 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 ## Verification
 
 - `pnpm lint` — TypeScript check.
-- `pnpm test` — focused security-policy and storage-key regression tests.
+- `pnpm test` — security policy, upload validation, storage encryption, proxy-IP resolution, and PostgreSQL schema smoke tests.
 - `pnpm build` — production build.
 - The CI workflow runs all three checks and supports manual dispatch from GitHub Actions. A green CI result is required before merge.
 
@@ -25,7 +25,7 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 - Public identity is designed around a handle, display name, and membership number.
 - Passkeys use WebAuthn. The server stores public credential material, not the authenticator's private key.
 - A random first-party installation cookie binds a browser profile; it is not hardware attestation or anonymity.
-- Uploaded files must pass type validation and the configured scanning pipeline before release.
+- New stored objects are wrapped with AES-256-GCM authenticated encryption at rest; legacy objects are checksum-verified and lazily re-encrypted on read. Keep `STORAGE_ENCRYPTION_KEY` stable and backed up. This is at-rest encryption, not end-to-end encryption.
 - Security headers include a per-response CSP nonce, a restrictive referrer policy, and no-store caching for private responses and objects.
 - Block relationships and resource visibility are enforced at feed, detail, message, and stored-media boundaries; these paths still require end-to-end adversarial tests.
 - Search-engine directives are not access control. Keep private data out of public repositories, logs, URLs, and analytics.
@@ -38,11 +38,12 @@ Before a real launch, verify on a backed-up staging environment:
 
 1. Apply and review database migrations; confirm there are no default or predictable invitation credentials.
 2. Exercise invitation expiry, revocation, use limits, and concurrent redemption.
-3. Test passkey enrollment, sign-in, revocation, device transfer, and recovery on supported browsers.
-4. Test every page, server action, API route, and file download for authorization and blocked-member access.
-5. Configure a real malware scanner and external object storage if required; confirm scanner outages fail closed.
-6. Verify HTTPS, secrets management, database backups/restores, retention, incident response, monitoring, and log access.
-7. Run dependency/security review and adversarial tests; do not treat CI success as a security certification.
-8. Change repository visibility to private before storing private planning, deployment configuration, or sensitive issue details here.
+3. Back up `STORAGE_ENCRYPTION_KEY` securely and rehearse key recovery/rotation before storing production uploads.
+4. Test passkey enrollment, sign-in, revocation, device transfer, and recovery on supported browsers.
+5. Test every page, server action, API route, and file download for authorization and blocked-member access.
+6. Configure a real malware scanner and external object storage if required; confirm scanner outages fail closed.
+7. Verify HTTPS, secrets management, database backups/restores, retention, incident response, monitoring, and log access.
+8. Run dependency/security review and adversarial tests; do not treat CI success as a security certification.
+9. Change repository visibility to private before storing private planning, deployment configuration, or sensitive issue details here.
 
 See [SECURITY_STATUS.md](./SECURITY_STATUS.md) for known limitations and release blockers.
