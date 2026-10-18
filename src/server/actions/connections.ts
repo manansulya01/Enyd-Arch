@@ -19,7 +19,7 @@ import {
   users,
 } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
-import { currentActor } from '~/server/auth/session';
+import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { checkPairEligibility, orderPair } from '~/server/safety/connections';
 import { notify } from '~/server/notify';
@@ -85,6 +85,7 @@ export async function sendConnectionRequest(input: {
   await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'connections')) return fail('Connections are not available until onboarding is complete.');
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
 
   const limiter = await acquire('connectionRequest', actor.userId);
@@ -151,6 +152,7 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'connections')) return fail('Connections are not available until onboarding is complete.');
 
   const [request] = await db
     .select()
@@ -166,6 +168,15 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
   if (!request) return fail('That request is not available.');
   if (await pairIsBlocked(request.fromUserId, request.toUserId)) {
     return fail('That request is no longer available.');
+  }
+
+  // Re-evaluate both members' current preferences and age-safety rules at
+  // acceptance time; a stale pending request is not permanent consent.
+  if (accept) {
+    const ctx = await eligibilityContext(actor.userId);
+    if (!ctx) return fail('Your Connections settings are incomplete.');
+    const verdict = await checkPairEligibility(ctx, request.fromUserId, request.mode);
+    if (!verdict.allowed) return fail('That request is no longer available.');
   }
 
   await db
