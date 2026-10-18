@@ -101,7 +101,11 @@ export async function startDirectConversation(
       const [meta] = await db
         .select({ kind: conversations.kind })
         .from(conversations)
-        .where(and(eq(conversations.id, candidate.id), eq(conversations.kind, 'direct')))
+        .where(and(
+          eq(conversations.id, candidate.id),
+          eq(conversations.kind, 'direct'),
+          isNull(conversations.removedAt),
+        ))
         .limit(1);
       if (meta) return ok({ conversationId: candidate.id });
     }
