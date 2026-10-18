@@ -365,13 +365,14 @@ export async function beginEnrollmentAction(
       memberId: users.memberId,
       passwordHash: users.passwordHash,
       status: users.status,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${username})`)
     .limit(1);
 
   const account = rows[0];
-  if (!account || !(await verifyPassword(account.passwordHash, password))) {
+  if (!account || account.removedAt || !(await verifyPassword(account.passwordHash, password))) {
     return fail('That username and passphrase do not match.');
   }
 
