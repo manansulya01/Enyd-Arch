@@ -1,3 +1,5 @@
+import 'server-only';
+
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 const MAGIC = Buffer.from('ENYDOBJ1', 'ascii');
