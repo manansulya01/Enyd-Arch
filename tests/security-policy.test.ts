@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deriveCapabilities } from '../src/server/auth/capabilities';
 import { buildKey } from '../src/server/storage/keys';
+import { mayInitiateMessage } from '../src/server/auth/messaging-policy';
 
 test('inactive identities receive no capabilities', () => {
   assert.deepEqual(
@@ -64,4 +65,32 @@ test('storage keys use fixed prefixes and UUID identifiers', () => {
     () => buildKey('upload', '../../outside', 'txt'),
     /UUID/,
   );
+});
+
+test('message policy rejects self-messaging, inactive recipients, and blocked pairs', () => {
+  const base = {
+    senderId: 'sender',
+    recipientId: 'recipient',
+    recipientActive: true,
+    messagePolicy: 'members',
+    blocked: false,
+    connected: false,
+  };
+  assert.equal(mayInitiateMessage({ ...base, recipientId: 'sender' }), false);
+  assert.equal(mayInitiateMessage({ ...base, recipientActive: false }), false);
+  assert.equal(mayInitiateMessage({ ...base, blocked: true }), false);
+});
+
+test('message policy respects nobody and connections-only recipient settings', () => {
+  const base = {
+    senderId: 'sender',
+    recipientId: 'recipient',
+    recipientActive: true,
+    blocked: false,
+    connected: false,
+  };
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'nobody', connected: true }), false);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'connections' }), false);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'connections', connected: true }), true);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'members' }), true);
 });
