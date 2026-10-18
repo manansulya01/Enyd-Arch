@@ -28,6 +28,16 @@ import { verifyCsrfValue } from '~/server/csrf';
 const MODES = ['friendship', 'collaboration', 'dating'] as const;
 type Mode = (typeof MODES)[number];
 
+async function pairIsBlocked(a: string, b: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`(blocker_id = ${a} and blocked_id = ${b})
+      or (blocker_id = ${b} and blocked_id = ${a})`)
+    .limit(1);
+  return Boolean(row);
+}
+
 async function eligibilityContext(userId: string) {
   const [row] = await db
     .select({
@@ -154,6 +164,9 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
     )
     .limit(1);
   if (!request) return fail('That request is not available.');
+  if (await pairIsBlocked(request.fromUserId, request.toUserId)) {
+    return fail('That request is no longer available.');
+  }
 
   await db
     .update(connectionRequests)
@@ -221,7 +234,18 @@ export async function blockUser(userId: string, csrf: string): Promise<ActionRes
     .values({ blockerId: actor.userId, blockedId: userId })
     .onConflictDoNothing();
 
-  // Any match or pending request between the pair is dead.
+  // A block also revokes pending requests, so an old request cannot be
+  // accepted after either member has closed the contact path.
+  await db
+    .update(connectionRequests)
+    .set({ state: 'revoked', respondedAt: new Date() })
+    .where(and(
+      sql`(${connectionRequests.fromUserId} = ${actor.userId} and ${connectionRequests.toUserId} = ${userId})
+        or (${connectionRequests.fromUserId} = ${userId} and ${connectionRequests.toUserId} = ${actor.userId})`,
+      eq(connectionRequests.state, 'pending'),
+    ));
+
+  // Any match between the pair is dead.
   await db
     .update(matches)
     .set({ status: 'blocked', updatedAt: new Date() })
