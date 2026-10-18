@@ -45,6 +45,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Synchronize test database schema
+        run: pnpm db:push
       - name: Type-check
         run: pnpm lint
       - name: Security regression tests
