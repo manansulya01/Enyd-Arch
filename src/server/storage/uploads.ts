@@ -214,6 +214,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(postAttachments.fileId, fileId),
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
+        viewerId ? inArray(posts.visibility, ['members', 'public']) : eq(posts.visibility, 'public'),
       ),
     )
     .limit(1);
@@ -228,6 +229,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(galleryAttachments.fileId, fileId),
         eq(galleryPosts.status, 'published'),
         isNull(galleryPosts.removedAt),
+        viewerId ? inArray(galleryPosts.visibility, ['members', 'public']) : eq(galleryPosts.visibility, 'public'),
       ),
     )
     .limit(1);
@@ -240,7 +242,7 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
       and(
         eq(archiveObjects.fileId, fileId),
         isNull(archiveObjects.removedAt),
-        inArray(archiveObjects.visibility, ['members', 'public']),
+        viewerId ? inArray(archiveObjects.visibility, ['members', 'public']) : eq(archiveObjects.visibility, 'public'),
       ),
     )
     .limit(1);
