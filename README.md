@@ -15,8 +15,9 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 ## Verification
 
 - `pnpm lint` — TypeScript check.
+- `pnpm test` — focused security-policy and storage-key regression tests.
 - `pnpm build` — production build.
-- Pull requests run the repository's CI verification workflow.
+- The CI workflow runs all three checks and supports manual dispatch from GitHub Actions. A green CI result is required before merge.
 
 ## Privacy and security model
 
@@ -26,6 +27,7 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 - A random first-party installation cookie binds a browser profile; it is not hardware attestation or anonymity.
 - Uploaded files must pass type validation and the configured scanning pipeline before release.
 - Security headers include a per-response CSP nonce, a restrictive referrer policy, and no-store caching for private responses and objects.
+- Block relationships and resource visibility are enforced at feed, detail, message, and stored-media boundaries; these paths still require end-to-end adversarial tests.
 - Search-engine directives are not access control. Keep private data out of public repositories, logs, URLs, and analytics.
 - **Messages are not end-to-end encrypted in the current implementation.** Treat them as visible to the service operator and database until a vetted E2EE design is implemented and tested.
 - A private community is not absolute anonymity. Hosting providers and network operators may process connection metadata, and account activity is internally associated with an account for moderation and safety.
