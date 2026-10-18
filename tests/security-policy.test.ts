@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveCapabilities } from '../src/server/auth/session';
-import { buildKey } from '../src/server/storage/driver';
+import { deriveCapabilities } from '../src/server/auth/capabilities';
+import { buildKey } from '../src/server/storage/keys';
 
 test('inactive identities receive no capabilities', () => {
   assert.deepEqual(
