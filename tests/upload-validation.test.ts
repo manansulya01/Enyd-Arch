@@ -37,7 +37,7 @@ test('upload validator rejects HTML and script markup disguised as text', async 
 });
 
 test('filename sanitization strips path components and invisible control characters', () => {
-  assert.equal(sanitiseFilename('../../private\u0000report.txt'), 'private report.txt');
+  assert.equal(sanitiseFilename('../../private\u0000report.txt'), 'privatereport.txt');
   assert.equal(sanitiseFilename('C:\\temp\\secret.md'), 'secret.md');
 });
 
