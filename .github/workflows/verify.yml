@@ -52,5 +52,7 @@ jobs:
         run: pnpm lint
       - name: Security regression tests
         run: pnpm test
+      - name: Production dependency audit
+        run: pnpm audit --prod
       - name: Production build
         run: pnpm build
