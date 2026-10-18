@@ -19,7 +19,8 @@
     "db:bootstrap": "tsx --env-file=.env.local db/bootstrap.ts",
     "dev:sandbox": "tsx --env-file=.env.local sandbox/server.mts",
     "clock:start": "node scripts/crypto-clock.mjs start",
-    "clock:stop": "node scripts/crypto-clock.mjs stop"
+    "clock:stop": "node scripts/crypto-clock.mjs stop",
+    "storage:encrypt-existing": "node --conditions=react-server --import tsx scripts/encrypt-existing-objects.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",
