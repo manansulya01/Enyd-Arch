@@ -21,7 +21,7 @@ const sections = [
   },
   {
     title: 'Messages and uploaded files',
-    body: 'Private messages are not end-to-end encrypted in the current implementation. Message content can be processed by the application server and database. Uploaded files may be checked by the configured malware scanner and can remain quarantined until scanning succeeds. Do not send information that requires end-to-end confidentiality until that feature is independently implemented and verified.',
+    body: 'Private messages are not end-to-end encrypted in the current implementation. Message content can be processed by the application server and database. New stored file objects are encrypted at rest with an application-managed key, but the service can decrypt them to deliver content; this is not end-to-end encryption. Older stored files are re-encrypted when read and integrity-checked. Uploaded files may be checked by the configured malware scanner and can remain quarantined until scanning succeeds. Do not send information that requires end-to-end confidentiality until that feature is independently implemented and verified.',
   },
   {
     title: 'Technical data and abuse prevention',
