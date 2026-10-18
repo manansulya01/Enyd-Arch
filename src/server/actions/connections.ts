@@ -186,7 +186,15 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
         status: 'accepted',
         ageBandAtMatch: me?.ageBand ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [matches.userAId, matches.userBId, matches.mode],
+        set: {
+          requestId: request.id,
+          status: 'accepted',
+          ageBandAtMatch: me?.ageBand ?? null,
+          updatedAt: new Date(),
+        },
+      });
 
     await notify({
       userId: request.fromUserId,
@@ -263,6 +271,16 @@ export async function unblockUser(userId: string, csrf: string): Promise<ActionR
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   await db.delete(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, userId)));
+  // Preserve relationship history but permit a fresh accepted request after
+  // the member explicitly unblocks the other identity.
+  await db
+    .update(matches)
+    .set({ status: 'unmatched', updatedAt: new Date() })
+    .where(and(
+      sql`(${matches.userAId} = ${actor.userId} and ${matches.userBId} = ${userId})
+        or (${matches.userAId} = ${userId} and ${matches.userBId} = ${actor.userId})`,
+      eq(matches.status, 'blocked'),
+    ));
   return ok();
 }
 
