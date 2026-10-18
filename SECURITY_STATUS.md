@@ -14,14 +14,15 @@ This file records implementation facts, not promises. A route or interface is no
 - Anonymous forms use short-lived signed CSRF tokens; same-origin checks remain in place.
 - The middleware creates a per-response CSP nonce and removes the script `unsafe-inline` exception. Style inline allowances remain for application compatibility.
 - Referrer policy is set to `no-referrer`; private responses and object/file downloads are marked `private, no-store`.
-- New stored objects use AES-256-GCM authenticated encryption at rest. Legacy plaintext objects are checksum-verified and lazily re-encrypted when read. Production requires a separately managed `STORAGE_ENCRYPTION_KEY`; losing or rotating it without a re-encryption plan makes encrypted files unreadable.
+- New stored objects use AES-256-GCM authenticated encryption at rest. Legacy plaintext objects are checksum-verified and lazily re-encrypted when read. Production requires a separately managed `STORAGE_ENCRYPTION_KEY`; losing or rotating it without a re-encryption plan makes encrypted files unreadable. This does not encrypt messages end-to-end or prevent the running application from reading files.
 - A privacy notice explains the limits of anonymity, message confidentiality, and deployment-level logging.
 - A robots route and `X-Robots-Tag` ask search engines not to index the site. These are not access controls.
-- CI runs TypeScript checking, security regression tests, and a production build.
+- CI synchronizes the PostgreSQL schema, runs TypeScript checking and security/storage regression tests, audits production dependencies, and builds the app. A successful run only validates the commit it checked.
 - Blocking is now checked in direct-message creation/sending and in feed, post-detail, archive, gallery, game, event, project, comment, and stored-media visibility paths. These code-level guards still need adversarial integration tests.
 - Unonboarded accounts now receive read-only capabilities even if an elevated role was assigned early.
 - Direct and group conversation creation share a recipient-policy decision; group invitations cannot bypass a recipient's `nobody` or `connections only` setting.
 - Arcade detail lookup is slug-scoped instead of scanning only the top 60 games, and listings/object retrieval exclude games owned by inactive or removed accounts.
+- The production dependency audit identified vulnerable PostCSS versions in the Next.js dependency tree; the lockfile now resolves PostCSS to patched 8.5.23. The latest CI run must confirm the audit stays clean.
 
 ## Not yet complete — do not claim otherwise
 
