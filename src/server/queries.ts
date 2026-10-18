@@ -474,7 +474,19 @@ export async function feed(options: {
         })
         .from(postTable)
         .innerJoin(users, eq(users.id, postTable.authorId))
-        .where(inArray(postTable.id, repostIds))
+        .where(and(
+          inArray(postTable.id, repostIds),
+          eq(postTable.status, 'published'),
+          isNull(postTable.removedAt),
+          inArray(postTable.visibility, ['public', 'members']),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${postTable.authorId})
+               or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
+          )`,
+        ))
     : [];
   const originalMap = new Map(originals.map((row) => [row.id, row]));
 
@@ -683,7 +695,19 @@ export async function projectPosts(
         })
         .from(postTable)
         .innerJoin(users, eq(users.id, postTable.authorId))
-        .where(inArray(postTable.id, repostIds))
+        .where(and(
+          inArray(postTable.id, repostIds),
+          eq(postTable.status, 'published'),
+          isNull(postTable.removedAt),
+          inArray(postTable.visibility, ['public', 'members']),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+               or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+          )`,
+        ))
     : [];
   const originalMap = new Map(originals.map((row) => [row.id, row]));
 
