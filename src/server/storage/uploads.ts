@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '~db';
 import {
   archiveObjects,
+  blocks,
   conversationMembers,
   conversations,
   files,
@@ -216,6 +217,11 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
         viewerId ? inArray(posts.visibility, ['members', 'public']) : eq(posts.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -231,6 +237,11 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(galleryPosts.status, 'published'),
         isNull(galleryPosts.removedAt),
         viewerId ? inArray(galleryPosts.visibility, ['members', 'public']) : eq(galleryPosts.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${galleryPosts.authorId})
+             or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -244,6 +255,11 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(archiveObjects.fileId, fileId),
         isNull(archiveObjects.removedAt),
         viewerId ? inArray(archiveObjects.visibility, ['members', 'public']) : eq(archiveObjects.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${archiveObjects.contributorId})
+             or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -265,6 +281,15 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
           isNull(conversationMembers.removedAt),
           isNull(conversations.removedAt),
           isNull(messages.removedAt),
+          sql`not exists (
+            select 1 from ${conversationMembers} cm
+            inner join ${blocks} b on
+              (b.blocker_id = ${viewerId} and b.blocked_id = cm.user_id)
+              or (b.blocker_id = cm.user_id and b.blocked_id = ${viewerId})
+            where cm.conversation_id = ${messages.conversationId}
+              and cm.user_id <> ${viewerId}
+              and cm.removed_at is null
+          )`,
         ),
       )
       .limit(1);
