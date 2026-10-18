@@ -1253,6 +1253,11 @@ export async function arcadeGames(options: {
     .where(
       and(
         isNull(gameTable.removedAt),
+        options.viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
+             or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${options.viewerId})
+        )` : sql`true`,
         options.includeUnapproved ? sql`true` : eq(gameTable.status, 'approved'),
         options.genre ? eq(gameTable.genre, options.genre) : sql`true`,
         options.creatorId ? eq(gameTable.creatorId, options.creatorId) : sql`true`,
