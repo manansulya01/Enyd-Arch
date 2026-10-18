@@ -30,6 +30,7 @@ jobs:
     env:
       DATABASE_URL: postgres://enyd:enyd_ci_only_password@127.0.0.1:5432/enyd_arch
       AUTH_SECRET: ci-only-secret-do-not-use-in-production-0123456789
+      STORAGE_ENCRYPTION_KEY: ci-only-storage-encryption-key-0123456789
       APP_ORIGIN: http://localhost:3000
       ARCH_GAME_ORIGIN: http://localhost:3101
       STORAGE_DRIVER: local
