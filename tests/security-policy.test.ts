@@ -93,4 +93,5 @@ test('message policy respects nobody and connections-only recipient settings', (
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'connections' }), false);
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'connections', connected: true }), true);
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'members' }), true);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'unrecognised' }), false);
 });
