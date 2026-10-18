@@ -3,6 +3,7 @@ import test from 'node:test';
 import { deriveCapabilities } from '../src/server/auth/capabilities';
 import { buildKey } from '../src/server/storage/keys';
 import { mayInitiateMessage } from '../src/server/auth/messaging-policy';
+import { resolveClientIp } from '../src/server/crypto';
 
 test('inactive identities receive no capabilities', () => {
   assert.deepEqual(
@@ -94,4 +95,12 @@ test('message policy respects nobody and connections-only recipient settings', (
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'connections', connected: true }), true);
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'members' }), true);
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'unrecognised' }), false);
+});
+
+test('client IP resolution trusts only configured proxy hops', () => {
+  assert.equal(resolveClientIp('203.0.113.10, 10.0.0.2', 1), '203.0.113.10');
+  assert.equal(resolveClientIp('198.51.100.5, 203.0.113.10, 10.0.0.2', 1), '198.51.100.5');
+  assert.equal(resolveClientIp('203.0.113.10, 10.0.0.2', 0), 'local');
+  assert.equal(resolveClientIp('not-an-ip, 10.0.0.2', 1), 'local');
+  assert.equal(resolveClientIp('10.0.0.2', 1), 'local');
 });
