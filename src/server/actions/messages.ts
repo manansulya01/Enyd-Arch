@@ -151,8 +151,11 @@ export async function createGroupConversation(input: {
     .from(users)
     .where(and(inArray(users.id, memberIds), eq(users.status, 'active'), isNull(users.removedAt)));
   if (found.length !== memberIds.length) return fail('One of those members is not available.');
+
+  // A group invite is still a new contact path. Respect each invitee's policy
+  // so "nobody" and "connections only" cannot be bypassed through group creation.
   for (const memberId of memberIds) {
-    if (await pairIsBlocked(actor.userId, memberId)) {
+    if (!(await canStartDirectMessage(actor.userId, memberId))) {
       return fail('One of those members is not available for this conversation.');
     }
   }
