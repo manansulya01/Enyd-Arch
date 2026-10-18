@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { cookies, headers } from 'next/headers';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -124,14 +125,19 @@ const TRUSTED_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 0);
  * Proxy headers are only honoured when explicitly configured, otherwise a
  * client could trivially spoof its own address.
  */
+/** Pure resolver; forwarded headers are trusted only when proxy hops are configured. */
+export function resolveClientIp(forwardedFor: string | null | undefined, trustedHops: number): string {
+  if (!forwardedFor || !Number.isSafeInteger(trustedHops) || trustedHops < 1) return 'local';
+  const parts = forwardedFor.split(',').map((part) => part.trim()).filter(Boolean);
+  // X-Forwarded-For is ordered client -> nearest proxy. Skip the configured
+  // trusted proxies from the right and select the last untrusted address.
+  if (parts.length <= trustedHops) return 'local';
+  const chosen = parts[parts.length - 1 - trustedHops];
+  return chosen && isIP(chosen) !== 0 ? chosen : 'local';
+}
+
 export function clientIp(forwardedFor?: string | null): string {
-  if (TRUSTED_HOPS > 0 && forwardedFor) {
-    const parts = forwardedFor.split(',').map((part) => part.trim());
-    const index = Math.max(0, parts.length - TRUSTED_HOPS);
-    const chosen = parts[index];
-    if (chosen) return chosen;
-  }
-  return 'local';
+  return resolveClientIp(forwardedFor, TRUSTED_HOPS);
 }
 
 /**
