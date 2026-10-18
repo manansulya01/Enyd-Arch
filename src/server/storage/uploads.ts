@@ -5,6 +5,7 @@ import { db } from '~db';
 import {
   archiveObjects,
   conversationMembers,
+  conversations,
   files,
   galleryAttachments,
   galleryPosts,
@@ -252,15 +253,17 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
     const inConversation = await db
       .select({ id: messages.id })
       .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .innerJoin(
         conversationMembers,
-        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.conversationId, conversations.id),
       )
       .where(
         and(
           eq(messages.attachmentFileId, fileId),
           eq(conversationMembers.userId, viewerId),
           isNull(conversationMembers.removedAt),
+          isNull(conversations.removedAt),
           isNull(messages.removedAt),
         ),
       )
