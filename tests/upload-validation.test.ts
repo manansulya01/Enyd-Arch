@@ -47,3 +47,29 @@ test('upload size preflight rejects over-limit payloads', () => {
   assert.equal(withinDeclaredLimit(100_000_000), true);
   assert.equal(withinDeclaredLimit(104_857_601), false);
 });
+
+function oneEntryZip(entryName: string): Uint8Array {
+  const name = new TextEncoder().encode(entryName);
+  const bytes = new Uint8Array(31 + name.byteLength);
+  bytes.set([0x50, 0x4b, 0x03, 0x04], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(6, 0, true);
+  view.setUint32(18, 1, true);
+  view.setUint32(22, 1, true);
+  view.setUint16(26, name.byteLength, true);
+  view.setUint16(28, 0, true);
+  bytes.set(name, 30);
+  bytes[30 + name.byteLength] = 0x41;
+  return bytes;
+}
+
+test('upload validator rejects parent-relative paths inside ZIP archives', async () => {
+  const result = await validateUpload({
+    filename: 'bundle.zip',
+    declaredMime: 'application/zip',
+    data: oneEntryZip('../outside.txt'),
+    expect: 'archive',
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.findings.some((finding) => finding.code === 'unsafe_archive_paths'));
+});
