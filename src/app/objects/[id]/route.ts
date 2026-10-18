@@ -185,11 +185,13 @@ export async function GET(
             exists(
               db.select({ one: messages.id })
                 .from(messages)
-                .innerJoin(conversationMembers, eq(conversationMembers.conversationId, messages.conversationId))
+                .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+                .innerJoin(conversationMembers, eq(conversationMembers.conversationId, conversations.id))
                 .where(and(
                   eq(messages.attachmentFileId, files.id),
                   eq(conversationMembers.userId, actor.userId),
                   isNull(conversationMembers.removedAt),
+                  isNull(conversations.removedAt),
                   isNull(messages.removedAt),
                 )),
             ),
