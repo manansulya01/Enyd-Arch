@@ -192,8 +192,8 @@ const visibleMemberConditions = (viewerId?: string | null) =>
       eq(users.id, viewerId),
       and(
         eq(userSettings.discoverable, true),
-        inArray(profiles.profileVisibility, ['members', 'public']),
-        inArray(userSettings.profileVisibility, ['members', 'public']),
+        resourceVisibleToViewer(profiles.profileVisibility, profiles.userId, viewerId),
+        resourceVisibleToViewer(userSettings.profileVisibility, users.id, viewerId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
