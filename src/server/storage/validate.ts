@@ -20,12 +20,34 @@ import { fileTypeFromBuffer } from 'file-type';
  * binary is rejected regardless of what the browser claimed.
  */
 
-export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 104_857_600);
-export const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 12_582_912);
-export const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_UPLOAD_BYTES = 104_857_600;
+const DEFAULT_MAX_IMAGE_BYTES = 12_582_912;
+
+/** Invalid limits fail at startup instead of turning NaN into an unlimited upload. */
+function readByteLimit(name: string, fallback: number, hardMaximum: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer number of bytes.`);
+  }
+  return Math.min(value, hardMaximum);
+}
+
+export const MAX_UPLOAD_BYTES = readByteLimit(
+  'MAX_UPLOAD_BYTES',
+  DEFAULT_MAX_UPLOAD_BYTES,
+  DEFAULT_MAX_UPLOAD_BYTES,
+);
+export const MAX_IMAGE_BYTES = readByteLimit(
+  'MAX_IMAGE_BYTES',
+  Math.min(DEFAULT_MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES),
+  MAX_UPLOAD_BYTES,
+);
+export const MAX_AUDIO_BYTES = Math.min(32 * 1024 * 1024, MAX_UPLOAD_BYTES);
 export const MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
-export const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024;
-export const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = Math.min(32 * 1024 * 1024, MAX_UPLOAD_BYTES);
+export const MAX_ARCHIVE_BYTES = Math.min(100 * 1024 * 1024, MAX_UPLOAD_BYTES);
 
 /** Hard ceiling on an unpacked archive. Ratio check below. */
 export const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
@@ -339,7 +361,7 @@ export async function validateUpload(input: {
 
   // 1 · Size, declared
   const declaredKind = EXTENSION_KIND.get(extension)?.kind ?? null;
-  const limit = declaredKind ? KIND_LIMIT[declaredKind] : MAX_UPLOAD_BYTES;
+  const limit = Math.min(MAX_UPLOAD_BYTES, declaredKind ? KIND_LIMIT[declaredKind] : MAX_UPLOAD_BYTES);
   if (input.data.byteLength === 0) return fail('empty', 'The file is empty.');
   if (input.data.byteLength > limit) {
     return fail(
@@ -569,6 +591,6 @@ export const ACCEPT_ATTRIBUTE = ALLOWED_TYPES.flatMap((type) =>
 /** Read a declared size from a multipart part before materialising the body. */
 export function withinDeclaredLimit(size: number | undefined, kind?: UploadKind): boolean {
   if (size === undefined) return true;
-  const limit = kind ? KIND_LIMIT[kind] : MAX_UPLOAD_BYTES;
+  const limit = Math.min(MAX_UPLOAD_BYTES, kind ? KIND_LIMIT[kind] : MAX_UPLOAD_BYTES);
   return size <= limit;
 }
