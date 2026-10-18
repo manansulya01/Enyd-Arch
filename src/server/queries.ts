@@ -345,6 +345,11 @@ export async function feed(options: {
         inArray(postTable.visibility, ['members', 'public']),
         isNull(users.removedAt),
         eq(users.status, 'active'),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
+        )`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
         options.topic
           ? sql`exists (
@@ -530,6 +535,11 @@ export async function postById(postId: string, viewerId: string): Promise<PostVi
         isNull(postTable.removedAt),
         inArray(postTable.visibility, ['members', 'public']),
         eq(users.status, 'active'),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .limit(1);
@@ -569,6 +579,11 @@ export async function networkBySlug(slug: string, viewerId: string): Promise<Net
         isNull(postTable.removedAt),
         inArray(postTable.visibility, ['members', 'public']),
         eq(users.status, 'active'),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .limit(1);
