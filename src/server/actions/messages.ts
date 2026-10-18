@@ -76,6 +76,9 @@ export async function startDirectConversation(
   if (!actor) redirect('/sign-in');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
 
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('You are starting conversations too quickly. Wait a little while.');
+
   if (!(await canStartDirectMessage(actor.userId, otherUserId))) {
     return fail('That member is not available for a new conversation.');
   }
@@ -146,6 +149,11 @@ export async function createGroupConversation(input: {
     .from(users)
     .where(and(inArray(users.id, memberIds), eq(users.status, 'active'), isNull(users.removedAt)));
   if (found.length !== memberIds.length) return fail('One of those members is not available.');
+  for (const memberId of memberIds) {
+    if (await pairIsBlocked(actor.userId, memberId)) {
+      return fail('One of those members is not available for this conversation.');
+    }
+  }
 
   const [created] = await db
     .insert(conversations)
