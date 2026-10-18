@@ -961,6 +961,11 @@ export async function archiveObjects(options: {
       and(
         isNull(archiveObjectTable.removedAt),
         inArray(archiveObjectTable.visibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${archiveObjectTable.contributorId})
+             or (b.blocker_id = ${archiveObjectTable.contributorId} and b.blocked_id = ${options.viewerId})
+        )`,
         // An object whose file failed scanning is not listed.
         sql`${archiveObjectTable.fileId} is null or ${files.state} = 'clean'`,
         options.category ? eq(archiveObjectTable.category, options.category as never) : sql`true`,
@@ -1477,6 +1482,11 @@ export async function galleryPosts(options: {
         eq(galleryPostTable.status, 'published'),
         isNull(galleryPostTable.removedAt),
         inArray(galleryPostTable.visibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${galleryPostTable.authorId})
+             or (b.blocker_id = ${galleryPostTable.authorId} and b.blocked_id = ${options.viewerId})
+        )`,
         options.kind ? eq(galleryPostTable.kind, options.kind as never) : sql`true`,
         options.authorId ? eq(galleryPostTable.authorId, options.authorId) : sql`true`,
       ),
@@ -1692,6 +1702,11 @@ export async function events(options: {
         isNull(eventTable.removedAt),
         isNull(eventTable.cancelledAt),
         inArray(eventTable.visibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${eventTable.hostId})
+             or (b.blocker_id = ${eventTable.hostId} and b.blocked_id = ${options.viewerId})
+        )`,
         // Soon-started events stay visible for six hours of grace.
         options.past
           ? lt(eventTable.startsAt, now)
@@ -2055,6 +2070,11 @@ export async function projectList(viewerId: string, limit = 24): Promise<Project
       and(
         isNull(projectTable.removedAt),
         inArray(projectTable.visibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${projectTable.ownerId})
+             or (b.blocker_id = ${projectTable.ownerId} and b.blocked_id = ${viewerId})
+        )`,
         // Public projects are discoverable; member-visible projects remain scoped.
         or(
           eq(projectTable.visibility, 'public'),
