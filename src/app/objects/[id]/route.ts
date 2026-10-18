@@ -142,7 +142,7 @@ export async function GET(
         .from(games)
         .where(and(
           or(eq(games.packageObjectId, id), eq(games.thumbnailObjectId, id)),
-          eq(games.status, 'approved'),
+          or(eq(games.creatorId, actor.userId), eq(games.status, 'approved')),
           isNull(games.removedAt),
           noBlockBetween(games.creatorId, actor.userId),
         )),
