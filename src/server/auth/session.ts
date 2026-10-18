@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { db } from '~db';
 import { devices, sessions as sessionsTable, userRestrictions, users } from '~db/schema';
 import { formatMemberId } from '~/lib/domain';
+import { deriveCapabilities } from './capabilities';
+export { deriveCapabilities } from './capabilities';
 import { browserLabel, platformLabel, randomToken, sha256 } from '../crypto';
 
 export const SESSION_COOKIE = 'enyd_session';
@@ -39,75 +41,6 @@ function cookieOptions(maxAge: number) {
     path: '/',
     maxAge,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Capability derivation
-//
-// One place decides what a member may do. Route handlers and server actions all
-// call `can()` rather than inspecting roles ad hoc, so a policy change lands in
-// exactly one place.
-// ---------------------------------------------------------------------------
-
-const BASE_CAPABILITIES = [
-  'post',
-  'comment',
-  'react',
-  'bookmark',
-  'message',
-  'upload',
-  'search',
-  'join_project',
-  'rsvp',
-  'submit_game',
-  'gallery_create',
-  'review',
-  'archive_contribute',
-  'collect',
-  'create_project',
-  'connections',
-  'connect_friendship',
-  'connect_collaboration',
-  'request_device_transfer',
-];
-
-export function deriveCapabilities(input: {
-  status: string;
-  level: string;
-  isMinor: boolean;
-  onboarded: boolean;
-  restricted: string[];
-}): string[] {
-  const capabilities = new Set<string>();
-  if (input.status !== 'active') return [];
-
-  capabilities.add('read');
-  if (input.onboarded) for (const capability of BASE_CAPABILITIES) capabilities.add(capability);
-
-  // Dating is gated on an adult age band here, and again on explicit per-mode
-  // opt-in in the member's own settings. Both must be true.
-  if (!input.isMinor) capabilities.add('connections_dating');
-
-  if (['contributor', 'creator', 'archivist', 'curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('curate');
-    capabilities.add('create_collection');
-  }
-  if (['archivist', 'curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('archive_feature');
-  }
-  if (['curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('invite');
-    capabilities.add('propose');
-  }
-  if (input.level === 'inner_arch') {
-    capabilities.add('inner_arch');
-    capabilities.add('moderate_assist');
-  }
-
-  // A moderation restriction removes the capability and nothing else.
-  for (const restricted of input.restricted) capabilities.delete(restricted);
-
-  return [...capabilities];
 }
 
 export function can(actor: SessionActor | null, capability: string): boolean {
