@@ -23,6 +23,7 @@ import {
 } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
+import { mayInitiateMessage } from '~/server/auth/messaging-policy';
 import { acquire } from '~/server/auth/rate-limit';
 
 import { verifyCsrf } from '~/server/csrf';
@@ -42,7 +43,8 @@ async function pairIsBlocked(a: string, b: string): Promise<boolean> {
 
 /** Enforce the recipient's current policy at the server boundary, not just in UI. */
 async function canStartDirectMessage(senderId: string, recipientId: string): Promise<boolean> {
-  if (senderId === recipientId || await pairIsBlocked(senderId, recipientId)) return false;
+  if (senderId === recipientId) return false;
+  const blocked = await pairIsBlocked(senderId, recipientId);
 
   const [recipient] = await db
     .select({ id: users.id, messagePolicy: userSettings.messagePolicy })
@@ -50,9 +52,6 @@ async function canStartDirectMessage(senderId: string, recipientId: string): Pro
     .leftJoin(userSettings, eq(userSettings.userId, users.id))
     .where(and(eq(users.id, recipientId), eq(users.status, 'active'), isNull(users.removedAt)))
     .limit(1);
-
-  if (!recipient || recipient.messagePolicy === 'nobody') return false;
-  if (recipient.messagePolicy !== 'connections') return true;
 
   const [connection] = await db
     .select({ id: matches.id })
@@ -66,7 +65,14 @@ async function canStartDirectMessage(senderId: string, recipientId: string): Pro
     ))
     .limit(1);
 
-  return Boolean(connection);
+  return mayInitiateMessage({
+    senderId,
+    recipientId,
+    recipientActive: Boolean(recipient),
+    messagePolicy: recipient?.messagePolicy,
+    blocked,
+    connected: Boolean(connection),
+  });
 }
 
 export async function startDirectConversation(
