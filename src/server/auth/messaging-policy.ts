@@ -11,7 +11,18 @@ export function mayInitiateMessage(input: {
 }): boolean {
   if (!input.senderId || !input.recipientId || input.senderId === input.recipientId) return false;
   if (!input.recipientActive || input.blocked) return false;
-  if (input.messagePolicy === 'nobody') return false;
-  if (input.messagePolicy === 'connections') return input.connected;
-  return true;
+
+  switch (input.messagePolicy) {
+    case 'nobody':
+      return false;
+    case 'connections':
+      return input.connected;
+    case 'members':
+    case 'anyone':
+      return true;
+    default:
+      // Corrupt or future-unrecognised policy values must not silently open
+      // a contact path. Add new policy values here deliberately.
+      return false;
+  }
 }
