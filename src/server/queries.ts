@@ -168,6 +168,22 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
   };
 }
 
+const resourceVisibleToViewer = (visibility: unknown, owner: unknown, viewerId: string) => sql`(
+  ${owner as never} = ${viewerId}
+  or ${visibility as never} in ('public', 'members')
+  or (
+    ${visibility as never} = 'connections'
+    and exists (
+      select 1 from ${matchTable} m
+      where m.status = 'accepted'
+        and (
+          (m.user_a_id = ${owner as never} and m.user_b_id = ${viewerId})
+          or (m.user_b_id = ${owner as never} and m.user_a_id = ${viewerId})
+        )
+    )
+  )
+)`;
+
 const visibleMemberConditions = (viewerId?: string | null) =>
   and(
     eq(users.status, 'active'),
@@ -997,7 +1013,7 @@ export async function archiveObjects(options: {
     .where(
       and(
         isNull(archiveObjectTable.removedAt),
-        inArray(archiveObjectTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, options.viewerId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${archiveObjectTable.contributorId})
@@ -1523,7 +1539,7 @@ export async function galleryPosts(options: {
       and(
         eq(galleryPostTable.status, 'published'),
         isNull(galleryPostTable.removedAt),
-        inArray(galleryPostTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(galleryPostTable.visibility, galleryPostTable.authorId, options.viewerId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${galleryPostTable.authorId})
@@ -1743,7 +1759,7 @@ export async function events(options: {
       and(
         isNull(eventTable.removedAt),
         isNull(eventTable.cancelledAt),
-        inArray(eventTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(eventTable.visibility, eventTable.hostId, options.viewerId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${eventTable.hostId})
@@ -2111,19 +2127,19 @@ export async function projectList(viewerId: string, limit = 24): Promise<Project
     .where(
       and(
         isNull(projectTable.removedAt),
-        inArray(projectTable.visibility, ['members', 'public']),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${projectTable.ownerId})
              or (b.blocker_id = ${projectTable.ownerId} and b.blocked_id = ${viewerId})
         )`,
-        // Public projects are discoverable; member-visible projects remain scoped.
+        // A connection-visible project is visible to accepted connections;
+        // private projects remain visible to their owner and current members.
         or(
-          eq(projectTable.visibility, 'public'),
+          resourceVisibleToViewer(projectTable.visibility, projectTable.ownerId, viewerId),
           sql`exists (
             select 1 from project_members pm
             where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
-          ) or ${projectTable.ownerId} = ${viewerId}`,
+          )`,
         ),
       ),
     )
