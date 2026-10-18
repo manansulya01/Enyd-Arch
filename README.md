@@ -25,7 +25,7 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 - Public identity is designed around a handle, display name, and membership number.
 - Passkeys use WebAuthn. The server stores public credential material, not the authenticator's private key.
 - A random first-party installation cookie binds a browser profile; it is not hardware attestation or anonymity.
-- New stored objects are wrapped with AES-256-GCM authenticated encryption at rest; legacy objects are checksum-verified and lazily re-encrypted on read. Keep `STORAGE_ENCRYPTION_KEY` stable and backed up. This is at-rest encryption, not end-to-end encryption.
+- New stored objects are wrapped with AES-256-GCM authenticated encryption at rest; legacy objects are checksum-verified and lazily re-encrypted on read. Before launch, run `pnpm storage:encrypt-existing` with the production storage driver and `STORAGE_ENCRYPTION_KEY` configured to migrate older, untouched objects. Keep the key stable and backed up. This is at-rest encryption, not end-to-end encryption.
 - Security headers include a per-response CSP nonce, a restrictive referrer policy, and no-store caching for private responses and objects.
 - Block relationships and resource visibility are enforced at feed, detail, message, and stored-media boundaries; these paths still require end-to-end adversarial tests.
 - Search-engine directives are not access control. Keep private data out of public repositories, logs, URLs, and analytics.
@@ -38,7 +38,7 @@ Before a real launch, verify on a backed-up staging environment:
 
 1. Apply and review database migrations; confirm there are no default or predictable invitation credentials.
 2. Exercise invitation expiry, revocation, use limits, and concurrent redemption.
-3. Back up `STORAGE_ENCRYPTION_KEY` securely and rehearse key recovery/rotation before storing production uploads.
+3. Back up `STORAGE_ENCRYPTION_KEY` securely, run `pnpm storage:encrypt-existing`, verify the report has zero failures, and rehearse key recovery/rotation before storing production uploads.
 4. Test passkey enrollment, sign-in, revocation, device transfer, and recovery on supported browsers.
 5. Test every page, server action, API route, and file download for authorization and blocked-member access.
 6. Configure a real malware scanner and external object storage if required; confirm scanner outages fail closed.
