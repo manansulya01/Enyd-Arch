@@ -178,6 +178,7 @@ export async function currentActor(): Promise<SessionActor | null> {
     .where(
       and(
         eq(sessionsTable.tokenHash, sha256(token)),
+        isNull(users.removedAt),
         isNull(sessionsTable.revokedAt),
         gt(sessionsTable.expiresAt, new Date()),
       ),
