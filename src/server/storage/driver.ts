@@ -40,8 +40,8 @@ const keySegments = (key: string): string[] => {
   if (
     !key ||
     key.startsWith('/') ||
-    key.includes('\\\\') ||
-    key.includes('\\0')
+    key.includes(String.fromCharCode(92)) ||
+    key.includes(String.fromCharCode(0))
   ) {
     throw new Error('Invalid storage key');
   }
