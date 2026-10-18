@@ -358,7 +358,7 @@ export async function feed(options: {
       and(
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, options.viewerId),
         isNull(users.removedAt),
         eq(users.status, 'active'),
         sql`not exists (
@@ -494,7 +494,7 @@ export async function feed(options: {
           inArray(postTable.id, repostIds),
           eq(postTable.status, 'published'),
           isNull(postTable.removedAt),
-          inArray(postTable.visibility, ['public', 'members']),
+          resourceVisibleToViewer(postTable.visibility, postTable.authorId, options.viewerId),
           eq(users.status, 'active'),
           isNull(users.removedAt),
           sql`not exists (
@@ -561,7 +561,7 @@ export async function postById(postId: string, viewerId: string): Promise<PostVi
         eq(postTable.id, postId),
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
         eq(users.status, 'active'),
         sql`not exists (
           select 1 from ${blocks} b
@@ -715,7 +715,7 @@ export async function projectPosts(
           inArray(postTable.id, repostIds),
           eq(postTable.status, 'published'),
           isNull(postTable.removedAt),
-          inArray(postTable.visibility, ['public', 'members']),
+          resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
           eq(users.status, 'active'),
           isNull(users.removedAt),
           sql`not exists (
