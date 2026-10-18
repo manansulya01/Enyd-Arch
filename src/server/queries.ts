@@ -773,6 +773,11 @@ export async function postComments(postId: string, viewerId: string): Promise<Co
         eq(commentTable.postId, postId),
         inArray(commentTable.status, ['published', 'hidden']),
         isNull(commentTable.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${commentTable.authorId})
+             or (b.blocker_id = ${commentTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .orderBy(asc(commentTable.createdAt))
@@ -846,6 +851,14 @@ export async function commentsByUser(userId: string, viewerId: string, limit = 4
         isNull(commentTable.removedAt),
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
+        inArray(postTable.visibility, ['public', 'members']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${commentTable.authorId})
+             or (b.blocker_id = ${commentTable.authorId} and b.blocked_id = ${viewerId})
+             or (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .orderBy(desc(commentTable.createdAt))
