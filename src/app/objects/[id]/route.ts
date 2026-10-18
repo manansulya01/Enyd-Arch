@@ -140,9 +140,12 @@ export async function GET(
     exists(
       db.select({ one: games.id })
         .from(games)
+        .innerJoin(users, eq(users.id, games.creatorId))
         .where(and(
           or(eq(games.packageObjectId, id), eq(games.thumbnailObjectId, id)),
           or(eq(games.creatorId, actor.userId), eq(games.status, 'approved')),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
           isNull(games.removedAt),
           noBlockBetween(games.creatorId, actor.userId),
         )),
