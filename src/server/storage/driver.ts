@@ -6,6 +6,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '~db';
 import { storageObjects } from '~db/schema';
 import { randomHex, sha256 } from '../crypto';
+import { buildKey, type StoragePurpose } from './keys';
+export { buildKey, type StoragePurpose } from './keys';
 
 /**
  * Object storage
@@ -201,39 +203,6 @@ export function storage(): StorageDriver {
 // ═══════════════════════════════════════════════════════════════════════════
 // Object records
 // ═══════════════════════════════════════════════════════════════════════════
-
-export type StoragePurpose =
-  | 'upload'
-  | 'avatar'
-  | 'thumbnail'
-  | 'preview'
-  | 'game_package'
-  | 'game_asset'
-  | 'collection_cover'
-  | 'event_cover'
-  | 'gallery_media';
-
-const PURPOSE_PREFIX: Record<StoragePurpose, string> = {
-  upload: 'objects',
-  avatar: 'avatars',
-  thumbnail: 'thumbs',
-  preview: 'previews',
-  game_package: 'games',
-  game_asset: 'games',
-  collection_cover: 'covers',
-  event_cover: 'covers',
-  gallery_media: 'gallery',
-};
-
-export function buildKey(purpose: StoragePurpose, id: string, extension: string): string {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
-    throw new Error('Storage object id must be a UUID');
-  }
-  const prefix = PURPOSE_PREFIX[purpose];
-  const safeExtension = extension.replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase();
-  // Two-level fan-out keeps directories small on every filesystem.
-  return `${prefix}/${id.slice(0, 2)}/${id}${safeExtension ? `.${safeExtension}` : ''}`;
-}
 
 export async function putObject(input: {
   purpose: StoragePurpose;
