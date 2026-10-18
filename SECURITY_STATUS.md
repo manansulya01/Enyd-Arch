@@ -18,6 +18,9 @@ This file records implementation facts, not promises. A route or interface is no
 - A robots route and `X-Robots-Tag` ask search engines not to index the site. These are not access controls.
 - CI runs TypeScript checking, security regression tests, and a production build.
 - Blocking is now checked in direct-message creation/sending and in feed, post-detail, archive, gallery, game, event, project, comment, and stored-media visibility paths. These code-level guards still need adversarial integration tests.
+- Unonboarded accounts now receive read-only capabilities even if an elevated role was assigned early.
+- Direct and group conversation creation share a recipient-policy decision; group invitations cannot bypass a recipient's `nobody` or `connections only` setting.
+- Arcade detail lookup is slug-scoped instead of scanning only the top 60 games, and listings/object retrieval exclude games owned by inactive or removed accounts.
 
 ## Not yet complete — do not claim otherwise
 
