@@ -13,23 +13,29 @@ import {
   games,
   galleryPosts,
   galleryAttachments,
+  messages,
   posts,
   postAttachments,
   profiles,
   projectMembers,
   projects,
   storageObjects,
-  users,
   userSettings,
-  messages,
+  users,
 } from '~db/schema';
 import { currentActor } from '~/server/auth/session';
 import { readObject } from '~/server/storage/driver';
 
+const noBlockBetween = (owner: unknown, viewerId: string) => sql`not exists (
+  select 1 from ${blocks} b
+  where (b.blocker_id = ${viewerId} and b.blocked_id = ${owner as never})
+     or (b.blocker_id = ${owner as never} and b.blocked_id = ${viewerId})
+)`;
+
 /**
- * Stored object bytes are only served while a readable parent resource refers
- * to them. UUIDs are identifiers, never authorization. Unknown/orphaned objects
- * fail closed, and the parent visibility is checked on every request.
+ * Stored object bytes are served only while a live, readable parent references
+ * them. UUIDs are identifiers, never authorization. Removed/orphaned objects
+ * and content hidden by a member block fail closed.
  */
 export async function GET(
   _request: Request,
@@ -55,14 +61,8 @@ export async function GET(
           inArray(userSettings.profileVisibility, ['public', 'members']),
           eq(users.status, 'active'),
           isNull(users.removedAt),
+          noBlockBetween(profiles.userId, actor.userId),
         )),
-        // A block hides the member's profile and media in both directions.
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${profiles.userId})
-             or (b.blocker_id = ${profiles.userId} and b.blocked_id = ${actor.userId})
-        )`,
-
     ),
     exists(
       db.select({ one: archiveObjects.id })
@@ -71,13 +71,8 @@ export async function GET(
           eq(archiveObjects.previewObjectId, id),
           inArray(archiveObjects.visibility, ['public', 'members']),
           isNull(archiveObjects.removedAt),
+          noBlockBetween(archiveObjects.contributorId, actor.userId),
         )),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
-             or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
-        )`,
-
     ),
     exists(
       db.select({ one: collections.id })
@@ -85,13 +80,8 @@ export async function GET(
         .where(and(
           eq(collections.coverObjectId, id),
           inArray(collections.visibility, ['public', 'members']),
+          noBlockBetween(collections.curatorId, actor.userId),
         )),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${collections.curatorId})
-             or (b.blocker_id = ${collections.curatorId} and b.blocked_id = ${actor.userId})
-        )`,
-
     ),
     exists(
       db.select({ one: projects.id })
@@ -100,12 +90,7 @@ export async function GET(
           eq(projects.coverObjectId, id),
           isNull(projects.removedAt),
           eq(projects.status, 'active'),
-          sql`not exists (
-            select 1 from ${blocks} b
-            where (b.blocker_id = ${actor.userId} and b.blocked_id = ${projects.ownerId})
-               or (b.blocker_id = ${projects.ownerId} and b.blocked_id = ${actor.userId})
-          )`,
-
+          noBlockBetween(projects.ownerId, actor.userId),
           or(
             inArray(projects.visibility, ['public', 'members']),
             eq(projects.ownerId, actor.userId),
@@ -124,6 +109,7 @@ export async function GET(
           eq(conversations.avatarObjectId, id),
           isNull(conversations.removedAt),
           eq(conversationMembers.userId, actor.userId),
+          isNull(conversationMembers.removedAt),
           sql`not exists (
             select 1 from ${conversationMembers} cm
             inner join ${blocks} b on
@@ -133,8 +119,6 @@ export async function GET(
               and cm.user_id <> ${actor.userId}
               and cm.removed_at is null
           )`,
-
-          isNull(conversationMembers.removedAt),
         )),
     ),
     exists(
@@ -144,12 +128,7 @@ export async function GET(
           or(eq(games.packageObjectId, id), eq(games.thumbnailObjectId, id)),
           eq(games.status, 'approved'),
           isNull(games.removedAt),
-          sql`not exists (
-            select 1 from ${blocks} b
-            where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
-               or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
-          )`,
-
+          noBlockBetween(games.creatorId, actor.userId),
         )),
     ),
     exists(
@@ -160,13 +139,8 @@ export async function GET(
           eq(galleryPosts.status, 'published'),
           inArray(galleryPosts.visibility, ['public', 'members']),
           isNull(galleryPosts.removedAt),
+          noBlockBetween(galleryPosts.authorId, actor.userId),
         )),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
-             or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
-        )`,
-
     ),
     exists(
       db.select({ one: events.id })
@@ -176,21 +150,16 @@ export async function GET(
           inArray(events.visibility, ['public', 'members']),
           isNull(events.removedAt),
           isNull(events.cancelledAt),
+          noBlockBetween(events.hostId, actor.userId),
         )),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${events.hostId})
-             or (b.blocker_id = ${events.hostId} and b.blocked_id = ${actor.userId})
-        )`,
-
     ),
     exists(
       db.select({ one: films.id })
         .from(films)
         .where(eq(films.coverObjectId, id)),
     ),
-    // File content is available to its uploader, when explicitly public, or
-    // through a currently visible post/gallery/archive/conversation attachment.
+    // File bytes/previews are available to their uploader, explicitly public
+    // files, or through live readable parent content.
     exists(
       db.select({ one: files.id })
         .from(files)
@@ -214,13 +183,8 @@ export async function GET(
                   eq(posts.status, 'published'),
                   inArray(posts.visibility, ['public', 'members']),
                   isNull(posts.removedAt),
+                  noBlockBetween(posts.authorId, actor.userId),
                 )),
-                sql`not exists (
-                  select 1 from ${blocks} b
-                  where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
-                     or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
-                )`,
-
             ),
             exists(
               db.select({ one: galleryPosts.id })
@@ -231,13 +195,8 @@ export async function GET(
                   eq(galleryPosts.status, 'published'),
                   inArray(galleryPosts.visibility, ['public', 'members']),
                   isNull(galleryPosts.removedAt),
+                  noBlockBetween(galleryPosts.authorId, actor.userId),
                 )),
-                sql`not exists (
-                  select 1 from ${blocks} b
-                  where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
-                     or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
-                )`,
-
             ),
             exists(
               db.select({ one: archiveObjects.id })
@@ -246,13 +205,8 @@ export async function GET(
                   eq(archiveObjects.fileId, files.id),
                   inArray(archiveObjects.visibility, ['public', 'members']),
                   isNull(archiveObjects.removedAt),
+                  noBlockBetween(archiveObjects.contributorId, actor.userId),
                 )),
-                sql`not exists (
-                  select 1 from ${blocks} b
-                  where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
-                     or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
-                )`,
-
             ),
             exists(
               db.select({ one: messages.id })
@@ -265,17 +219,16 @@ export async function GET(
                   isNull(conversationMembers.removedAt),
                   isNull(conversations.removedAt),
                   isNull(messages.removedAt),
+                  sql`not exists (
+                    select 1 from ${conversationMembers} cm
+                    inner join ${blocks} b on
+                      (b.blocker_id = ${actor.userId} and b.blocked_id = cm.user_id)
+                      or (b.blocker_id = cm.user_id and b.blocked_id = ${actor.userId})
+                    where cm.conversation_id = ${conversations.id}
+                      and cm.user_id <> ${actor.userId}
+                      and cm.removed_at is null
+                  )`,
                 )),
-                sql`not exists (
-                  select 1 from ${conversationMembers} cm
-                  inner join ${blocks} b on
-                    (b.blocker_id = ${actor.userId} and b.blocked_id = cm.user_id)
-                    or (b.blocker_id = cm.user_id and b.blocked_id = ${actor.userId})
-                  where cm.conversation_id = ${conversations.id}
-                    and cm.user_id <> ${actor.userId}
-                    and cm.removed_at is null
-                )`,
-
             ),
           ),
         )),
