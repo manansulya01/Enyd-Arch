@@ -2,15 +2,21 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 function trustedGameOrigin(): string {
-  const configured = process.env.ARCH_GAME_ORIGIN ?? 'http://localhost:3101';
+  const configured = process.env.ARCH_GAME_ORIGIN;
+  const developmentFallback = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3101';
+  if (!configured) return developmentFallback;
+
   try {
     const parsed = new URL(configured);
+    if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
+      return '';
+    }
     if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
-      return 'http://localhost:3101';
+      return developmentFallback;
     }
     return parsed.origin;
   } catch {
-    return 'http://localhost:3101';
+    return developmentFallback;
   }
 }
 
