@@ -14,6 +14,7 @@ This file records implementation facts, not promises. A route or interface is no
 - Anonymous forms use short-lived signed CSRF tokens; same-origin checks remain in place.
 - The middleware creates a per-response CSP nonce and removes the script `unsafe-inline` exception. Style inline allowances remain for application compatibility.
 - Referrer policy is set to `no-referrer`; private responses and object/file downloads are marked `private, no-store`.
+- New stored objects use AES-256-GCM authenticated encryption at rest. Legacy plaintext objects are checksum-verified and lazily re-encrypted when read. Production requires a separately managed `STORAGE_ENCRYPTION_KEY`; losing or rotating it without a re-encryption plan makes encrypted files unreadable.
 - A privacy notice explains the limits of anonymity, message confidentiality, and deployment-level logging.
 - A robots route and `X-Robots-Tag` ask search engines not to index the site. These are not access controls.
 - CI runs TypeScript checking, security regression tests, and a production build.
@@ -37,10 +38,11 @@ This file records implementation facts, not promises. A route or interface is no
 ## Before launch
 
 1. Apply and inspect the database schema change on a backed-up staging database.
-2. Create a fresh owner account and verify that no default password or predictable invite can enter production.
-3. Exercise invite expiry, revocation, exhaustion, and simultaneous final-use redemption.
-4. Test passkey enrollment and sign-in on supported browsers; verify a different browser profile is refused unless the approved transfer flow is used.
-5. Review authorization for every page, server action, API route, and object/file download. Include block/unblock races, existing direct threads, group membership, repost previews, and every media parent type.
-6. Configure a real malware scanner and verify scanner outages fail closed; confirm quarantine objects cannot be downloaded or previewed.
-7. Verify HTTPS, secrets management, backup restoration, log access/retention, monitoring, and incident response.
-8. Keep E2EE, anonymity, and hardware-bound identity claims out of user-facing copy until independently verified.
+2. Store `STORAGE_ENCRYPTION_KEY` in a secrets manager, back it up under a separate access policy, and test restoring encrypted objects before launch.
+3. Create a fresh owner account and verify that no default password or predictable invite can enter production.
+4. Exercise invite expiry, revocation, exhaustion, and simultaneous final-use redemption.
+5. Test passkey enrollment and sign-in on supported browsers; verify a different browser profile is refused unless the approved transfer flow is used.
+6. Review authorization for every page, server action, API route, and object/file download. Include block/unblock races, existing direct threads, group membership, repost previews, and every media parent type.
+7. Configure a real malware scanner and verify scanner outages fail closed; confirm quarantine objects cannot be downloaded or previewed.
+8. Verify HTTPS, secrets management, backup restoration, log access/retention, monitoring, and incident response.
+9. Keep E2EE, anonymity, and hardware-bound identity claims out of user-facing copy until independently verified.
