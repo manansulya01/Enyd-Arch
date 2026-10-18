@@ -9,14 +9,14 @@ after(async () => {
 test('CI PostgreSQL schema contains the security-critical tables', async () => {
   const rows = await client`
     select
-      to_regclass('public.users')::text as users_table,
-      to_regclass('public.sessions')::text as sessions_table,
-      to_regclass('public.blocks')::text as blocks_table,
-      to_regclass('public.conversations')::text as conversations_table,
-      to_regclass('public.conversation_members')::text as members_table,
-      to_regclass('public.storage_objects')::text as objects_table,
-      to_regclass('public.files')::text as files_table,
-      to_regclass('public.rate_limits')::text as rate_limits_table
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'users') as users_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'sessions') as sessions_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'blocks') as blocks_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'conversations') as conversations_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'conversation_members') as members_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'storage_objects') as objects_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'files') as files_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'rate_limits') as rate_limits_table
   `;
   const schema = rows[0];
   assert.ok(schema);
@@ -30,6 +30,6 @@ test('CI PostgreSQL schema contains the security-critical tables', async () => {
     'files_table',
     'rate_limits_table',
   ] as const) {
-    assert.equal(typeof schema[name], 'string', `missing expected table: ${name}`);
+    assert.equal(schema[name], true, `missing expected table: ${name}`);
   }
 });
