@@ -1267,6 +1267,7 @@ export async function arcadeGames(options: {
   limit?: number;
   includeUnapproved?: boolean;
   creatorId?: string | null;
+  slug?: string | null;
 }): Promise<GameView[]> {
   const limit = Math.min(options.limit ?? 24, 60);
 
@@ -1306,6 +1307,8 @@ export async function arcadeGames(options: {
     .where(
       and(
         isNull(gameTable.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
         options.viewerId ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
@@ -1314,6 +1317,7 @@ export async function arcadeGames(options: {
         options.includeUnapproved ? sql`true` : eq(gameTable.status, 'approved'),
         options.genre ? eq(gameTable.genre, options.genre) : sql`true`,
         options.creatorId ? eq(gameTable.creatorId, options.creatorId) : sql`true`,
+        options.slug ? eq(gameTable.slug, options.slug) : sql`true`,
         options.query
           ? sql`(${gameTable.title} ilike ${`%${options.query}%`}
                    or ${gameTable.tagline} ilike ${`%${options.query}%`})`
@@ -1370,25 +1374,12 @@ export async function arcadeGames(options: {
 }
 
 export async function gameBySlug(slug: string, viewerId: string | null): Promise<GameView | null> {
-  const [row] = await db
-    .select({ id: gameTable.id })
-    .from(gameTable)
-    .where(
-      and(
-        eq(gameTable.slug, slug),
-        isNull(gameTable.removedAt),
-        or(eq(gameTable.status, 'approved'), sql`true`),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-
-  const batch = await arcadeGames({
+  const [game] = await arcadeGames({
     viewerId,
     includeUnapproved: true,
-    limit: 60,
+    limit: 1,
+    slug,
   });
-  const game = batch.find((entry) => entry.id === row.id);
   if (!game) return null;
 
   // Unapproved games are only visible to their creator.
