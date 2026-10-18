@@ -417,13 +417,16 @@ export async function completeEnrollmentAction(
       displayName: users.displayName,
       memberId: users.memberId,
       status: users.status,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${username})`)
     .limit(1);
 
   const account = rows[0];
-  if (!account) return fail('That account no longer exists.');
+  if (!account || account.status !== 'pending_verification' || account.removedAt) {
+    return fail('That account is not eligible for device enrolment.');
+  }
 
   const { finishRegistration } = await import('~/server/auth/webauthn');
   const result = await finishRegistration({
@@ -504,6 +507,7 @@ export async function signInAction(
       status: users.status,
       onboardedAt: users.onboardedAt,
       suspensionReason: users.suspensionReason,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${parsed.data.identifier})`)
@@ -513,7 +517,7 @@ export async function signInAction(
 
   // Constant work whether or not the account exists.
   const verified = await verifyPassword(account?.passwordHash ?? null, parsed.data.password);
-  if (!account || !verified) {
+  if (!account || account.removedAt || !verified) {
     if (account) {
       await writeAudit(
         { id: account.id, label: `ARCH-${account.memberId}`, ip: traits.ip },
@@ -666,6 +670,7 @@ export async function signInWithPasskey(input: {
       userId: deviceCredentials.userId,
       credentialStatus: deviceCredentials.status,
       userStatus: users.status,
+      removedAt: users.removedAt,
       memberId: users.memberId,
       username: users.username,
       onboardedAt: users.onboardedAt,
@@ -680,7 +685,7 @@ export async function signInWithPasskey(input: {
     .limit(1);
 
   const account = rows[0];
-  if (!account || account.userStatus !== 'active') {
+  if (!account || account.userStatus !== 'active' || account.removedAt) {
     return fail('That passkey could not sign in to an active identity.');
   }
 
