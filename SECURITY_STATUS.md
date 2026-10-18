@@ -22,7 +22,7 @@ This file records implementation facts, not promises. A route or interface is no
 - Unonboarded accounts now receive read-only capabilities even if an elevated role was assigned early.
 - Direct and group conversation creation share a recipient-policy decision; group invitations cannot bypass a recipient's `nobody` or `connections only` setting.
 - Arcade detail lookup is slug-scoped instead of scanning only the top 60 games, and listings/object retrieval exclude games owned by inactive or removed accounts.
-- The production dependency audit identified vulnerable PostCSS versions in the Next.js dependency tree; the lockfile now resolves PostCSS to patched 8.5.23. The latest CI run must confirm the audit stays clean.
+- The production dependency audit identified vulnerable PostCSS versions in the Next.js dependency tree; the lockfile now resolves PostCSS to patched 8.5.23. CI run 260 passed the production dependency audit; rerun it after any dependency change.
 
 ## Not yet complete — do not claim otherwise
 
