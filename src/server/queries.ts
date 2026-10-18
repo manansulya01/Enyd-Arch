@@ -605,7 +605,7 @@ export async function networkBySlug(slug: string, viewerId: string): Promise<Net
         eq(postTable.id, slug),
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
         eq(users.status, 'active'),
         sql`not exists (
           select 1 from ${blocks} b
@@ -867,7 +867,7 @@ export async function commentsByUser(userId: string, viewerId: string, limit = 4
         isNull(commentTable.removedAt),
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['public', 'members']),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${viewerId} and b.blocked_id = ${commentTable.authorId})
