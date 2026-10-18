@@ -19,6 +19,7 @@ import {
   projects,
   storageObjects,
   users,
+  userSettings,
   messages,
 } from '~db/schema';
 import { currentActor } from '~/server/auth/session';
@@ -46,9 +47,11 @@ export async function GET(
       db.select({ one: profiles.userId })
         .from(profiles)
         .innerJoin(users, eq(users.id, profiles.userId))
+        .innerJoin(userSettings, eq(userSettings.userId, profiles.userId))
         .where(and(
           or(eq(profiles.avatarObjectId, id), eq(profiles.bannerObjectId, id)),
           inArray(profiles.profileVisibility, ['public', 'members']),
+          inArray(userSettings.profileVisibility, ['public', 'members']),
           eq(users.status, 'active'),
           isNull(users.removedAt),
         )),
