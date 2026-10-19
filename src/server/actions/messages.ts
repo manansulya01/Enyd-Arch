@@ -25,8 +25,8 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { mayInitiateMessage } from '~/server/auth/messaging-policy';
 import { acquire } from '~/server/auth/rate-limit';
-
-import { verifyCsrf } from '~/server/csrf';
+import { normalizeGroupMembers } from '~/server/auth/group-policy';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 /** Blocks are symmetric for contact purposes: either member can close the path. */
 async function pairIsBlocked(a: string, b: string): Promise<boolean> {
@@ -138,7 +138,9 @@ export async function startDirectConversation(
 export async function createGroupConversation(input: {
   title: string;
   memberUserIds: string[];
+  csrf: string;
 }): Promise<ActionResult<{ conversationId: string }>> {
+  await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
@@ -149,8 +151,9 @@ export async function createGroupConversation(input: {
   const title = input.title.trim().slice(0, 120);
   if (title.length < 2) return fail('Give the group a name.');
 
-  const memberIds = [...new Set(input.memberUserIds)].filter((id) => id !== actor.userId).slice(0, 11);
-  if (memberIds.length === 0) return fail('Add at least one other member.');
+  const selection = normalizeGroupMembers(actor.userId, input.memberUserIds);
+  if (!selection.ok) return fail(selection.reason);
+  const memberIds = selection.memberIds;
 
   const found = await db
     .select({ id: users.id })
