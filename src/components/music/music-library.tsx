@@ -31,7 +31,7 @@ export function MusicLibrary({ tracks }: { tracks: MusicTrack[] }) {
     if (!tracks.length) return;
     const currentIndex = Math.max(0, tracks.findIndex((track) => track.id === currentId));
     const nextIndex = shuffle
-      ? Math.floor(Math.random() * tracks.length)
+      ? (tracks.length > 1 ? (currentIndex + 1 + Math.floor(Math.random() * (tracks.length - 1))) % tracks.length : currentIndex)
       : (currentIndex + step + tracks.length) % tracks.length;
     setCurrentId(tracks[nextIndex]!.id);
     window.setTimeout(() => void audio.current?.play().catch(() => undefined), 0);
