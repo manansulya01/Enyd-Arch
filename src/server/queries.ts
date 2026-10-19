@@ -1980,7 +1980,7 @@ export async function conversationMessages(
     .innerJoin(users, eq(users.id, messageTable.senderId))
     .leftJoin(files, eq(files.id, messageTable.attachmentFileId))
     .where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))
-    .orderBy(asc(messageTable.createdAt))
+    .orderBy(desc(messageTable.createdAt))
     .limit(300);
 
   const senderMap = await membersByIds(rows.map((row) => row.senderId), viewerId);
@@ -1995,7 +1995,8 @@ export async function conversationMessages(
       ),
     );
 
-  return rows.map((row) => ({
+  // Fetch the newest page first, then render it chronologically.
+  return [...rows].reverse().map((row) => ({
     id: row.id,
     body: row.removedAt ? '' : row.body,
     createdAt: row.createdAt,
