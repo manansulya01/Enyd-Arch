@@ -25,11 +25,11 @@ const sections = [
   },
   {
     title: 'Technical data and abuse prevention',
-    body: 'The application uses rate limits, security audit events, and pseudonymous identifiers to help protect accounts and investigate abuse. Depending on deployment configuration, infrastructure providers may also process connection metadata and retain operational logs. Do not assume that network addresses are hidden from every operator or provider.',
+    body: 'The application uses rate limits, security audit events, and keyed pseudonymous identifiers to help protect accounts and investigate abuse. Authentication/device records now retain a coarse browser and platform label rather than the full user-agent string, reducing passive browser fingerprint detail. Audit records store a keyed pseudonym of the network address rather than the raw address. Rate limiting may still process the address transiently, and hosting, proxy, database, and security providers may independently process connection metadata or retain operational logs. Do not assume that network addresses are hidden from every operator or provider.',
   },
   {
     title: 'Your choices and retention',
-    body: 'Use account settings and available reporting controls to manage preferences or report a safety issue. Some records may be retained for security, moderation, legal compliance, or integrity reasons. Retention and deletion behavior depends on the current implementation and deployment; do not assume every deletion is immediate or irreversible.',
+    body: 'Use account settings and available reporting controls to manage preferences or report a safety issue. Some records may be retained for security, moderation, legal compliance, or integrity reasons. A complete self-service data export and verified account-erasure workflow are not yet guaranteed across every data type. Retention and deletion behavior depends on the current implementation and deployment; do not assume every deletion is immediate or irreversible. Before launch, operators must define retention periods for authentication events, audit logs, reports, backups, quarantined uploads, and deleted-account records.',
   },
 ];
 
