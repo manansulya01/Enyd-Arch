@@ -68,7 +68,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 ### Spotify-like music experience
 - [x] Private music library for clean audio files a member has uploaded and owns.
 - [x] Search by filename, browser audio playback, next/previous, shuffle and repeat controls.
-- [x] Private playlists with creation, adding tracks, and removing tracks; playlist data is persisted in PostgreSQL and playlist membership is checked server-side.
+- [x] Private playlists with creation, adding/removing tracks, persisted PostgreSQL membership, and server-side ownership checks.
+- [x] Select a saved playlist for playback, search within it, and use next/previous/shuffle/repeat against its available tracks.
 - [ ] Track metadata beyond filenames, cover art, artist/album pages, genres, persistent playback across navigation and a durable playback queue.
 - [ ] Public/collaborative playlists, reorder tracks, share links and explicit audience controls.
 - [ ] Favorites/liked songs, library, listening history controls, recently played and personal mixes.
