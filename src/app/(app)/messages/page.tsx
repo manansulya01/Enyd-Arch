@@ -4,7 +4,10 @@ import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState, Tabs } from '~/components/ui';
 import { ConversationList } from '~/components/messages/conversation-list';
 import { MessageComposer } from '~/components/messages/message-composer';
-import { conversationList, conversationMessages } from '~/server/queries';
+import { GroupConversationComposer } from '~/components/messages/group-conversation-composer';
+import { ConversationPoller } from '~/components/messages/conversation-poller';
+import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
+import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
 import { CsrfField } from '~/components/shell/csrf-field';
 
@@ -16,9 +19,17 @@ export default async function MessagesPage({
   searchParams: Promise<{ c?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const { c } = await searchParams;
-
-  const conversations = await conversationList(actor.userId);
+  const [{ c }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+    searchParams,
+    conversationList(actor.userId),
+    matchesFor(actor.userId, 'accepted'),
+    sessionCsrfToken(),
+  ]);
+  const contacts = [...new Map(acceptedConnections.map((match) => [match.partner.userId, {
+    userId: match.partner.userId,
+    username: match.partner.username,
+    displayName: match.partner.displayName,
+  }])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   const active = c ? conversations.find((conversation) => conversation.id === c) : undefined;
   const messages = active ? await conversationMessages(active.id, actor.userId) : null;
 
@@ -39,6 +50,9 @@ export default async function MessagesPage({
             ) : (
               <ConversationList conversations={conversations} activeId={active?.id ?? null} />
             )}
+            <div className="card-pad">
+              <GroupConversationComposer contacts={contacts} csrfToken={csrfToken} />
+            </div>
           </div>
         </section>
 
@@ -63,6 +77,7 @@ export default async function MessagesPage({
               />
             ) : (
               <>
+                <ConversationPoller conversationId={active.id} />
                 <div className="thread-scroll">
                   {messages.length === 0 ? (
                     <p className="t-small t-subtle card-pad">
