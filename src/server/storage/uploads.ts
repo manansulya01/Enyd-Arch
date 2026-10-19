@@ -338,7 +338,7 @@ export async function recentFilesForUser(userId: string, limit = 30) {
   return db
     .select()
     .from(files)
-    .where(and(eq(files.uploaderId, userId), eq(files.state, 'clean')))
+    .where(and(eq(files.uploaderId, userId), eq(files.state, 'clean'), isNull(files.removedAt)))
     .orderBy(desc(files.createdAt))
     .limit(limit);
 }
