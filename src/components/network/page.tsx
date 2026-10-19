@@ -20,9 +20,9 @@ export default async function NetworkPage({
 }) {
   const { actor } = await requireOnboarded();
   const params = await searchParams;
-  const sort = params.sort === 'recent' || params.sort === 'discussed' ? params.sort : 'active';
-  const tag = params.tag ?? null;
   const followingOnly = params.following === '1';
+  const sort = params.sort === 'recent' || params.sort === 'discussed' ? params.sort : followingOnly ? 'recent' : 'active';
+  const tag = params.tag ?? null;
 
   const [posts, tags, csrfToken, followRows] = await Promise.all([
     networkFeed({ viewerId: actor.userId, sort, topic: tag, followingOnly, limit: 25 }),
