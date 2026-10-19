@@ -66,9 +66,11 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] Export, delete, and retention behavior for user-generated content and mod actions.
 
 ### Spotify-like music experience
-- [ ] Music library for tracks the member owns or has permission to share.
-- [ ] Track metadata, cover art, artist/album pages, genres, search, queue, repeat/shuffle and persistent playback controls.
-- [ ] Private/public playlists, reorder/remove tracks, collaborative playlists with explicit permissions and share links.
+- [x] Private music library for clean audio files a member has uploaded and owns.
+- [x] Search by filename, browser audio playback, next/previous, shuffle and repeat controls.
+- [x] Private playlists with creation, adding tracks, and removing tracks; playlist data is persisted in PostgreSQL and playlist membership is checked server-side.
+- [ ] Track metadata beyond filenames, cover art, artist/album pages, genres, persistent playback across navigation and a durable playback queue.
+- [ ] Public/collaborative playlists, reorder tracks, share links and explicit audience controls.
 - [ ] Favorites/liked songs, library, listening history controls, recently played and personal mixes.
 - [ ] Audio normalization, range-capable streaming, background playback, metadata/cover extraction and mobile playback behavior.
 - [ ] Artist upload rights declaration, copyright reporting, takedown and repeat-infringer process.
