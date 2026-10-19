@@ -1,10 +1,10 @@
 'use server';
 
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { blocks, communityMembers, communityPosts, communities, users } from '~db/schema';
+import { communityMembers, communityPosts, communities, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
