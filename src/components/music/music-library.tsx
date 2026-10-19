@@ -62,18 +62,22 @@ export function MusicLibrary({
 
   async function toggleLike(track: MusicTrack) {
     setLikeMessage('');
-    const result = await toggleMusicLike({ fileId: track.id, csrf: csrfToken });
-    if (!result.ok || !result.data) {
-      setLikeMessage(result.message ?? 'Could not update liked songs.');
-      return;
+    try {
+      const result = await toggleMusicLike({ fileId: track.id, csrf: csrfToken });
+      if (!result.ok || !result.data) {
+        setLikeMessage(result.message ?? 'Could not update liked songs.');
+        return;
+      }
+      setLikedIds((current) => {
+        const next = new Set(current);
+        if (result.data!.liked) next.add(track.id);
+        else next.delete(track.id);
+        return next;
+      });
+      router.refresh();
+    } catch {
+      setLikeMessage('Could not update liked songs. Please try again.');
     }
-    setLikedIds((current) => {
-      const next = new Set(current);
-      if (result.data!.liked) next.add(track.id);
-      else next.delete(track.id);
-      return next;
-    });
-    router.refresh();
   }
 
   function choose(track: MusicTrack) {
@@ -103,7 +107,7 @@ export function MusicLibrary({
           </select>
         </label>
         <label className="field">
-          <span className="field-label">Search {selectedPlaylistId === 'library' ? 'your audio' : 'this playlist'}</span>
+          <span className="field-label">Search {selectedPlaylistId === 'library' ? 'your audio' : selectedPlaylistId === 'liked' ? 'liked songs' : 'this playlist'}</span>
           <input className="input input-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search file names…" />
         </label>
       </div>
@@ -139,7 +143,7 @@ export function MusicLibrary({
             {likeMessage && <p className="t-small" role="status">{likeMessage}</p>}
           </section>
           <section className="panel" aria-label="Your tracks">
-            <div className="panel-head"><span className="t-label">{selectedPlaylistId === 'library' ? 'Your tracks' : 'Playlist tracks'}</span><span className="t-meta">{visible.length} shown</span></div>
+            <div className="panel-head"><span className="t-label">{selectedPlaylistId === 'library' ? 'Your tracks' : selectedPlaylistId === 'liked' ? 'Liked songs' : 'Playlist tracks'}</span><span className="t-meta">{visible.length} shown</span></div>
             {visible.length === 0 ? <p className="panel-body t-small t-muted">{playbackTracks.length ? 'No tracks match your search.' : 'This playlist has no available tracks yet.'}</p> : (
               <ol className="list-plain">
                 {visible.map((track, index) => (

@@ -19,7 +19,8 @@ test('CI PostgreSQL schema contains the security-critical and music tables', asy
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'rate_limits') as rate_limits_table,
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'music_playlists') as music_playlists_table,
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'music_playlist_tracks') as music_playlist_tracks_table,
-      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'user_follows') as user_follows_table
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'user_follows') as user_follows_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'music_liked_tracks') as music_liked_tracks_table
   `;
   const schema = rows[0];
   assert.ok(schema);
@@ -35,6 +36,7 @@ test('CI PostgreSQL schema contains the security-critical and music tables', asy
     'music_playlists_table',
     'music_playlist_tracks_table',
     'user_follows_table',
+    'music_liked_tracks_table',
   ] as const) {
     assert.equal(schema[name], true, `missing expected table: ${name}`);
   }
