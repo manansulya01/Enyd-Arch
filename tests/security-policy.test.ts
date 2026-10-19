@@ -105,3 +105,17 @@ test('client IP resolution trusts only configured proxy hops', () => {
   assert.equal(resolveClientIp('not-an-ip, 10.0.0.2', 1), 'local');
   assert.equal(resolveClientIp('10.0.0.2', 1), 'local');
 });
+
+test('connection restrictions remove only the matching connection mode', () => {
+  const capabilities = deriveCapabilities({
+    status: 'active',
+    level: 'member',
+    isMinor: false,
+    onboarded: true,
+    restricted: ['connect_friendship', 'connections_dating'],
+  });
+  assert.ok(!capabilities.includes('connect_friendship'));
+  assert.ok(!capabilities.includes('connections_dating'));
+  assert.ok(capabilities.includes('connect_collaboration'));
+  assert.ok(capabilities.includes('connections'));
+});
