@@ -383,7 +383,7 @@ export async function beginEnrollmentAction(
       username: account.username,
       displayName: account.displayName,
       deviceFingerprint: traits.fingerprint,
-      userAgent: traits.userAgent,
+      userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
     });
     return ok({ options: begun.options });
   }
@@ -456,7 +456,7 @@ export async function completeEnrollmentAction(
     deviceId: result.deviceId,
     fingerprint: traits.fingerprint,
     ipHash: traits.ipHash,
-    userAgent: traits.userAgent,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
   });
 
   await writeAudit(
@@ -628,7 +628,7 @@ export async function signInAction(
     deviceId: thisDevice?.id ?? null,
     fingerprint: traits.fingerprint,
     ipHash: ipPseudonym(traits.ip),
-    userAgent: traits.userAgent,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
   });
 
   await db
@@ -723,7 +723,7 @@ export async function signInWithPasskey(input: {
     deviceId: verified.deviceId,
     fingerprint: traits.fingerprint,
     ipHash: traits.ipHash,
-    userAgent: traits.userAgent,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
   });
   await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, account.userId));
   await writeAudit(
