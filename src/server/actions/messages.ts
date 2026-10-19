@@ -77,7 +77,9 @@ async function canStartDirectMessage(senderId: string, recipientId: string): Pro
 
 export async function startDirectConversation(
   otherUserId: string,
+  csrf: string,
 ): Promise<ActionResult<{ conversationId: string }>> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
