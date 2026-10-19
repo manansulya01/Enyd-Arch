@@ -36,19 +36,31 @@ export default async function MusicPage() {
     playlistId: musicPlaylistTracks.playlistId,
     id: files.id,
     title: files.displayName,
+    mime: files.detectedMime,
+    bytes: files.byteSize,
+    createdAt: files.createdAt,
   })
     .from(musicPlaylistTracks)
     .innerJoin(files, eq(files.id, musicPlaylistTracks.fileId))
     .where(and(
       inArray(musicPlaylistTracks.playlistId, playlistRows.map((playlist) => playlist.id)),
       eq(files.state, 'clean'),
+      eq(files.uploaderId, actor.userId),
       isNull(files.removedAt),
       like(files.detectedMime, 'audio/%'),
     ))
     .orderBy(asc(musicPlaylistTracks.position));
   const playlists = playlistRows.map((playlist) => ({
     ...playlist,
-    tracks: allPlaylistTrackRows.filter((track) => track.playlistId === playlist.id),
+    tracks: allPlaylistTrackRows
+      .filter((track) => track.playlistId === playlist.id)
+      .map((track) => ({
+        id: track.id,
+        title: track.title,
+        mime: track.mime ?? 'audio/unknown',
+        bytes: track.bytes,
+        createdAt: track.createdAt.toISOString(),
+      })),
   }));
 
   return (
@@ -59,7 +71,7 @@ export default async function MusicPage() {
       actions={<Link className="btn btn-secondary btn-sm" href="/exchange">Upload audio</Link>}
     >
       <div className="stack stack-4">
-        <MusicLibrary tracks={tracks} />
+        <MusicLibrary tracks={tracks} playlists={playlists} />
         <MusicPlaylistManager tracks={tracks} playlists={playlists} csrfToken={csrfToken} />
       </div>
       <p className="t-meta" style={{ marginTop: 'var(--sp-4)' }}>
