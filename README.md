@@ -46,4 +46,4 @@ Before a real launch, verify on a backed-up staging environment:
 8. Run dependency/security review and adversarial tests; do not treat CI success as a security certification.
 9. Change repository visibility to private before storing private planning, deployment configuration, or sensitive issue details here.
 
-See [SECURITY_STATUS.md](./SECURITY_STATUS.md) for known limitations and release blockers.
+See [SECURITY_STATUS.md](./SECURITY_STATUS.md) for known limitations and release blockers, and [PRIVACY_ARCHITECTURE.md](./PRIVACY_ARCHITECTURE.md) for the privacy threat model and required release gates.
