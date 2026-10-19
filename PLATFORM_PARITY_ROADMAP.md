@@ -75,7 +75,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] Track metadata beyond filenames, cover art, artist/album pages, genres, persistent playback across navigation and a durable playback queue.
 - [x] Private playlist track reordering with ownership checks, transaction locking, and unique-position-safe swaps.
 - [ ] Public/collaborative playlists, share links and explicit audience controls.
-- [ ] Favorites/liked songs, library, listening history controls, recently played and personal mixes.
+- [x] Private liked-songs collection with server-validated toggles and a dedicated playback filter.
+- [ ] Listening history controls, recently played and personal mixes.
 - [ ] Audio normalization, range-capable streaming, background playback, metadata/cover extraction and mobile playback behavior.
 - [ ] Artist upload rights declaration, copyright reporting, takedown and repeat-infringer process.
 - [ ] Recommendations only after transparent opt-in and privacy review.

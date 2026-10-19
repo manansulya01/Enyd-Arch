@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import { db } from '~db';
-import { files, musicPlaylistTracks, musicPlaylists } from '~db/schema';
+import { files, musicLikedTracks, musicPlaylistTracks, musicPlaylists } from '~db/schema';
 import { PageShell } from '~/components/ui/page-shell';
 import { MusicLibrary } from '~/components/music/music-library';
 import { MusicPlaylistManager } from '~/components/music/music-playlist-manager';
@@ -14,14 +14,16 @@ export const metadata: Metadata = { title: 'Music' };
 
 export default async function MusicPage() {
   const { actor } = await requireCapability('upload');
-  const [recent, playlistRows, csrfToken] = await Promise.all([
+  const [recent, playlistRows, likedRows, csrfToken] = await Promise.all([
     recentFilesForUser(actor.userId, 100),
     db.select({ id: musicPlaylists.id, name: musicPlaylists.name })
       .from(musicPlaylists)
       .where(eq(musicPlaylists.userId, actor.userId))
       .orderBy(desc(musicPlaylists.updatedAt)),
+    db.select({ fileId: musicLikedTracks.fileId }).from(musicLikedTracks).where(eq(musicLikedTracks.userId, actor.userId)),
     sessionCsrfToken(),
   ]);
+  const likedTrackIds = likedRows.map((row) => row.fileId);
   const tracks = recent
     .filter((file) => file.detectedMime?.startsWith('audio/') && !file.removedAt)
     .map((file) => ({
@@ -71,7 +73,7 @@ export default async function MusicPage() {
       actions={<Link className="btn btn-secondary btn-sm" href="/exchange">Upload audio</Link>}
     >
       <div className="stack stack-4">
-        <MusicLibrary tracks={tracks} playlists={playlists} />
+        <MusicLibrary tracks={tracks} playlists={playlists} likedTrackIds={likedTrackIds} csrfToken={csrfToken} />
         <MusicPlaylistManager tracks={tracks} playlists={playlists} csrfToken={csrfToken} />
       </div>
       <p className="t-meta" style={{ marginTop: 'var(--sp-4)' }}>

@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toggleMusicLike } from '~/server/actions/music';
 
 export type MusicTrack = {
   id: string;
@@ -19,11 +21,18 @@ export type MusicPlaylistOption = {
 export function MusicLibrary({
   tracks,
   playlists = [],
+  likedTrackIds = [],
+  csrfToken,
 }: {
   tracks: MusicTrack[];
   playlists?: MusicPlaylistOption[];
+  likedTrackIds?: string[];
+  csrfToken: string;
 }) {
   const audio = useRef<HTMLAudioElement>(null);
+  const router = useRouter();
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => new Set(likedTrackIds));
+  const [likeMessage, setLikeMessage] = useState('');
   const [query, setQuery] = useState('');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('library');
   const [currentId, setCurrentId] = useState<string | null>(tracks[0]?.id ?? null);
@@ -31,8 +40,9 @@ export function MusicLibrary({
   const [repeat, setRepeat] = useState(false);
   const playbackTracks = useMemo(() => {
     if (selectedPlaylistId === 'library') return tracks;
+    if (selectedPlaylistId === 'liked') return tracks.filter((track) => likedIds.has(track.id));
     return playlists.find((playlist) => playlist.id === selectedPlaylistId)?.tracks ?? [];
-  }, [tracks, playlists, selectedPlaylistId]);
+  }, [tracks, playlists, selectedPlaylistId, likedIds]);
   const visible = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
     return playbackTracks.filter((track) => !q || track.title.toLocaleLowerCase().includes(q));
@@ -43,9 +53,27 @@ export function MusicLibrary({
     setSelectedPlaylistId(playlistId);
     const nextTracks = playlistId === 'library'
       ? tracks
-      : playlists.find((playlist) => playlist.id === playlistId)?.tracks ?? [];
+      : playlistId === 'liked'
+        ? tracks.filter((track) => likedIds.has(track.id))
+        : playlists.find((playlist) => playlist.id === playlistId)?.tracks ?? [];
     setCurrentId(nextTracks[0]?.id ?? null);
     setQuery('');
+  }
+
+  async function toggleLike(track: MusicTrack) {
+    setLikeMessage('');
+    const result = await toggleMusicLike({ fileId: track.id, csrf: csrfToken });
+    if (!result.ok || !result.data) {
+      setLikeMessage(result.message ?? 'Could not update liked songs.');
+      return;
+    }
+    setLikedIds((current) => {
+      const next = new Set(current);
+      if (result.data!.liked) next.add(track.id);
+      else next.delete(track.id);
+      return next;
+    });
+    router.refresh();
   }
 
   function choose(track: MusicTrack) {
@@ -70,6 +98,7 @@ export function MusicLibrary({
           <span className="field-label">Play from</span>
           <select className="input" value={selectedPlaylistId} onChange={(event) => changePlaylist(event.target.value)}>
             <option value="library">All my audio</option>
+            <option value="liked">Liked songs</option>
             {playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.name}</option>)}
           </select>
         </label>
@@ -90,7 +119,7 @@ export function MusicLibrary({
             <div>
               <p className="t-meta">NOW SELECTED</p>
               <h2>{current?.title ?? 'Choose a track'}</h2>
-              <p className="t-small t-muted">{selectedPlaylistId === 'library' ? 'Personal audio library' : playlists.find((playlist) => playlist.id === selectedPlaylistId)?.name ?? 'Playlist'} · private to your account</p>
+              <p className="t-small t-muted">{selectedPlaylistId === 'library' ? 'Personal audio library' : selectedPlaylistId === 'liked' ? 'Liked songs' : playlists.find((playlist) => playlist.id === selectedPlaylistId)?.name ?? 'Playlist'} · private to your account</p>
             </div>
             <audio
               ref={audio}
@@ -101,11 +130,13 @@ export function MusicLibrary({
               style={{ width: '100%' }}
             />
             <div className="row row-wrap row-2">
+              {current && <button className={likedIds.has(current.id) ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} type="button" aria-pressed={likedIds.has(current.id)} onClick={() => void toggleLike(current)}>{likedIds.has(current.id) ? '♥ Liked' : '♡ Like track'}</button>}
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => move(-1)} disabled={!current}>Previous</button>
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => move(1)} disabled={!current}>Next</button>
               <button className={shuffle ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} type="button" aria-pressed={shuffle} onClick={() => setShuffle((value) => !value)}>Shuffle {shuffle ? 'on' : 'off'}</button>
               <button className={repeat ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} type="button" aria-pressed={repeat} onClick={() => setRepeat((value) => !value)}>Repeat {repeat ? 'on' : 'off'}</button>
             </div>
+            {likeMessage && <p className="t-small" role="status">{likeMessage}</p>}
           </section>
           <section className="panel" aria-label="Your tracks">
             <div className="panel-head"><span className="t-label">{selectedPlaylistId === 'library' ? 'Your tracks' : 'Playlist tracks'}</span><span className="t-meta">{visible.length} shown</span></div>
@@ -120,6 +151,7 @@ export function MusicLibrary({
                       <p className="t-small">{track.title}</p>
                       <p className="t-meta">{track.mime} · {formatBytes(track.bytes)} · Added {new Date(track.createdAt).toLocaleDateString()}</p>
                     </div>
+                    <button className={likedIds.has(track.id) ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} type="button" aria-label={likedIds.has(track.id) ? `Unlike ${track.title}` : `Like ${track.title}`} aria-pressed={likedIds.has(track.id)} onClick={() => void toggleLike(track)}>{likedIds.has(track.id) ? '♥' : '♡'}</button>
                   </li>
                 ))}
               </ol>

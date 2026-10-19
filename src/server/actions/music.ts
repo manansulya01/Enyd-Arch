@@ -4,7 +4,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { files, musicPlaylists, musicPlaylistTracks } from '~db/schema';
+import { files, musicLikedTracks, musicPlaylists, musicPlaylistTracks } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -16,6 +16,55 @@ async function authorizedPlaylist(playlistId: string, userId: string) {
     .where(and(eq(musicPlaylists.id, playlistId), eq(musicPlaylists.userId, userId)))
     .limit(1);
   return playlist ?? null;
+}
+
+
+export async function toggleMusicLike(input: {
+  fileId: string;
+  csrf: string;
+}): Promise<ActionResult<{ liked: boolean }>> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'upload')) return fail('Music is not available for this account.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your music library.');
+
+  const [file] = await db.select({ id: files.id, detectedMime: files.detectedMime })
+    .from(files)
+    .where(and(
+      eq(files.id, input.fileId),
+      eq(files.uploaderId, actor.userId),
+      eq(files.state, 'clean'),
+      isNull(files.removedAt),
+    ))
+    .limit(1);
+  if (!file || !file.detectedMime?.startsWith('audio/')) {
+    return fail('That audio track is not available in your library.');
+  }
+
+  const [existing] = await db.select({ fileId: musicLikedTracks.fileId })
+    .from(musicLikedTracks)
+    .where(and(
+      eq(musicLikedTracks.userId, actor.userId),
+      eq(musicLikedTracks.fileId, file.id),
+    ))
+    .limit(1);
+  if (existing) {
+    await db.delete(musicLikedTracks).where(and(
+      eq(musicLikedTracks.userId, actor.userId),
+      eq(musicLikedTracks.fileId, file.id),
+    ));
+    revalidatePath('/music');
+    return ok({ liked: false });
+  }
+
+  await db.insert(musicLikedTracks).values({
+    userId: actor.userId,
+    fileId: file.id,
+  }).onConflictDoNothing();
+  revalidatePath('/music');
+  return ok({ liked: true });
 }
 
 export async function createMusicPlaylist(input: {

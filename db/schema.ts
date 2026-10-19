@@ -2098,6 +2098,20 @@ export const musicPlaylistTracks = pgTable(
   ],
 );
 
+export const musicLikedTracks = pgTable(
+  'music_liked_tracks',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id').notNull().references(() => files.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.fileId] }),
+    index('music_liked_tracks_file_idx').on(t.fileId),
+    index('music_liked_tracks_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
 export const userFollows = pgTable(
   'user_follows',
   {
