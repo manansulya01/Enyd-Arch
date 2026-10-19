@@ -11,8 +11,8 @@ import { verifyCsrf } from '~/server/csrf';
 import type { ActionResult } from '~/lib/action-result';
 import { createGroupConversation, sendMessage, startDirectConversation } from './messages';
 
-export async function onStartDirect(otherUserId: string) {
-  return startDirectConversation(otherUserId);
+export async function onStartDirect(otherUserId: string, csrf: string) {
+  return startDirectConversation(otherUserId, csrf);
 }
 
 export async function onCreateGroup(input: { title: string; memberUserIds: string[]; csrf: string }) {
