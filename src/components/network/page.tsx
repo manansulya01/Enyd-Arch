@@ -7,24 +7,30 @@ import { EmptyState } from '~/components/ui';
 import { networkFeed, trendingTags } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
+import { db } from '~db';
+import { userFollows } from '~db/schema';
+import { eq } from 'drizzle-orm';
 
 export const metadata: Metadata = { title: 'Network' };
 
 export default async function NetworkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string; tag?: string }>;
+  searchParams: Promise<{ sort?: string; tag?: string; following?: string }>;
 }) {
   const { actor } = await requireOnboarded();
   const params = await searchParams;
   const sort = params.sort === 'recent' || params.sort === 'discussed' ? params.sort : 'active';
   const tag = params.tag ?? null;
+  const followingOnly = params.following === '1';
 
-  const [posts, tags, csrfToken] = await Promise.all([
-    networkFeed({ viewerId: actor.userId, sort, topic: tag, limit: 25 }),
+  const [posts, tags, csrfToken, followRows] = await Promise.all([
+    networkFeed({ viewerId: actor.userId, sort, topic: tag, followingOnly, limit: 25 }),
     trendingTags(12),
     sessionCsrfToken(),
+    db.select({ followedId: userFollows.followedId }).from(userFollows).where(eq(userFollows.followerId, actor.userId)),
   ]);
+  const followedIds = new Set(followRows.map((row) => row.followedId));
 
   return (
     <PageShell
@@ -42,11 +48,13 @@ export default async function NetworkPage({
 
           <div className="row row-wrap row-between">
             <div className="btn-group" role="group" aria-label="Sort posts">
+              <Link className={`btn btn-sm ${followingOnly ? 'btn-primary' : 'btn-ghost'}`} href={`/network?following=1`} aria-current={followingOnly ? 'true' : undefined}>Following</Link>
+              <Link className={`btn btn-sm ${!followingOnly ? 'btn-primary' : 'btn-ghost'}`} href="/network" aria-current={!followingOnly ? 'true' : undefined}>Everyone</Link>
               {(['active', 'recent', 'discussed'] as const).map((option) => (
                 <Link
                   key={option}
                   className={`btn btn-sm ${sort === option ? 'btn-primary' : 'btn-ghost'}`}
-                  href={`/network?sort=${option}${tag ? `&tag=${tag}` : ''}`}
+                  href={`/network?sort=${option}${tag ? `&tag=${tag}` : ''}${followingOnly ? '&following=1' : ''}`}
                   aria-current={sort === option ? 'true' : undefined}
                 >
                   {option === 'active' ? 'Active' : option === 'recent' ? 'New' : 'Most discussed'}
@@ -63,17 +71,17 @@ export default async function NetworkPage({
           {posts.length === 0 ? (
             <EmptyState
               glyph="❝"
-              title={tag ? `Nothing under #${tag} yet.` : 'The Network is quiet.'}
+              title={tag ? `Nothing under #${tag} yet.` : followingOnly ? 'No posts from people you follow yet.' : 'The Network is quiet.'}
               body={
                 tag
                   ? 'No posts carry this tag. You could be the first.'
-                  : 'Be the first to say something. Share your projects, ideas, and questions here.'
+                  : followingOnly ? 'Follow members from their posts to build a personal, chronological feed.' : 'Be the first to say something. Share your projects, ideas, and questions here.'
               }
             />
           ) : (
             <div className="stack stack-4">
               {posts.map((post) => (
-                <NetworkCard key={post.id} post={post} />
+                <NetworkCard key={post.id} post={post} viewerId={actor.userId} csrfToken={csrfToken} isFollowing={followedIds.has(post.author.userId)} />
               ))}
             </div>
           )}

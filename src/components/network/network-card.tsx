@@ -3,9 +3,10 @@ import type { PostView } from '~/server/queries';
 import { relativeTime, excerpt } from '~/lib/format';
 import { Avatar } from '~/components/ui';
 import { ReactionBar } from '~/components/commons/reaction-bar';
+import { FollowButton } from './follow-button';
 
 /** One network post, rendered the same way in the feed and on its own page. */
-export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean }) {
+export function NetworkCard({ post, detail, viewerId, csrfToken, isFollowing }: { post: PostView; detail?: boolean; viewerId: string; csrfToken: string; isFollowing: boolean }) {
   return (
     <article className="post card">
       <header className="post-header">
@@ -23,7 +24,10 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
             </span>
           </span>
         </Link>
-        <span className="post-meta">{relativeTime(post.createdAt)}</span>
+        <div className="row row-2">
+          {post.author.userId !== viewerId && <FollowButton targetUserId={post.author.userId} initialFollowing={isFollowing} csrfToken={csrfToken} />}
+          <span className="post-meta">{relativeTime(post.createdAt)}</span>
+        </div>
       </header>
 
       {post.body && (

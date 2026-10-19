@@ -36,6 +36,7 @@ import {
   rsvps,
   userAchievements,
   userInterests,
+  userFollows,
   userSettings,
   users,
 } from '~db/schema';
@@ -325,6 +326,7 @@ export async function feed(options: {
   authorId?: string | null;
   limit?: number;
   cursor?: Date | null;
+  followingOnly?: boolean;
 }): Promise<PostView[]> {
   const limit = Math.min(options.limit ?? 20, 40);
   const sort = options.sort ?? 'active';
@@ -367,6 +369,13 @@ export async function feed(options: {
              or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
         )`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
+        options.followingOnly
+          ? sql`exists (
+              select 1 from ${userFollows} uf
+              where uf.follower_id = ${options.viewerId}
+                and uf.followed_id = ${postTable.authorId}
+            )`
+          : sql`true`,
         options.topic
           ? sql`exists (
               select 1 from ${postHashtags} h

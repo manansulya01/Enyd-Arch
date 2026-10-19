@@ -2098,6 +2098,20 @@ export const musicPlaylistTracks = pgTable(
   ],
 );
 
+export const userFollows = pgTable(
+  'user_follows',
+  {
+    followerId: uuid('follower_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    followedId: uuid('followed_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followedId] }),
+    index('user_follows_followed_idx').on(t.followedId, t.createdAt),
+    index('user_follows_follower_idx').on(t.followerId, t.createdAt),
+  ],
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 // Relations (only where they earn their keep)
 // ════════════════════════════════════════════════════════════════════════════

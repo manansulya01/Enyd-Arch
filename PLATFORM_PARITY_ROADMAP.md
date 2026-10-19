@@ -31,7 +31,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] Spam/raid protection, invite throttling, block/report flows, age safety, rate limits and moderator tooling for every new surface.
 
 ### Instagram-like visual social
-- [ ] Follow/unfollow graph distinct from mutual Connections; follower/following lists and privacy controls.
+- [x] Follow/unfollow graph distinct from mutual Connections, discoverable-member controls, and a Following feed.
+- [ ] Follower/following lists and additional per-audience privacy controls.
 - [ ] Photo/carousel posts, captions, alt text, crop/thumbnail generation, drafts, archive and creator profile grid.
 - [ ] Stories with explicit expiry, viewer list privacy, replies and optional close-friends audience.
 - [ ] Short-form video/reels, transcoding, adaptive bitrate, captions, audio rights checks and upload resumability.
@@ -50,7 +51,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 
 ### X/Twitter-like public conversation
 - [x] Commons text posts, hashtags, mentions, reactions, reposts, polls, bookmarks, comments and active/recent/discussed feeds exist in some form.
-- [ ] Follow graph and chronological following feed; user-selectable ranking and clear feed controls.
+- [x] Follow graph and chronological following feed; active/recent/discussed sorting remains user-selectable.
+- [ ] Lists, saved searches, trends and additional conversation controls.
 - [ ] Quote-posts, threaded long posts, edit window/history, drafts, scheduled posts, post-level audiences and link cards.
 - [ ] Lists, saved searches, trends with anti-manipulation protections, advanced search filters and conversation controls.
 - [ ] Mute words/accounts, reply permissions, block/report, community notes/context, account verification policy and impersonation reports.
