@@ -16,6 +16,8 @@ This file records implementation facts, not promises. A route or interface is no
 - Referrer policy is set to `no-referrer`; private responses and object/file downloads are marked `private, no-store`.
 - New stored objects use AES-256-GCM authenticated encryption at rest. Legacy plaintext objects are checksum-verified and lazily re-encrypted when read; `pnpm storage:encrypt-existing` provides a bulk migration for untouched legacy objects. Production requires a separately managed `STORAGE_ENCRYPTION_KEY`; losing or rotating it without a re-encryption plan makes encrypted files unreadable. This does not encrypt messages end-to-end or prevent the running application from reading files.
 - A privacy notice explains the limits of anonymity, message confidentiality, and deployment-level logging.
+- Authentication/device records retain coarse browser/platform labels rather than the full user-agent string; audit records use keyed IP pseudonyms instead of persisting raw IP addresses.
+- `PRIVACY_ARCHITECTURE.md` defines privacy engineering requirements for E2EE, data export/erasure, retention, infrastructure, and adversarial release gates.
 - A robots route and `X-Robots-Tag` ask search engines not to index the site. These are not access controls.
 - CI synchronizes the PostgreSQL schema, runs TypeScript checking and security/storage regression tests, audits production dependencies, and builds the app. A successful run only validates the commit it checked.
 - Blocking is now checked in direct-message creation/sending and in feed, post-detail, archive, gallery, game, event, project, comment, and stored-media visibility paths. These code-level guards still need adversarial integration tests.
@@ -27,6 +29,7 @@ This file records implementation facts, not promises. A route or interface is no
 ## Not yet complete — do not claim otherwise
 
 - **Private messages are not end-to-end encrypted.** Message bodies are currently readable by the application server and database. HTTPS and database/volume encryption do not change that. Do not advertise E2EE until a vetted protocol/library, device-key lifecycle, multi-device/recovery behavior, and adversarial tests are implemented.
+- A complete, verified self-service export and account-erasure workflow is not yet guaranteed across every database table, object-store derivative, third-party provider, and backup. Define and test retention and backup-expiry policies before launch.
 - The installation cookie is not hardware attestation. Passkeys prove possession of a credential, but the broader account-recovery and device-transfer process still needs end-to-end testing.
 - **Object-level visibility has been hardened but still needs adversarial verification.** `/objects/[id]` now checks that a live, readable profile, archive item, collection, project, conversation, approved game, published gallery post, event, film, or eligible file attachment references the object. Orphaned objects fail closed. This is a substantial authorization fix, not proof that every resource-specific rule (for example block relationships or unusual attachment paths) is correct; test cross-member access for each resource type before launch.
 - The one-active-credential database index requires the schema to be applied to the deployment database. Back up first and inspect existing credentials before applying schema changes.
