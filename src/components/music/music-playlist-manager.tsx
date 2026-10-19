@@ -7,6 +7,7 @@ import {
   createMusicPlaylist,
   deleteMusicPlaylist,
   removeMusicTrackFromPlaylist,
+  moveMusicTrackInPlaylist,
 } from '~/server/actions/music';
 import type { MusicTrack } from './music-library';
 
@@ -79,6 +80,21 @@ export function MusicPlaylistManager({
     }
   }
 
+
+  async function moveTrack(playlistId: string, fileId: string, direction: 'up' | 'down') {
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await moveMusicTrackInPlaylist({ playlistId, fileId, direction, csrf: csrfToken });
+      setMessage(result.ok ? 'Playlist order updated.' : (result.message ?? 'Could not reorder track.'));
+      if (result.ok) router.refresh();
+    } catch {
+      setMessage('Could not reorder track. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removePlaylist(playlistId: string, playlistName: string) {
     if (!window.confirm(`Delete “${playlistName}” and remove its saved track list?`)) return;
     setBusy(true);
@@ -126,10 +142,14 @@ export function MusicPlaylistManager({
             </div>
             {playlist.tracks.length === 0 ? <p className="t-meta">No tracks yet.</p> : (
               <ol className="stack stack-2">
-                {playlist.tracks.map((track) => (
+                {playlist.tracks.map((track, index) => (
                   <li className="row row-between" key={track.id}>
                     <span className="t-small">{track.title}</span>
-                    <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => void remove(playlist.id, track.id)}>Remove</button>
+                    <div className="row row-2">
+                      <button className="btn btn-ghost btn-sm" type="button" aria-label={`Move ${track.title} up`} disabled={busy || index === 0} onClick={() => void moveTrack(playlist.id, track.id, 'up')}>↑</button>
+                      <button className="btn btn-ghost btn-sm" type="button" aria-label={`Move ${track.title} down`} disabled={busy || index === playlist.tracks.length - 1} onClick={() => void moveTrack(playlist.id, track.id, 'down')}>↓</button>
+                      <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => void remove(playlist.id, track.id)}>Remove</button>
+                    </div>
                   </li>
                 ))}
               </ol>

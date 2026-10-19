@@ -1,6 +1,6 @@
 'use server';
 
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -120,6 +120,78 @@ export async function removeMusicTrackFromPlaylist(input: {
     await tx.update(musicPlaylists).set({ updatedAt: new Date() })
       .where(eq(musicPlaylists.id, playlist.id));
   });
+  revalidatePath('/music');
+  return ok();
+}
+
+
+export async function moveMusicTrackInPlaylist(input: {
+  playlistId: string;
+  fileId: string;
+  direction: 'up' | 'down';
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'upload')) return fail('Music is not available for this account.');
+  if (input.direction !== 'up' && input.direction !== 'down') return fail('Choose a valid track position.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your playlists.');
+
+  const playlist = await authorizedPlaylist(input.playlistId, actor.userId);
+  if (!playlist) return fail('That playlist is not available.');
+
+  const moved = await db.transaction(async (tx) => {
+    // Serialize all position changes for this playlist.
+    const [locked] = await tx.select({ id: musicPlaylists.id })
+      .from(musicPlaylists)
+      .where(and(eq(musicPlaylists.id, playlist.id), eq(musicPlaylists.userId, actor.userId)))
+      .for('update')
+      .limit(1);
+    if (!locked) return false;
+
+    const rows = await tx.select({
+      fileId: musicPlaylistTracks.fileId,
+      position: musicPlaylistTracks.position,
+    })
+      .from(musicPlaylistTracks)
+      .where(eq(musicPlaylistTracks.playlistId, playlist.id))
+      .orderBy(asc(musicPlaylistTracks.position));
+    const currentIndex = rows.findIndex((row) => row.fileId === input.fileId);
+    const targetIndex = currentIndex + (input.direction === 'up' ? -1 : 1);
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= rows.length) return false;
+
+    const current = rows[currentIndex]!;
+    const target = rows[targetIndex]!;
+    // Move through a temporary unused negative position to respect the
+    // unique (playlist_id, position) index during both halves of the swap.
+    const temporaryPosition = -Math.max(1, rows.length + 1);
+    await tx.update(musicPlaylistTracks)
+      .set({ position: temporaryPosition })
+      .where(and(
+        eq(musicPlaylistTracks.playlistId, playlist.id),
+        eq(musicPlaylistTracks.fileId, current.fileId),
+      ));
+    await tx.update(musicPlaylistTracks)
+      .set({ position: current.position })
+      .where(and(
+        eq(musicPlaylistTracks.playlistId, playlist.id),
+        eq(musicPlaylistTracks.fileId, target.fileId),
+      ));
+    await tx.update(musicPlaylistTracks)
+      .set({ position: target.position })
+      .where(and(
+        eq(musicPlaylistTracks.playlistId, playlist.id),
+        eq(musicPlaylistTracks.fileId, current.fileId),
+      ));
+    await tx.update(musicPlaylists)
+      .set({ updatedAt: new Date() })
+      .where(eq(musicPlaylists.id, playlist.id));
+    return true;
+  });
+
+  if (!moved) return fail('That track cannot move any further in this playlist.');
   revalidatePath('/music');
   return ok();
 }
