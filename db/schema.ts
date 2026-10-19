@@ -2069,6 +2069,35 @@ export const adminSessions = pgTable(
   (t) => [index('admin_sessions_user_idx'.concat('')).on(t.userId, t.expiresAt)],
 );
 
+// Personal music library and playlists. Tracks reference clean Exchange uploads;
+// playlists are private to their owner unless a future explicit sharing policy is added.
+export const musicPlaylists = pgTable(
+  'music_playlists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 120 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('music_playlists_user_idx').on(t.userId, t.updatedAt)],
+);
+
+export const musicPlaylistTracks = pgTable(
+  'music_playlist_tracks',
+  {
+    playlistId: uuid('playlist_id').notNull().references(() => musicPlaylists.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id').notNull().references(() => files.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playlistId, t.fileId] }),
+    uniqueIndex('music_playlist_track_position_key').on(t.playlistId, t.position),
+    index('music_playlist_tracks_file_idx').on(t.fileId),
+  ],
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 // Relations (only where they earn their keep)
 // ════════════════════════════════════════════════════════════════════════════
