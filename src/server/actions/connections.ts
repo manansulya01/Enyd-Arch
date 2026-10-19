@@ -28,6 +28,11 @@ import { verifyCsrfValue } from '~/server/csrf';
 const MODES = ['friendship', 'collaboration', 'dating'] as const;
 type Mode = (typeof MODES)[number];
 
+function capabilityForMode(mode: Mode): string {
+  if (mode === 'dating') return 'connections_dating';
+  return mode === 'friendship' ? 'connect_friendship' : 'connect_collaboration';
+}
+
 async function pairIsBlocked(a: string, b: string): Promise<boolean> {
   const [row] = await db
     .select({ id: blocks.id })
@@ -86,12 +91,7 @@ export async function sendConnectionRequest(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
-  const modeCapability = input.mode === 'dating'
-    ? 'connections_dating'
-    : input.mode === 'friendship'
-      ? 'connect_friendship'
-      : 'connect_collaboration';
-  if (!can(actor, 'connections') || !can(actor, modeCapability)) {
+  if (!can(actor, 'connections') || !can(actor, capabilityForMode(input.mode))) {
     return fail('This connection type is not available for your identity.');
   }
 
@@ -173,6 +173,9 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
     )
     .limit(1);
   if (!request) return fail('That request is not available.');
+  if (!MODES.includes(request.mode as Mode) || !can(actor, capabilityForMode(request.mode as Mode))) {
+    return fail('This connection type is not available for your identity.');
+  }
   if (await pairIsBlocked(request.fromUserId, request.toUserId)) {
     return fail('That request is no longer available.');
   }
