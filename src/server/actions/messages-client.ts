@@ -15,7 +15,7 @@ export async function onStartDirect(otherUserId: string) {
   return startDirectConversation(otherUserId);
 }
 
-export async function onCreateGroup(input: { title: string; memberUserIds: string[] }) {
+export async function onCreateGroup(input: { title: string; memberUserIds: string[]; csrf: string }) {
   return createGroupConversation(input);
 }
 
