@@ -85,8 +85,15 @@ export async function sendConnectionRequest(input: {
   await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
-  if (!can(actor, 'connections')) return fail('Connections are not available until onboarding is complete.');
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
+  const modeCapability = input.mode === 'dating'
+    ? 'connections_dating'
+    : input.mode === 'friendship'
+      ? 'connect_friendship'
+      : 'connect_collaboration';
+  if (!can(actor, 'connections') || !can(actor, modeCapability)) {
+    return fail('This connection type is not available for your identity.');
+  }
 
   const limiter = await acquire('connectionRequest', actor.userId);
   if (!limiter.allowed) return fail('Too many requests. Wait a little while.');
