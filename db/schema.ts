@@ -2112,6 +2112,47 @@ export const musicLikedTracks = pgTable(
   ],
 );
 
+export const communities = pgTable('communities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 64 }).notNull(),
+  name: varchar('name', { length: 80 }).notNull(),
+  description: text('description').notNull().default(''),
+  ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  isPrivate: boolean('is_private').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('communities_slug_key').on(t.slug),
+  index('communities_created_idx').on(t.createdAt),
+  index('communities_owner_idx').on(t.ownerId),
+]);
+
+export const communityMembers = pgTable('community_members', {
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 16 }).notNull().default('member'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.communityId, t.userId] }),
+  index('community_members_user_idx').on(t.userId, t.joinedAt),
+  index('community_members_role_idx').on(t.communityId, t.role),
+]);
+
+export const communityPosts = pgTable('community_posts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 160 }),
+  body: text('body').notNull(),
+  status: postStatusEnum('status').notNull().default('published'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (t) => [
+  index('community_posts_feed_idx').on(t.communityId, t.createdAt),
+  index('community_posts_author_idx').on(t.authorId, t.createdAt),
+]);
+
 export const userFollows = pgTable(
   'user_follows',
   {

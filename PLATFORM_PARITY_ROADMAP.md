@@ -60,7 +60,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] No dark-pattern engagement optimization; document ranking and give users control over recommendation inputs.
 
 ### Reddit-like communities
-- [ ] Subcommunities with owners/moderators, rules, join/leave, public/restricted/private access and role hierarchy.
+- [x] Public topic-based communities with owners, membership, join/leave, and text discussion posts.
+- [ ] Community rules, moderator tools, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [ ] Comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
 - [ ] Community wiki/resources, pinned posts, recurring threads, polls, mod queue, reports, automod rules and appeal history.
