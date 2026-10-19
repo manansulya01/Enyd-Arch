@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import { db } from '~db';
 import { files, musicPlaylistTracks, musicPlaylists } from '~db/schema';
 import { PageShell } from '~/components/ui/page-shell';
@@ -32,26 +32,20 @@ export default async function MusicPage() {
       createdAt: file.createdAt.toISOString(),
     }));
 
-  const playlistTrackRows = playlistRows.length === 0 ? [] : await db.select({
+  const allPlaylistTrackRows = playlistRows.length === 0 ? [] : await db.select({
     playlistId: musicPlaylistTracks.playlistId,
     id: files.id,
     title: files.displayName,
   })
     .from(musicPlaylistTracks)
     .innerJoin(files, eq(files.id, musicPlaylistTracks.fileId))
-    .where(eq(musicPlaylistTracks.playlistId, playlistRows[0]!.id))
+    .where(and(
+      inArray(musicPlaylistTracks.playlistId, playlistRows.map((playlist) => playlist.id)),
+      eq(files.state, 'clean'),
+      isNull(files.removedAt),
+      like(files.detectedMime, 'audio/%'),
+    ))
     .orderBy(asc(musicPlaylistTracks.position));
-  const allPlaylistTrackRows = playlistRows.length <= 1 ? playlistTrackRows : await Promise.all(
-    playlistRows.slice(1).map(async (playlist) => db.select({
-      playlistId: musicPlaylistTracks.playlistId,
-      id: files.id,
-      title: files.displayName,
-    })
-      .from(musicPlaylistTracks)
-      .innerJoin(files, eq(files.id, musicPlaylistTracks.fileId))
-      .where(eq(musicPlaylistTracks.playlistId, playlist.id))
-      .orderBy(asc(musicPlaylistTracks.position))),
-  ).then((rows) => [...playlistTrackRows, ...rows.flat()]);
   const playlists = playlistRows.map((playlist) => ({
     ...playlist,
     tracks: allPlaylistTrackRows.filter((track) => track.playlistId === playlist.id),
