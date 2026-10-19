@@ -10,6 +10,14 @@ import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrfValue } from '~/server/csrf';
 
+async function authorizedPlaylist(playlistId: string, userId: string) {
+  const [playlist] = await db.select({ id: musicPlaylists.id })
+    .from(musicPlaylists)
+    .where(and(eq(musicPlaylists.id, playlistId), eq(musicPlaylists.userId, userId)))
+    .limit(1);
+  return playlist ?? null;
+}
+
 export async function createMusicPlaylist(input: {
   name: string;
   csrf: string;
@@ -28,8 +36,9 @@ export async function createMusicPlaylist(input: {
     userId: actor.userId,
     name,
   }).returning({ id: musicPlaylists.id });
+  if (!created) return fail('Could not create the playlist. Please try again.');
   revalidatePath('/music');
-  return ok({ playlistId: created!.id });
+  return ok({ playlistId: created.id });
 }
 
 export async function addMusicTrackToPlaylist(input: {
@@ -41,11 +50,10 @@ export async function addMusicTrackToPlaylist(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your playlists.');
 
-  const [playlist] = await db.select({ id: musicPlaylists.id })
-    .from(musicPlaylists)
-    .where(and(eq(musicPlaylists.id, input.playlistId), eq(musicPlaylists.userId, actor.userId)))
-    .limit(1);
+  const playlist = await authorizedPlaylist(input.playlistId, actor.userId);
   if (!playlist) return fail('That playlist is not available.');
 
   const [file] = await db.select({ id: files.id, detectedMime: files.detectedMime })
@@ -61,19 +69,26 @@ export async function addMusicTrackToPlaylist(input: {
     return fail('Choose a clean audio upload from your own library.');
   }
 
-  const [last] = await db.select({ position: musicPlaylistTracks.position })
-    .from(musicPlaylistTracks)
-    .where(eq(musicPlaylistTracks.playlistId, playlist.id))
-    .orderBy(desc(musicPlaylistTracks.position))
-    .limit(1);
-  await db.insert(musicPlaylistTracks).values({
-    playlistId: playlist.id,
-    fileId: file.id,
-    position: (last?.position ?? -1) + 1,
-  }).onConflictDoNothing();
+  // Lock this playlist row so simultaneous adds cannot allocate the same position.
+  await db.transaction(async (tx) => {
+    await tx.select({ id: musicPlaylists.id })
+      .from(musicPlaylists)
+      .where(and(eq(musicPlaylists.id, playlist.id), eq(musicPlaylists.userId, actor.userId)))
+      .for('update');
+    const [last] = await tx.select({ position: musicPlaylistTracks.position })
+      .from(musicPlaylistTracks)
+      .where(eq(musicPlaylistTracks.playlistId, playlist.id))
+      .orderBy(desc(musicPlaylistTracks.position))
+      .limit(1);
+    await tx.insert(musicPlaylistTracks).values({
+      playlistId: playlist.id,
+      fileId: file.id,
+      position: (last?.position ?? -1) + 1,
+    }).onConflictDoNothing();
+    await tx.update(musicPlaylists).set({ updatedAt: new Date() })
+      .where(eq(musicPlaylists.id, playlist.id));
+  });
 
-  await db.update(musicPlaylists).set({ updatedAt: new Date() })
-    .where(eq(musicPlaylists.id, playlist.id));
   revalidatePath('/music');
   return ok();
 }
@@ -87,19 +102,48 @@ export async function removeMusicTrackFromPlaylist(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your playlists.');
 
-  const [playlist] = await db.select({ id: musicPlaylists.id })
-    .from(musicPlaylists)
-    .where(and(eq(musicPlaylists.id, input.playlistId), eq(musicPlaylists.userId, actor.userId)))
-    .limit(1);
+  const playlist = await authorizedPlaylist(input.playlistId, actor.userId);
   if (!playlist) return fail('That playlist is not available.');
 
-  await db.delete(musicPlaylistTracks).where(and(
-    eq(musicPlaylistTracks.playlistId, playlist.id),
-    eq(musicPlaylistTracks.fileId, input.fileId),
-  ));
-  await db.update(musicPlaylists).set({ updatedAt: new Date() })
-    .where(eq(musicPlaylists.id, playlist.id));
+  await db.transaction(async (tx) => {
+    await tx.select({ id: musicPlaylists.id })
+      .from(musicPlaylists)
+      .where(and(eq(musicPlaylists.id, playlist.id), eq(musicPlaylists.userId, actor.userId)))
+      .for('update');
+    await tx.delete(musicPlaylistTracks).where(and(
+      eq(musicPlaylistTracks.playlistId, playlist.id),
+      eq(musicPlaylistTracks.fileId, input.fileId),
+    ));
+    await tx.update(musicPlaylists).set({ updatedAt: new Date() })
+      .where(eq(musicPlaylists.id, playlist.id));
+  });
+  revalidatePath('/music');
+  return ok();
+}
+
+export async function deleteMusicPlaylist(input: {
+  playlistId: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'upload')) return fail('Music is not available for this account.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your playlists.');
+
+  const playlist = await authorizedPlaylist(input.playlistId, actor.userId);
+  if (!playlist) return fail('That playlist is not available.');
+
+  // Ownership predicate stays on the destructive query as a second boundary.
+  const deleted = await db.delete(musicPlaylists).where(and(
+    eq(musicPlaylists.id, playlist.id),
+    eq(musicPlaylists.userId, actor.userId),
+  )).returning({ id: musicPlaylists.id });
+  if (deleted.length === 0) return fail('That playlist is no longer available.');
   revalidatePath('/music');
   return ok();
 }
