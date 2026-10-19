@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   addMusicTrackToPlaylist,
   createMusicPlaylist,
+  deleteMusicPlaylist,
   removeMusicTrackFromPlaylist,
 } from '~/server/actions/music';
 import type { MusicTrack } from './music-library';
@@ -55,7 +56,7 @@ export function MusicPlaylistManager({
     setMessage('');
     try {
       const result = await addMusicTrackToPlaylist({ playlistId, fileId: selectedTrackId, csrf: csrfToken });
-      setMessage(result.ok ? 'Track added.' : (result.message ?? 'Could not add track.'));
+      setMessage(result.ok ? 'Track added if it was not already in the playlist.' : (result.message ?? 'Could not add track.'));
       if (result.ok) router.refresh();
     } catch {
       setMessage('Could not add track. Please try again.');
@@ -73,6 +74,21 @@ export function MusicPlaylistManager({
       if (result.ok) router.refresh();
     } catch {
       setMessage('Could not remove track. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePlaylist(playlistId: string, playlistName: string) {
+    if (!window.confirm(`Delete “${playlistName}” and remove its saved track list?`)) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await deleteMusicPlaylist({ playlistId, csrf: csrfToken });
+      setMessage(result.ok ? 'Playlist deleted.' : (result.message ?? 'Could not delete playlist.'));
+      if (result.ok) router.refresh();
+    } catch {
+      setMessage('Could not delete playlist. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -103,7 +119,10 @@ export function MusicPlaylistManager({
           <article className="panel panel-body stack stack-2" key={playlist.id}>
             <div className="row row-between">
               <h3>{playlist.name}</h3>
-              <span className="t-meta">{playlist.tracks.length} tracks</span>
+              <div className="row row-2">
+                <span className="t-meta">{playlist.tracks.length} tracks</span>
+                <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => void removePlaylist(playlist.id, playlist.name)}>Delete playlist</button>
+              </div>
             </div>
             {playlist.tracks.length === 0 ? <p className="t-meta">No tracks yet.</p> : (
               <ol className="stack stack-2">
