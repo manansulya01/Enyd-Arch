@@ -24,6 +24,7 @@ export async function onSendMessage(
     conversationId: string;
     body: string;
     attachmentFileId: string | null;
+    replyToId?: string | null;
   },
   csrfToken: string,
 ): Promise<ActionResult<{ messageId: string }>> {
@@ -35,6 +36,7 @@ export async function onSendMessage(
   formData.set('conversationId', input.conversationId);
   formData.set('body', input.body);
   if (input.attachmentFileId) formData.set('attachmentFileId', input.attachmentFileId);
+  if (input.replyToId) formData.set('replyToId', input.replyToId);
 
   // `sendMessage` verifies the CSRF token from the FormData it is handed, so
   // the structured call goes through the identical check.
