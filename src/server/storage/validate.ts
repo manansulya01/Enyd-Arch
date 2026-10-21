@@ -252,7 +252,12 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
 
   while (offset + 30 <= buffer.byteLength && census.entries < MAX_ARCHIVE_ENTRIES + 1) {
     const signature = view.getUint32(offset, true);
-    if (signature !== 0x04034b50) break;
+    if (signature !== 0x04034b50) {
+      // The central directory/end records are valid stopping points. Unknown
+      // signatures mean we cannot prove that the archive census is complete.
+      if (signature === 0x02014b50 || signature === 0x06054b50 || signature === 0x05054b50) break;
+      return null;
+    }
 
     const compressedSize = view.getUint32(offset + 18, true);
     const uncompressedSize = view.getUint32(offset + 22, true);
@@ -261,7 +266,7 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
     const flags = view.getUint16(offset + 6, true);
 
     const nameStart = offset + 30;
-    if (nameStart + nameLength > buffer.byteLength) break;
+    if (nameStart + nameLength + extraLength > buffer.byteLength) return null;
     const name = decoder.decode(buffer.subarray(nameStart, nameStart + nameLength));
 
     if (name) {
@@ -288,7 +293,7 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
     // Fail closed until central-directory parsing is implemented.
     if (flags & 0x08) return null;
     const advance = 30 + nameLength + extraLength + compressedSize;
-    if (advance <= 0) break;
+    if (advance <= 0 || offset + advance > buffer.byteLength) return null;
     offset += advance;
   }
 
