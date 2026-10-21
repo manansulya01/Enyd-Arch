@@ -6,7 +6,7 @@ import { devices, sessions as sessionsTable, userRestrictions, users } from '~db
 import { formatMemberId } from '~/lib/domain';
 import { deriveCapabilities } from './capabilities';
 export { deriveCapabilities } from './capabilities';
-import { browserLabel, platformLabel, randomToken, sha256 } from '../crypto';
+import { browserLabel, coarseDeviceLabel, platformLabel, randomToken, sha256 } from '../crypto';
 
 export const SESSION_COOKIE = 'enyd_session';
 export const TRAIT_COOKIE = 'enyd_device_binding';
@@ -93,7 +93,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     deviceId: input.deviceId,
     csrfSecret,
     ipHash: input.ipHash,
-    userAgent: input.userAgent.slice(0, 400),
+    userAgent: coarseDeviceLabel(input.userAgent),
     fingerprint: input.fingerprint,
     expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
   });
@@ -282,10 +282,14 @@ export async function revokeSessionById(sessionId: string, userId: string): Prom
 
 export function describeDevice(userAgent: string | null, platform: string | null) {
   const agent = userAgent ?? '';
-  const os = platform ?? (agent ? platformLabel(agent) : 'Unknown device');
+  // New records store a coarse "Browser on Platform" label. Older records may
+  // still contain a raw user-agent string, so keep a backwards-compatible path.
+  const coarse = /^([A-Za-z]+) on (.+)$/.exec(agent);
+  const browser = coarse?.[1] ?? (agent ? browserLabel(agent) : 'Unknown');
+  const os = platform ?? coarse?.[2] ?? (agent ? platformLabel(agent) : 'Unknown device');
   return {
-    label: agent ? `${browserLabel(agent)} on ${os}` : os,
-    browser: agent ? browserLabel(agent) : 'Unknown',
+    label: agent ? `${browser} on ${os}` : os,
+    browser,
     os,
   };
 }
