@@ -1965,6 +1965,10 @@ export async function conversationMessages(
   const membership = await db
     .select({ userId: conversationMembers.userId })
     .from(conversationMembers)
+    .innerJoin(conversationTable, and(
+      eq(conversationTable.id, conversationMembers.conversationId),
+      isNull(conversationTable.removedAt),
+    ))
     .where(
       and(
         eq(conversationMembers.conversationId, conversationId),
@@ -2032,6 +2036,10 @@ export async function conversationMembersOf(conversationId: string, viewerId: st
   const membership = await db
     .select({ role: conversationMembers.role })
     .from(conversationMembers)
+    .innerJoin(conversationTable, and(
+      eq(conversationTable.id, conversationMembers.conversationId),
+      isNull(conversationTable.removedAt),
+    ))
     .where(
       and(
         eq(conversationMembers.conversationId, conversationId),
