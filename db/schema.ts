@@ -2153,6 +2153,17 @@ export const communityPosts = pgTable('community_posts', {
   index('community_posts_author_idx').on(t.authorId, t.createdAt),
 ]);
 
+export const communityPostVotes = pgTable('community_post_votes', {
+  postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  value: integer('value').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.postId, t.userId] }),
+  index('community_post_votes_post_value_idx').on(t.postId, t.value),
+  index('community_post_votes_user_idx').on(t.userId, t.createdAt),
+]);
+
 export const communityPostComments = pgTable('community_post_comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
