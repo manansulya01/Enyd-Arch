@@ -2091,6 +2091,8 @@ export async function conversationMembersOf(conversationId: string, viewerId: st
       and(
         eq(conversationMembers.conversationId, conversationId),
         isNull(conversationMembers.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
       ),
     );
 
