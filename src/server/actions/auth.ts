@@ -783,6 +783,9 @@ export async function requestDeviceTransferAction(
   const explanation = String(formData.get('explanation') ?? '').trim();
   const newDeviceLabel = String(formData.get('newDeviceLabel') ?? '').trim();
 
+  if (newDeviceLabel.length > 96) {
+    return fail('That device label is too long.', { newDeviceLabel: ['Keep it under 96 characters.'] });
+  }
   if (!TRANSFER_REASONS.includes(reason)) {
     return fail('Choose a reason for the transfer.', { reason: ['Select one.'] });
   }
