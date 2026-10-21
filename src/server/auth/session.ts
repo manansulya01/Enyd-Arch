@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { db } from '~db';
 import { devices, sessions as sessionsTable, userRestrictions, users } from '~db/schema';
