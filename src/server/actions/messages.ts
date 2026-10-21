@@ -26,6 +26,7 @@ import { can, currentActor } from '~/server/auth/session';
 import { mayInitiateMessage } from '~/server/auth/messaging-policy';
 import { acquire } from '~/server/auth/rate-limit';
 import { normalizeGroupMembers } from '~/server/auth/group-policy';
+import { normalizeMessageBody } from '~/server/auth/message-content';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 /** Blocks are symmetric for contact purposes: either member can close the path. */
@@ -195,7 +196,7 @@ export async function sendMessage(
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
 
   const conversationId = String(formData.get('conversationId') ?? '');
-  const body = String(formData.get('body') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 4000);
+  const body = normalizeMessageBody(formData.get('body'));
   const attachmentFileId = String(formData.get('attachmentFileId') ?? '') || null;
 
   if (!conversationId) return fail('Missing conversation.');
@@ -279,7 +280,7 @@ export async function editMessage(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
-  const body = input.body.replace(/\\r\\n/g, '\\n').trim().slice(0, 4000);
+  const body = normalizeMessageBody(input.body);
   if (!body) return fail('A message cannot be empty.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before editing another message.');
