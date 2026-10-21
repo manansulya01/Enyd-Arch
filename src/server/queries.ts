@@ -1952,6 +1952,7 @@ export interface MessageView {
     byteSize: number;
   } | null;
   removed: boolean;
+  replyTo: { id: string; preview: string } | null;
 }
 
 /**
@@ -1988,6 +1989,8 @@ export async function conversationMessages(
       editedAt: messageTable.editedAt,
       senderId: messageTable.senderId,
       removedAt: messageTable.removedAt,
+      replyToId: sql<string | null>`(select r.id::text from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
+      replyPreview: sql<string | null>`(select left(r.body, 160) from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
       attachmentId: files.id,
       attachmentName: files.displayName,
       attachmentMime: files.detectedMime,
@@ -2024,6 +2027,7 @@ export async function conversationMessages(
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     removed: Boolean(row.removedAt),
+    replyTo: row.replyToId && row.replyPreview !== null ? { id: row.replyToId, preview: row.replyPreview } : null,
     sender: senderMap.get(row.senderId)!,
     isMine: row.senderId === viewerId,
     attachment: row.attachmentId
