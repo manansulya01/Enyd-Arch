@@ -9,7 +9,7 @@
 
 import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '~db';
 import { sessions as sessionsTable } from '~db/schema';
 import { hmacHex, safeEqual } from '~/server/crypto';
@@ -64,7 +64,11 @@ async function tokenMatches(presented: string): Promise<boolean> {
     const rows = await db
       .select({ csrfSecret: sessionsTable.csrfSecret })
       .from(sessionsTable)
-      .where(and(eq(sessionsTable.tokenHash, tokenHash), isNull(sessionsTable.revokedAt)))
+      .where(and(
+        eq(sessionsTable.tokenHash, tokenHash),
+        isNull(sessionsTable.revokedAt),
+        gt(sessionsTable.expiresAt, new Date()),
+      ))
       .limit(1);
 
     if (rows[0] && safeEqual(presented, rows[0].csrfSecret)) return true;
@@ -139,7 +143,11 @@ export async function sessionCsrfToken(): Promise<string> {
   const rows = await db
     .select({ csrfSecret: sessionsTable.csrfSecret })
     .from(sessionsTable)
-    .where(and(eq(sessionsTable.tokenHash, tokenHash), isNull(sessionsTable.revokedAt)))
+    .where(and(
+      eq(sessionsTable.tokenHash, tokenHash),
+      isNull(sessionsTable.revokedAt),
+      gt(sessionsTable.expiresAt, new Date()),
+    ))
     .limit(1);
 
   return rows[0]?.csrfSecret ?? issueAnonymousCsrf();
