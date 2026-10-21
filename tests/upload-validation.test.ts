@@ -63,6 +63,26 @@ function oneEntryZip(entryName: string): Uint8Array {
   return bytes;
 }
 
+test('upload validator fails closed on ZIP data descriptors it cannot census', async () => {
+  const name = new TextEncoder().encode('payload.txt');
+  const bytes = new Uint8Array(30 + name.length + 1 + 16);
+  bytes.set([0x50, 0x4b, 0x03, 0x04], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(6, 0x08, true); // general-purpose bit 3: sizes follow in a descriptor
+  view.setUint16(26, name.length, true);
+  view.setUint16(28, 0, true);
+  bytes.set(name, 30);
+  bytes[30 + name.length] = 0x41;
+  const result = await validateUpload({
+    filename: 'bundle.zip',
+    declaredMime: 'application/zip',
+    data: bytes,
+    expect: 'archive',
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.findings.some((finding) => finding.code === 'unreadable_archive'));
+});
+
 test('upload validator rejects parent-relative paths inside ZIP archives', async () => {
   const result = await validateUpload({
     filename: 'bundle.zip',
