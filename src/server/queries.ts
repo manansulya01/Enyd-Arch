@@ -408,8 +408,10 @@ export async function feed(options: {
       .where(
         and(
           inArray(postAttachments.postId, postIds),
-          // Never expose a file that has not cleared the scanner.
+          // Never expose quarantined, removed, or orphaned file metadata.
           eq(files.state, 'clean'),
+          isNull(files.removedAt),
+          sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`,
         ),
       )
       .orderBy(asc(postAttachments.position)),
@@ -677,7 +679,7 @@ export async function projectPosts(
       })
       .from(postAttachments)
       .innerJoin(files, eq(files.id, postAttachments.fileId))
-      .where(and(inArray(postAttachments.postId, postIds), eq(files.state, 'clean'))),
+      .where(and(inArray(postAttachments.postId, postIds), eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`)),
     db
       .select({ postId: postHashtags.postId, tag: postHashtags.tag })
       .from(postHashtags)
@@ -1625,7 +1627,7 @@ export async function galleryMedia(slug: string) {
     })
     .from(galleryAttachments)
     .innerJoin(files, eq(files.id, galleryAttachments.fileId))
-    .where(and(eq(galleryAttachments.postId, post.id), eq(files.state, 'clean')))
+    .where(and(eq(galleryAttachments.postId, post.id), eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`))
     .orderBy(asc(galleryAttachments.position));
 }
 
@@ -2275,7 +2277,7 @@ export async function projectBySlug(slug: string, viewerId: string): Promise<Pro
       })
       .from(sql`project_resources pr`)
       .innerJoin(files, eq(files.id, sql`pr.file_id`))
-      .where(and(sql`pr.project_id = ${project.id}`, eq(files.state, 'clean')))
+      .where(and(sql`pr.project_id = ${project.id}`, eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`))
       .orderBy(desc(sql`pr.created_at`)),
   ]);
 
