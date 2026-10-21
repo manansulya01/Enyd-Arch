@@ -60,7 +60,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] No dark-pattern engagement optimization; document ranking and give users control over recommendation inputs.
 
 ### Reddit-like communities
-- [x] Public topic-based communities with owners, membership, join/leave, text discussion posts, and flat comments.
+- [x] Public topic-based communities with owners, membership, join/leave, text discussion posts, flat comments, and per-member upvotes/downvotes.
 - [x] Authors can remove their own comments; community owners/moderators can remove comments in their space.
 - [ ] Community rules, moderator tools, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
