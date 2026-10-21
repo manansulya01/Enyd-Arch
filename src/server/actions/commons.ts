@@ -450,6 +450,11 @@ export async function toggleReaction(
   if (!REACTION_KEYS.has(input.kind)) return fail('That is not a reaction Enyd Arch offers.');
   if (!can(actor, 'react')) return fail('You do not have permission to react.');
 
+  // Rate-limit before target lookups so forged IDs cannot turn this endpoint
+  // into an expensive database-probing primitive.
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
+
   const target = reactionCounter(input.targetType);
   if (!target) return fail('That cannot be reacted to.');
   const { table, column } = target;
@@ -540,9 +545,6 @@ export async function toggleReaction(
       .limit(1);
     if (!visibleGameComment) return fail('That item is no longer available.');
   }
-
-  const limiter = await acquire('write', actor.userId);
-  if (!limiter.allowed) return fail('Slow down a moment.');
 
   const existing = await db
     .select({ id: reactions.id })
@@ -728,6 +730,8 @@ export async function toggleBookmark(
   if (!['post', 'archive_object', 'game', 'gallery_post'].includes(input.targetType)) {
     return fail('That item cannot be saved.');
   }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
   // A bookmark is private, but creating one must not be an oracle for
   // private, removed, draft, or unapproved content. Match the visibility
@@ -764,9 +768,6 @@ export async function toggleBookmark(
     available = Boolean(row);
   }
   if (!available) return fail('That item is no longer available.');
-
-  const limiter = await acquire('write', actor.userId);
-  if (!limiter.allowed) return fail('Slow down a moment.');
 
   const existing = await db
     .select({ id: bookmarks.userId })
