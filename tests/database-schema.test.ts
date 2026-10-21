@@ -24,7 +24,8 @@ test('CI PostgreSQL schema contains the security-critical and music tables', asy
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'communities') as communities_table,
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'community_members') as community_members_table,
       exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'community_posts') as community_posts_table,
-      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'community_post_comments') as community_post_comments_table
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'community_post_comments') as community_post_comments_table,
+      exists(select 1 from information_schema.tables where table_schema = 'public' and table_name = 'community_post_votes') as community_post_votes_table
   `;
   const schema = rows[0];
   assert.ok(schema);
@@ -45,6 +46,7 @@ test('CI PostgreSQL schema contains the security-critical and music tables', asy
     'community_members_table',
     'community_posts_table',
     'community_post_comments_table',
+    'community_post_votes_table',
   ] as const) {
     assert.equal(schema[name], true, `missing expected table: ${name}`);
   }
