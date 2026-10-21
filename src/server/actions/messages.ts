@@ -408,3 +408,47 @@ export async function removeMessage(input: {
   revalidatePath(`/messages?c=${target.conversationId}`);
   return ok();
 }
+
+
+/** Mark a conversation as read only for its authenticated active member. */
+export async function markConversationRead(input: {
+  conversationId: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) return fail('Sign in to update message read state.');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  if (typeof input.conversationId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.conversationId)) {
+    return fail('That conversation is not available.');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before updating read state again.');
+
+  const [member] = await db.select({
+    conversationId: conversationMembers.conversationId,
+  })
+    .from(conversationMembers)
+    .innerJoin(conversations, and(
+      eq(conversations.id, conversationMembers.conversationId),
+      isNull(conversations.removedAt),
+    ))
+    .where(and(
+      eq(conversationMembers.conversationId, input.conversationId),
+      eq(conversationMembers.userId, actor.userId),
+      isNull(conversationMembers.removedAt),
+    ))
+    .limit(1);
+
+  if (!member) return fail('That conversation is not available.');
+  await db.update(conversationMembers)
+    .set({ lastReadAt: new Date() })
+    .where(and(
+      eq(conversationMembers.conversationId, member.conversationId),
+      eq(conversationMembers.userId, actor.userId),
+      isNull(conversationMembers.removedAt),
+    ));
+  revalidatePath('/messages');
+  revalidatePath(`/messages?c=${member.conversationId}`);
+  return ok();
+}
