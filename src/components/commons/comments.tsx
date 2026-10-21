@@ -10,7 +10,7 @@ import { ReactionBar } from './reaction-bar';
 import { onCreateComment } from '~/server/actions/commons-client';
 
 /** The reply thread beneath a post. Replies are one level deep by design. */
-export function Comments({ postId, comments }: { postId: string; comments: CommentView[] }) {
+export function Comments({ postId, comments, csrfToken }: { postId: string; comments: CommentView[]; csrfToken: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -25,7 +25,7 @@ export function Comments({ postId, comments }: { postId: string; comments: Comme
     const text = body.trim();
     if (!text) return;
     startTransition(async () => {
-      const result = await onCreateComment({ postId, body: text, parentId: replyTo });
+      const result = await onCreateComment({ postId, body: text, parentId: replyTo }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That reply could not be saved.');
         return;
@@ -80,6 +80,7 @@ export function Comments({ postId, comments }: { postId: string; comments: Comme
                     Reply
                   </button>
                   <ReactionBar
+                    csrfToken={csrfToken}
                     targetType="comment"
                     targetId={comment.id}
                     myReactions={comment.myReactions}
