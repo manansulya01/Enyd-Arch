@@ -164,7 +164,7 @@ export async function createPost(
     const original = await db
       .select({ id: posts.id, repostOfId: posts.repostOfId })
       .from(posts)
-      .where(and(eq(posts.id, repostOfId), eq(posts.status, 'published'), isNull(posts.removedAt)))
+      .where(and(eq(posts.id, repostOfId), eq(posts.status, 'published'), inArray(posts.visibility, ['members', 'public']), isNull(posts.removedAt)))
       .limit(1);
     if (!original[0]) return fail('That post is no longer available.');
     if (original[0].repostOfId) return fail('That post is itself a repost.');
