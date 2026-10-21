@@ -169,7 +169,16 @@ export async function checkUsername(
   if (!parsed.success) {
     return { available: false, reason: parsed.error.issues[0]?.message ?? 'Not a usable username.' };
   }
-  return { available: (await usernameFree(parsed.data)) };
+
+  // Availability checks reveal whether an account name is already registered.
+  // Throttle the unauthenticated lookup by the privacy-preserving IP pseudonym.
+  const traits = await requestTraits();
+  const limiter = await acquire('search', `username-check:${traits.ipHash}`);
+  if (!limiter.allowed) {
+    return { available: false, reason: 'Please wait before checking another username.' };
+  }
+
+  return { available: await usernameFree(parsed.data) };
 }
 
 async function usernameFree(username: string): Promise<boolean> {
