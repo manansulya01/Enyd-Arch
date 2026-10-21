@@ -11,8 +11,6 @@ export const metadata: Metadata = {
   applicationName: 'Enyd Arch',
   referrer: 'strict-origin-when-cross-origin',
   robots: {
-    // A private society should not be indexed. This is deliberate, not an
-    // oversight: discoverability here means invitation, not search engines.
     index: false,
     follow: false,
     nocache: true,
@@ -40,7 +38,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark">
-      <head />/head>
+      <head />
       <body>
         <a className="skip-link" href="#main">
           Skip to main content
