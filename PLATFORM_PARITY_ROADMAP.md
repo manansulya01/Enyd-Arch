@@ -23,7 +23,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 ### Discord-like community and communication
 - [x] Basic direct and small group text conversations (server-side foundation).
 - [ ] Conversation UI completeness audit; durable group membership management, rename/leave/remove member flows, invite links, ownership transfer and group permissions.
-- [ ] Read receipts, unread markers, message edit/delete, replies, reactions, pinning, search, drafts, attachments previews, retry/offline queue, notification preferences.
+- [x] Message edit (15-minute window), sender-owned removal, and edited markers; actions enforce active conversation membership, CSRF, capability, and rate-limit checks.
+- [ ] Read receipts beyond unread markers, replies, reactions, pinning, search, drafts, richer attachment previews, retry/offline queue, notification preferences.
 - [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
