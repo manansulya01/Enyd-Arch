@@ -13,6 +13,7 @@ export const TRAIT_COOKIE = 'enyd_device_binding';
 
 /** Rolling window. Created for 30 days and refreshed as it is used. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface SessionActor {
   userId: string;
@@ -193,6 +194,10 @@ export async function currentActor(): Promise<SessionActor | null> {
   if (row.deviceStatus && row.deviceStatus !== 'active') return null;
   if (row.status !== 'active') return null;
 
+  // Refresh the rolling expiry at most once per five minutes. This keeps active
+  // sessions alive without turning every server-component read into a DB write.
+  await touchSession(row.sessionId);
+
   const restricted = await loadRestrictions(row.userId);
 
   return {
@@ -220,13 +225,19 @@ export async function currentActor(): Promise<SessionActor | null> {
 
 /** Slide the session expiry forward. Cheap enough to run once per request. */
 export async function touchSession(sessionId: string): Promise<void> {
+  const now = new Date();
   await db
     .update(sessionsTable)
     .set({
-      lastSeenAt: new Date(),
-      expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + SESSION_TTL_SECONDS * 1000),
     })
-    .where(and(eq(sessionsTable.id, sessionId), isNull(sessionsTable.revokedAt)));
+    .where(and(
+      eq(sessionsTable.id, sessionId),
+      isNull(sessionsTable.revokedAt),
+      gt(sessionsTable.expiresAt, now),
+      lt(sessionsTable.lastSeenAt, new Date(now.getTime() - SESSION_TOUCH_INTERVAL_MS)),
+    ));
 }
 
 export async function sessionCsrfSecret(): Promise<string | null> {
