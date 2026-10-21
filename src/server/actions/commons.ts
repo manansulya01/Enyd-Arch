@@ -115,6 +115,8 @@ export async function createPost(
   if (!can(actor, 'post')) {
     return fail('You do not have permission to post in the Commons.');
   }
+  if (input.repostOfId && !isUuid(input.repostOfId)) return fail('That post is not available.');
+  if ((input.attachmentFileIds ?? []).some((id) => !isUuid(id))) return fail('One or more attachments are not available.');
 
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) {
@@ -280,6 +282,7 @@ export async function createComment(
   input: { postId: string; body: string; parentId?: string | null },
 ): Promise<ActionResult<{ commentId: string }>> {
   if (!can(actor, 'comment')) return fail('You do not have permission to reply.');
+  if (!isUuid(input.postId) || (input.parentId && !isUuid(input.parentId))) return fail('That conversation is not available.');
 
   const limiter = await acquire('comment', actor.userId);
   if (!limiter.allowed) return fail('You are replying very quickly. Take a breath.');
@@ -528,6 +531,7 @@ export async function voteInPoll(
   actor: SessionActor,
   input: { pollId: string; optionId: string },
 ): Promise<ActionResult> {
+  if (!isUuid(input.pollId) || !isUuid(input.optionId)) return fail('That poll option is not available.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
