@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { communityMembers, communityPostComments, communityPosts, communities, users } from '~db/schema';
+import { communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -213,5 +213,48 @@ export async function removeCommunityComment(commentId: string, csrf: string): P
   ));
   revalidatePath('/communities');
   revalidatePath(`/communities/${comment.slug}`);
+  return ok();
+}
+
+
+export async function voteCommunityPost(input: {
+  postId: string;
+  value: 1 | -1;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Voting is not available for this identity.');
+  if (input.value !== 1 && input.value !== -1) return fail('Choose a valid vote.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before voting again.');
+
+  const [target] = await db.select({ postId: communityPosts.id, slug: communities.slug })
+    .from(communityPosts)
+    .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+    .innerJoin(communityMembers, and(
+      eq(communityMembers.communityId, communityPosts.communityId),
+      eq(communityMembers.userId, actor.userId),
+    ))
+    .where(and(
+      eq(communityPosts.id, input.postId),
+      eq(communityPosts.status, 'published'),
+      isNull(communityPosts.removedAt),
+      eq(communities.isPrivate, false),
+    ))
+    .limit(1);
+  if (!target) return fail('Join the community before voting on its discussions.');
+
+  await db.insert(communityPostVotes).values({
+    postId: target.postId,
+    userId: actor.userId,
+    value: input.value,
+  }).onConflictDoUpdate({
+    target: [communityPostVotes.postId, communityPostVotes.userId],
+    set: { value: input.value },
+  });
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${target.slug}`);
   return ok();
 }
