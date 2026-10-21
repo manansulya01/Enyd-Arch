@@ -153,8 +153,8 @@ export async function createPost(
       );
     attachmentIds = owned.map((row) => row.id);
 
-    if (attachmentIds.length === 0) {
-      return fail('Those attachments are no longer available.');
+    if (attachmentIds.length !== new Set(input.attachmentFileIds).size) {
+      return fail('One or more attachments are no longer available.');
     }
   }
 
