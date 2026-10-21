@@ -6,6 +6,7 @@ import { ConversationList } from '~/components/messages/conversation-list';
 import { MessageComposer } from '~/components/messages/message-composer';
 import { GroupConversationComposer } from '~/components/messages/group-conversation-composer';
 import { ConversationPoller } from '~/components/messages/conversation-poller';
+import { MessageActions } from '~/components/messages/message-actions';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -110,7 +111,16 @@ export default async function MessagesPage({
                         <span className="bubble-meta">
                           {new Date(message.createdAt).toISOString().slice(11, 16)} UTC
                           {message.isMine ? ' · sent' : ''}
+                          {message.editedAt ? ' · edited' : ''}
                         </span>
+                        {message.isMine && !message.removed && (
+                          <MessageActions
+                            messageId={message.id}
+                            body={message.body}
+                            csrfToken={csrfToken}
+                            canEdit={Boolean(message.body)}
+                          />
+                        )}
                       </div>
                     ))
                   )}
