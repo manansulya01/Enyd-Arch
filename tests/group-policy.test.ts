@@ -46,3 +46,16 @@ test('group selection rejects malformed member identifiers', () => {
     reason: 'One of those members is not available.',
   });
 });
+
+
+test('group selection rejects non-string identifiers supplied at runtime', () => {
+  assert.deepEqual(
+    normalizeGroupMembers(owner, [null as unknown as string]),
+    { ok: false, reason: 'One of those members is not available.' },
+  );
+  assert.deepEqual(
+    normalizeGroupMembers(owner, [42 as unknown as string]),
+    { ok: false, reason: 'One of those members is not available.' },
+  );
+});
+
