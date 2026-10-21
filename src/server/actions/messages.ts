@@ -123,7 +123,22 @@ export async function startDirectConversation(
           isNull(conversations.removedAt),
         ))
         .limit(1);
-      if (meta) return ok({ conversationId: candidate.id });
+      if (meta) {
+        const participants = await db
+          .select({ userId: conversationMembers.userId })
+          .from(conversationMembers)
+          .where(and(
+            eq(conversationMembers.conversationId, candidate.id),
+            isNull(conversationMembers.removedAt),
+          ));
+        if (
+          participants.length === 2 &&
+          participants.some((member) => member.userId === actor.userId) &&
+          participants.some((member) => member.userId === otherUserId)
+        ) {
+          return ok({ conversationId: candidate.id });
+        }
+      }
     }
   }
 
