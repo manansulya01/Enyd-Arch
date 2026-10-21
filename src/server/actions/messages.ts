@@ -291,7 +291,8 @@ export async function editMessage(input: {
   body: string;
   csrf: string;
 }): Promise<ActionResult> {
-  await verifyCsrfValue(input.csrf);
+  await verifyCsrfValue(input?.csrf);
+  if (!input || !isUuid(input.messageId)) return fail('That message is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
@@ -361,7 +362,8 @@ export async function removeMessage(input: {
   messageId: string;
   csrf: string;
 }): Promise<ActionResult> {
-  await verifyCsrfValue(input.csrf);
+  await verifyCsrfValue(input?.csrf);
+  if (!input || !isUuid(input.messageId)) return fail('That message is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
@@ -435,9 +437,6 @@ export async function markConversationRead(input: {
   const actor = await currentActor();
   if (!actor) return fail('Sign in to update message read state.');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
-  if (!isUuid(input.conversationId)) {
-    return fail('That conversation is not available.');
-  }
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before updating read state again.');
 
