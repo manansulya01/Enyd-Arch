@@ -1903,6 +1903,7 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
     .where(
       and(
         inArray(messageTable.conversationId, conversationIds),
+        isNull(conversationMembers.removedAt),
         sql`${messageTable.senderId} <> ${viewerId}`,
         isNull(messageTable.removedAt),
         sql`${messageTable.createdAt} > coalesce(${conversationMembers.lastReadAt}, to_timestamp(0))`,
