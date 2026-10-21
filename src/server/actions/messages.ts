@@ -18,6 +18,7 @@ import {
   files,
   matches,
   messages,
+  storageObjects,
   userSettings,
   users,
 } from '~db/schema';
@@ -245,7 +246,14 @@ export async function sendMessage(
     const [owned] = await db
       .select({ id: files.id })
       .from(files)
-      .where(and(eq(files.id, attachmentFileId), eq(files.uploaderId, actor.userId)))
+      .innerJoin(storageObjects, eq(storageObjects.id, files.storageObjectId))
+      .where(and(
+        eq(files.id, attachmentFileId),
+        eq(files.uploaderId, actor.userId),
+        eq(files.state, 'clean'),
+        isNull(files.removedAt),
+        isNull(storageObjects.removedAt),
+      ))
       .limit(1);
     if (!owned) return fail('That file is not available.');
   }
