@@ -612,6 +612,7 @@ export async function voteInPoll(
   input: { pollId: string; optionId: string },
 ): Promise<ActionResult> {
   if (!isUuid(input.pollId) || !isUuid(input.optionId)) return fail('That poll option is not available.');
+  if (!can(actor, 'react')) return fail('You do not have permission to vote.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
