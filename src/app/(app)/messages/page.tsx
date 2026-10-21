@@ -144,7 +144,7 @@ export default async function MessagesPage({
                     conversationId={active.id}
                     csrf={<CsrfField />}
                     replyToId={replyTarget?.id}
-                    replyPreview={replyTarget?.body}
+                    replyPreview={replyTarget ? (replyTarget.body || (replyTarget.attachment ? 'Attachment' : 'Message')) : undefined}
                   />
                 </div>
               </>
