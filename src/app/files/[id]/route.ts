@@ -5,6 +5,7 @@ import { files } from '~db/schema';
 import { currentActor } from '~/server/auth/session';
 import { readObject } from '~/server/storage/driver';
 import { resolveFileAccess } from '~/server/storage/uploads';
+import { isUuid } from '~/server/auth/identifiers';
 
 /**
  * Serves a stored file to a member who is entitled to it.
@@ -19,7 +20,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!isUuid(id)) {
     return new NextResponse('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
   }
 
