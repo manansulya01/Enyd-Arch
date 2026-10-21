@@ -114,6 +114,11 @@ export function browserLabel(userAgent: string): string {
   return 'Browser';
 }
 
+/** Persist only coarse device labels, never the full user-agent fingerprint. */
+export function coarseDeviceLabel(userAgent: string): string {
+  return `${browserLabel(userAgent)} on ${platformLabel(userAgent)}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Request identity
 // ═══════════════════════════════════════════════════════════════════════════
