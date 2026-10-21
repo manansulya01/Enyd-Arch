@@ -149,5 +149,5 @@ test('session device labels discard detailed user-agent fingerprints', () => {
 test('rate-limit upsert writes timestamp expiry values, not bare intervals', () => {
   const query = new PgDialect().sqlToQuery(buildRateLimitIncrementSql('write:test:bucket', 60));
   assert.match(query.sql, /values \(\$1, 1, now\(\), now\(\) \+ make_interval\(secs => \$2\)\)/);
-  assert.match(query.sql, /then now\(\) \+ make_interval\(secs => \$2\)/);
+  assert.match(query.sql, /then now\(\) \+ make_interval\(secs => \$3\)/);
 });
