@@ -503,6 +503,42 @@ export async function toggleReaction(
       ))
       .limit(1);
     if (!visibleGalleryPost) return fail('That item is no longer available.');
+  } else if (input.targetType === 'archive_object') {
+    const [visibleArchiveObject] = await db
+      .select({ id: archiveObjects.id })
+      .from(archiveObjects)
+      .where(and(
+        eq(archiveObjects.id, input.targetId),
+        inArray(archiveObjects.visibility, ['members', 'public']),
+        isNull(archiveObjects.removedAt),
+      ))
+      .limit(1);
+    if (!visibleArchiveObject) return fail('That item is no longer available.');
+  } else if (input.targetType === 'game') {
+    const [approvedGame] = await db
+      .select({ id: games.id })
+      .from(games)
+      .where(and(
+        eq(games.id, input.targetId),
+        eq(games.status, 'approved'),
+        isNull(games.removedAt),
+      ))
+      .limit(1);
+    if (!approvedGame) return fail('That item is no longer available.');
+  } else if (input.targetType === 'game_comment') {
+    const [visibleGameComment] = await db
+      .select({ id: gameComments.id })
+      .from(gameComments)
+      .innerJoin(games, eq(games.id, gameComments.gameId))
+      .where(and(
+        eq(gameComments.id, input.targetId),
+        eq(gameComments.status, 'published'),
+        isNull(gameComments.removedAt),
+        eq(games.status, 'approved'),
+        isNull(games.removedAt),
+      ))
+      .limit(1);
+    if (!visibleGameComment) return fail('That item is no longer available.');
   }
 
   const limiter = await acquire('write', actor.userId);
