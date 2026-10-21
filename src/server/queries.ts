@@ -1994,7 +1994,7 @@ export async function conversationMessages(
       senderId: messageTable.senderId,
       removedAt: messageTable.removedAt,
       replyToId: sql<string | null>`(select r.id::text from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
-      replyPreview: sql<string | null>`(select left(r.body, 160) from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
+      replyPreview: sql<string | null>`(select left(coalesce(nullif(r.body, ''), case when r.attachment_file_id is not null then 'Attachment' else 'Message' end), 160) from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
       attachmentId: files.id,
       attachmentName: files.displayName,
       attachmentMime: files.detectedMime,
