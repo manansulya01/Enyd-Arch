@@ -56,7 +56,7 @@ export interface RateLimitResult {
  * requests can never both observe the pre-window count. The window resets when
  * the stored expiry has passed.
  */
-function incrementSql(key: string, windowSeconds: number) {
+export function buildRateLimitIncrementSql(key: string, windowSeconds: number) {
   return sql`
     insert into ${rateLimits} (key, count, window_start, expires_at)
     values (${key}, 1, now(), now() + make_interval(secs => ${windowSeconds}))
@@ -87,7 +87,7 @@ export async function acquire(
   const key = `${name}:${identifier}:${bucket}`;
 
   const rows = (await db.execute<{ count: number; expires_at: Date }>(
-    incrementSql(key, rule.windowSeconds),
+    buildRateLimitIncrementSql(key, rule.windowSeconds),
   )) as unknown as Array<{ count: number; expires_at: Date }>;
 
   const row = rows[0];
