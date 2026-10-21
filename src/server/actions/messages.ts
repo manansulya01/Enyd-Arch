@@ -205,9 +205,11 @@ export async function sendMessage(
   const conversationId = String(formData.get('conversationId') ?? '');
   const body = normalizeMessageBody(formData.get('body'));
   const attachmentFileId = String(formData.get('attachmentFileId') ?? '') || null;
+  const replyToId = String(formData.get('replyToId') ?? '') || null;
 
   if (!isUuid(conversationId)) return fail('That conversation is not available.');
   if (attachmentFileId && !isUuid(attachmentFileId)) return fail('That file is not available.');
+  if (replyToId && !isUuid(replyToId)) return fail('That message is not available to reply to.');
   if (!body && !attachmentFileId) return fail('Write a message or attach a file.');
 
   // Membership first — no membership, no message, and no hint that the
@@ -249,6 +251,19 @@ export async function sendMessage(
     }
   }
 
+  if (replyToId) {
+    const [replyTarget] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(
+        eq(messages.id, replyToId),
+        eq(messages.conversationId, conversationId),
+        isNull(messages.removedAt),
+      ))
+      .limit(1);
+    if (!replyTarget) return fail('That message is no longer available to reply to.');
+  }
+
   if (attachmentFileId) {
     const [owned] = await db
       .select({ id: files.id })
@@ -270,7 +285,7 @@ export async function sendMessage(
 
   const [row] = await db
     .insert(messages)
-    .values({ conversationId, senderId: actor.userId, body, attachmentFileId })
+    .values({ conversationId, senderId: actor.userId, body, attachmentFileId, replyToId })
     .returning({ id: messages.id });
 
   await db
