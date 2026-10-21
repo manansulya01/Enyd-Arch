@@ -704,6 +704,49 @@ export async function toggleBookmark(
   input: { targetType: 'post' | 'archive_object' | 'game' | 'gallery_post'; targetId: string; note?: string },
 ): Promise<ActionResult<{ saved: boolean }>> {
   if (!can(actor, 'bookmark')) return fail('You do not have permission to save.');
+  if (!isUuid(input.targetId)) return fail('That item is not available.');
+  if (!['post', 'archive_object', 'game', 'gallery_post'].includes(input.targetType)) {
+    return fail('That item cannot be saved.');
+  }
+
+  // A bookmark is private, but creating one must not be an oracle for
+  // private, removed, draft, or unapproved content. Match the visibility
+  // boundary used by the corresponding public-facing catalogue.
+  let available = false;
+  if (input.targetType === 'post') {
+    const [row] = await db.select({ id: posts.id }).from(posts).where(and(
+      eq(posts.id, input.targetId),
+      eq(posts.status, 'published'),
+      inArray(posts.visibility, ['members', 'public']),
+      isNull(posts.removedAt),
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'archive_object') {
+    const [row] = await db.select({ id: archiveObjects.id }).from(archiveObjects).where(and(
+      eq(archiveObjects.id, input.targetId),
+      inArray(archiveObjects.visibility, ['members', 'public']),
+      isNull(archiveObjects.removedAt),
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'game') {
+    const [row] = await db.select({ id: games.id }).from(games).where(and(
+      eq(games.id, input.targetId),
+      eq(games.status, 'approved'),
+      isNull(games.removedAt),
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'gallery_post') {
+    const [row] = await db.select({ id: galleryPosts.id }).from(galleryPosts).where(and(
+      eq(galleryPosts.id, input.targetId),
+      inArray(galleryPosts.visibility, ['members', 'public']),
+      isNull(galleryPosts.removedAt),
+    )).limit(1);
+    available = Boolean(row);
+  }
+  if (!available) return fail('That item is no longer available.');
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
   const existing = await db
     .select({ id: bookmarks.userId })
