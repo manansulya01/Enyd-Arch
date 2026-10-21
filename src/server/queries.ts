@@ -1879,6 +1879,8 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       and(
         inArray(conversationMembers.conversationId, conversationIds),
         isNull(conversationMembers.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
       ),
     );
 
