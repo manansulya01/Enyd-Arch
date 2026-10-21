@@ -374,6 +374,10 @@ export async function deleteComment(
   actor: SessionActor,
   commentId: string,
 ): Promise<ActionResult> {
+  if (!isUuid(commentId)) return fail('That comment is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
+
   const rows = await db
     .select({ id: comments.id, authorId: comments.authorId, postId: comments.postId })
     .from(comments)
