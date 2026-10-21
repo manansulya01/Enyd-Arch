@@ -2002,6 +2002,11 @@ export async function conversationMessages(
       eq(files.id, messageTable.attachmentFileId),
       eq(files.state, 'clean'),
       isNull(files.removedAt),
+      sql`exists (
+        select 1 from storage_objects so
+        where so.id = ${files.storageObjectId}
+          and so.removed_at is null
+      )`,
     ))
     .where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))
     .orderBy(desc(messageTable.createdAt))
