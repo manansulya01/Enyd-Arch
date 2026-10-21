@@ -932,8 +932,11 @@ export const pollVotes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    primaryKey({ columns: [t.pollId, t.userId] }),
+    // Multi-select polls may store several options per member; a member can
+    // still vote for each option only once.
+    primaryKey({ columns: [t.pollId, t.userId, t.optionId] }),
     index('poll_votes_option_idx').on(t.optionId),
+    index('poll_votes_member_idx').on(t.pollId, t.userId),
   ],
 );
 
