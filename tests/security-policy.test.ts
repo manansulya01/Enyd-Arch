@@ -119,3 +119,18 @@ test('connection restrictions remove only the matching connection mode', () => {
   assert.ok(capabilities.includes('connect_collaboration'));
   assert.ok(capabilities.includes('connections'));
 });
+
+
+test('message policy fails closed for missing or future policy values', () => {
+  const base = {
+    senderId: 'sender',
+    recipientId: 'recipient',
+    recipientActive: true,
+    blocked: false,
+    connected: true,
+  };
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: undefined }), false);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: null }), false);
+  assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'future-policy' }), false);
+});
+
