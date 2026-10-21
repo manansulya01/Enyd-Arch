@@ -28,12 +28,14 @@ import {
   polls,
   pollVotes,
   reactions,
+  storageObjects,
   users,
 } from '~db/schema';
 import { fail, issuesToErrors, ok, type ActionResult } from '~/lib/action-result';
 import { REACTIONS } from '~/lib/domain';
 import { slugify } from '~/lib/format';
 import { can, type SessionActor } from '~/server/auth/session';
+import { isUuid } from '~/server/auth/identifiers';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
 import { notify } from '~/server/notify';
@@ -140,6 +142,11 @@ export async function createPost(
           eq(files.uploaderId, actor.userId),
           eq(files.state, 'clean'),
           isNull(files.removedAt),
+          sql`exists (
+            select 1 from storage_objects so
+            where so.id = ${files.storageObjectId}
+              and so.removed_at is null
+          )`,
         ),
       );
     attachmentIds = owned.map((row) => row.id);
@@ -436,12 +443,22 @@ export async function toggleReaction(
   actor: SessionActor,
   input: { targetType: ReactionTargetType; targetId: string; kind: string },
 ): Promise<ActionResult<{ active: boolean; count: number }>> {
+  if (!isUuid(input.targetId)) return fail('That item is not available.');
   if (!REACTION_KEYS.has(input.kind)) return fail('That is not a reaction Enyd Arch offers.');
   if (!can(actor, 'react')) return fail('You do not have permission to react.');
 
   const target = reactionCounter(input.targetType);
   if (!target) return fail('That cannot be reacted to.');
   const { table, column } = target;
+
+  // Do not create reaction rows for missing or soft-deleted targets. This
+  // lookup is also a guard against callers forging a target type/id pair.
+  const [availableTarget] = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.id, input.targetId), isNull(table.removedAt)))
+    .limit(1);
+  if (!availableTarget) return fail('That item is no longer available.');
 
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
