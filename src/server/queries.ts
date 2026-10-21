@@ -1995,7 +1995,11 @@ export async function conversationMessages(
     })
     .from(messageTable)
     .innerJoin(users, eq(users.id, messageTable.senderId))
-    .leftJoin(files, eq(files.id, messageTable.attachmentFileId))
+    .leftJoin(files, and(
+      eq(files.id, messageTable.attachmentFileId),
+      eq(files.state, 'clean'),
+      isNull(files.removedAt),
+    ))
     .where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))
     .orderBy(desc(messageTable.createdAt))
     .limit(300);
