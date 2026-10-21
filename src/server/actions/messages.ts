@@ -239,7 +239,10 @@ export async function sendMessage(
   const otherMembers = participants.map((member) => member.userId).filter((id) => id !== actor.userId);
 
   if (membership[0].kind === 'direct') {
-    const recipientId = otherMembers[0];
+    // A direct thread must have exactly one other active membership. Treat
+    // corrupted or partially migrated membership sets as unavailable rather
+    // than accidentally applying the recipient policy to only one person.
+    const recipientId = otherMembers.length === 1 ? otherMembers[0] : null;
     if (!recipientId || !(await canStartDirectMessage(actor.userId, recipientId))) {
       return fail('Messaging is no longer available for this conversation.');
     }
