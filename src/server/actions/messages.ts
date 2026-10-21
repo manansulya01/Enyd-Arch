@@ -7,7 +7,7 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -265,4 +265,122 @@ export async function sendMessage(
   revalidatePath(`/messages/${conversationId}`);
   revalidatePath('/messages');
   return ok({ messageId: row!.id });
+}
+
+
+const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+export async function editMessage(input: {
+  messageId: string;
+  body: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  const body = input.body.replace(/\\r\\n/g, '\\n').trim().slice(0, 4000);
+  if (!body) return fail('A message cannot be empty.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before editing another message.');
+
+  const cutoff = new Date(Date.now() - MESSAGE_EDIT_WINDOW_MS);
+  const target = await db.transaction(async (tx) => {
+    const [row] = await tx.select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      createdAt: messages.createdAt,
+    })
+      .from(messages)
+      .innerJoin(conversations, and(
+        eq(conversations.id, messages.conversationId),
+        isNull(conversations.removedAt),
+      ))
+      .innerJoin(conversationMembers, and(
+        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      ))
+      .where(and(
+        eq(messages.id, input.messageId),
+        eq(messages.senderId, actor.userId),
+        isNull(messages.removedAt),
+        gt(messages.createdAt, cutoff),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) return null;
+    await tx.update(messages).set({ body, editedAt: new Date() })
+      .where(and(
+        eq(messages.id, row.id),
+        eq(messages.senderId, actor.userId),
+        isNull(messages.removedAt),
+      ));
+    await tx.update(conversations)
+      .set({ lastMessagePreview: body.slice(0, 160) || 'Message' })
+      .where(and(
+        eq(conversations.id, row.conversationId),
+        eq(conversations.lastMessageAt, row.createdAt),
+      ));
+    return row;
+  });
+  if (!target) return fail('That message cannot be edited. Only your recent messages can be edited.');
+  revalidatePath('/messages');
+  revalidatePath(`/messages?c=${target.conversationId}`);
+  return ok();
+}
+
+export async function removeMessage(input: {
+  messageId: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before removing another message.');
+
+  const target = await db.transaction(async (tx) => {
+    const [row] = await tx.select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      createdAt: messages.createdAt,
+    })
+      .from(messages)
+      .innerJoin(conversations, and(
+        eq(conversations.id, messages.conversationId),
+        isNull(conversations.removedAt),
+      ))
+      .innerJoin(conversationMembers, and(
+        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      ))
+      .where(and(
+        eq(messages.id, input.messageId),
+        eq(messages.senderId, actor.userId),
+        isNull(messages.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) return null;
+    await tx.update(messages).set({ removedAt: new Date(), body: '' })
+      .where(and(
+        eq(messages.id, row.id),
+        eq(messages.senderId, actor.userId),
+        isNull(messages.removedAt),
+      ));
+    await tx.update(conversations)
+      .set({ lastMessagePreview: 'Message removed' })
+      .where(and(
+        eq(conversations.id, row.conversationId),
+        eq(conversations.lastMessageAt, row.createdAt),
+      ));
+    return row;
+  });
+  if (!target) return fail('That message cannot be removed.');
+  revalidatePath('/messages');
+  revalidatePath(`/messages?c=${target.conversationId}`);
+  return ok();
 }
