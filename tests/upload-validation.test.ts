@@ -46,6 +46,9 @@ test('upload size preflight rejects over-limit payloads', () => {
   assert.equal(withinDeclaredLimit(12_582_913, 'image'), false);
   assert.equal(withinDeclaredLimit(100_000_000), true);
   assert.equal(withinDeclaredLimit(104_857_601), false);
+  assert.equal(withinDeclaredLimit(-1), false);
+  assert.equal(withinDeclaredLimit(Number.NaN), false);
+  assert.equal(withinDeclaredLimit(1.5), false);
 });
 
 function oneEntryZip(entryName: string): Uint8Array {
