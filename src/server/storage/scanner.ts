@@ -34,6 +34,43 @@ const SCAN_TIMEOUT_MS = 20_000;
 /** EICAR-style test string, harmless, used to prove the pipeline is live. */
 export const EICAR_MARKER = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
+/** Parse only explicit ClamAV verdicts as authoritative. Unknown replies fail closed. */
+export function parseClamAvReply(reply: string, uploadedBytes: number): ScanOutcome {
+  const normalized = reply.trim();
+  const matched = /^(.+?):\s*(.+?)\s+FOUND$/i.exec(normalized);
+  if (matched) {
+    return {
+      verdict: 'infected',
+      provider: 'clamav',
+      signature: `${matched[1]}:${matched[2]}`.slice(0, 64),
+      detail: `Malware detected: ${matched[2]}`,
+      release: false,
+    };
+  }
+  if (/ERROR|INSTREAM size limit/i.test(normalized)) {
+    return {
+      verdict: 'error',
+      provider: 'clamav',
+      detail: `Scanner reported: ${normalized.slice(0, 180)}`,
+      release: false,
+    };
+  }
+  if (/^stream:\s*OK$/i.test(normalized)) {
+    return {
+      verdict: 'clean',
+      provider: 'clamav',
+      detail: `No threat found (${(uploadedBytes / 1024).toFixed(0)} KB scanned).`,
+      release: true,
+    };
+  }
+  return {
+    verdict: 'error',
+    provider: 'clamav',
+    detail: 'The scanner returned an unrecognized or empty verdict.',
+    release: false,
+  };
+}
+
 /**
  * Development signature set.
  *
@@ -163,18 +200,9 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
 
     socket.on('end', () => {
       clearTimeout(timer);
-      const reply = Buffer.concat(chunks).toString('utf8').trim();
-      const matched = /^(.+?):\s*(.+?)\s+FOUND$/.exec(reply);
-      const errored = reply.includes('ERROR') || reply.includes('INSTREAM size limit');
-
-      if (matched) {
-        finish({
-          verdict: 'infected',
-          provider: 'clamav',
-          signature: `${matched[1]}:${matched[2]}`.slice(0, 64),
-          detail: `Malware detected: ${matched[2]}`,
-          release: false,
-        });
+      const reply = Buffer.concat(chunks).toString('utf8');
+      finish(parseClamAvReply(reply, uploaded));
+    });
         return;
       }
       if (errored) {
