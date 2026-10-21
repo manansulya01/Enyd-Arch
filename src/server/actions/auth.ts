@@ -507,6 +507,14 @@ export async function signInAction(
     );
   }
 
+  // Apply the second bucket before password verification so attempts from many
+  // IPs cannot bypass throttling for one username. The response is generic and
+  // does not reveal whether that username exists.
+  const perIdentifier = await acquire('signIn', `identifier:${parsed.data.identifier.toLowerCase()}`);
+  if (!perIdentifier.allowed) {
+    return fail('Too many sign-in attempts. Try again shortly.');
+  }
+
   const rows = await db
     .select({
       id: users.id,
