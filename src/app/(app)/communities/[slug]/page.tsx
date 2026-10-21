@@ -3,11 +3,12 @@ import Link from 'next/link';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { db } from '~db';
-import { blocks, communities, communityMembers, communityPostComments, communityPosts, users } from '~db/schema';
+import { blocks, communities, communityMembers, communityPostComments, communityPostVotes, communityPosts, users } from '~db/schema';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
+import { CommunityPostVoting } from '~/components/communities/community-post-voting';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 
@@ -59,6 +60,21 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
     list.push(comment);
     commentsByPost.set(comment.postId, list);
   }
+  const voteRows = rows.length === 0 ? [] : await db.select({
+    postId: communityPostVotes.postId,
+    userId: communityPostVotes.userId,
+    value: communityPostVotes.value,
+  })
+    .from(communityPostVotes)
+    .where(inArray(communityPostVotes.postId, rows.map(post => post.id)));
+  const voteSummaryByPost = new Map<string, { upvotes: number; downvotes: number; currentVote: -1 | 0 | 1 }>();
+  for (const vote of voteRows) {
+    const summary = voteSummaryByPost.get(vote.postId) ?? { upvotes: 0, downvotes: 0, currentVote: 0 as const };
+    if (vote.value === 1) summary.upvotes += 1;
+    if (vote.value === -1) summary.downvotes += 1;
+    if (vote.userId === actor.userId) summary.currentVote = vote.value === 1 ? 1 : -1;
+    voteSummaryByPost.set(vote.postId, summary);
+  }
   const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
   return <PageShell title={community.name} sub={community.description || 'Public community'} actions={<Link className="btn btn-ghost btn-sm" href="/communities">All communities</Link>}>
     <div className="stack stack-4">
@@ -69,6 +85,14 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
         <div className="stack stack-3">{posts.map(post => <article className="panel panel-body stack stack-2" key={post.id}>
           {post.title && <h2>{post.title}</h2>}
           <p className="t-meta">by {post.displayName} (@{post.username}) · {post.createdAt.toLocaleDateString()}</p>
+          <CommunityPostVoting
+            postId={post.id}
+            upvotes={voteSummaryByPost.get(post.id)?.upvotes ?? 0}
+            downvotes={voteSummaryByPost.get(post.id)?.downvotes ?? 0}
+            currentVote={voteSummaryByPost.get(post.id)?.currentVote ?? 0}
+            joined={joined}
+            csrfToken={csrfToken}
+          />
           <p className="prose">{post.body}</p>
           <CommunityComments
             postId={post.id}
