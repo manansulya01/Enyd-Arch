@@ -18,10 +18,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string }>;
+  searchParams: Promise<{ c?: string; reply?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, reply }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -34,6 +34,7 @@ export default async function MessagesPage({
   }])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   const active = c ? conversations.find((conversation) => conversation.id === c) : undefined;
   const messages = active ? await conversationMessages(active.id, actor.userId) : null;
+  const replyTarget = reply && messages ? messages.find((message) => message.id === reply && !message.removed) : undefined;
 
   return (
     <PageShell title="Messages" sub="Private, one-to-one, in small groups, and inside projects.">
@@ -102,6 +103,12 @@ export default async function MessagesPage({
                         ) : (
                           <p className="bubble-text">{message.body}</p>
                         )}
+                        {message.replyTo && (
+                          <blockquote className="bubble-reply">
+                            <span className="bubble-meta">Replying to an earlier message</span>
+                            <p className="t-small">{message.replyTo.preview}</p>
+                          </blockquote>
+                        )}
                         {message.attachment && (
                           <a className="post-attachment" href={`/files/${message.attachment.id}?download=1`}>
                             <span className="post-attachment-glyph" aria-hidden="true">
@@ -115,6 +122,11 @@ export default async function MessagesPage({
                           {message.isMine ? ' · sent' : ''}
                           {message.editedAt ? ' · edited' : ''}
                         </span>
+                        {!message.removed && (
+                          <p className="bubble-meta">
+                            <Link href={`/messages?c=${active.id}&reply=${message.id}`}>Reply</Link>
+                          </p>
+                        )}
                         {message.isMine && !message.removed && (
                           <MessageActions
                             messageId={message.id}
@@ -128,7 +140,12 @@ export default async function MessagesPage({
                   )}
                 </div>
                 <div className="thread-composer">
-                  <MessageComposer conversationId={active.id} csrf={<CsrfField />} />
+                  <MessageComposer
+                    conversationId={active.id}
+                    csrf={<CsrfField />}
+                    replyToId={replyTarget?.id}
+                    replyPreview={replyTarget?.body}
+                  />
                 </div>
               </>
             )}
