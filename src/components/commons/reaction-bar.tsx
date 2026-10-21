@@ -15,7 +15,9 @@ export function ReactionBar({
   myReactions,
   count,
   bookmarked,
+  csrfToken,
 }: {
+  csrfToken: string;
   targetType: 'post' | 'comment' | 'archive_object' | 'gallery_post' | 'game_comment';
   targetId: string;
   myReactions: string[];
@@ -36,7 +38,7 @@ export function ReactionBar({
     );
     setTotal((current) => Math.max(0, current + (wasActive ? -1 : 1)));
     startTransition(async () => {
-      const result = await onToggleReaction({ targetType, targetId, kind });
+      const result = await onToggleReaction({ targetType, targetId, kind }, csrfToken);
       if (result.ok && result.data) setTotal(result.data.count);
       else router.refresh();
     });
