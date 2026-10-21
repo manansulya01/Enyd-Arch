@@ -521,6 +521,9 @@ export const deviceTransferRequests = pgTable(
   (t) => [
     index('device_transfer_state_idx').on(t.state),
     index('device_transfer_user_idx').on(t.userId),
+    uniqueIndex('device_transfer_one_pending_per_user_key')
+      .on(t.userId)
+      .where(sql`${t.state} = 'pending'`),
   ],
 );
 
