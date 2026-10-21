@@ -599,6 +599,7 @@ export const ACCEPT_ATTRIBUTE = ALLOWED_TYPES.flatMap((type) =>
 /** Read a declared size from a multipart part before materialising the body. */
 export function withinDeclaredLimit(size: number | undefined, kind?: UploadKind): boolean {
   if (size === undefined) return true;
+  if (!Number.isSafeInteger(size) || size < 0) return false;
   const limit = Math.min(MAX_UPLOAD_BYTES, kind ? KIND_LIMIT[kind] : MAX_UPLOAD_BYTES);
   return size <= limit;
 }
