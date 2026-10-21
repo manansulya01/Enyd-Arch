@@ -188,6 +188,10 @@ export async function resolveFileAccess(
       isPublic: files.isPublic,
     })
     .from(files)
+    .innerJoin(storageObjects, and(
+      eq(storageObjects.id, files.storageObjectId),
+      isNull(storageObjects.removedAt),
+    ))
     .where(eq(files.id, fileId))
     .limit(1);
 
