@@ -73,7 +73,7 @@ export default async function CommonsPage({
           ) : (
             <div className="stack stack-4">
               {posts.map((post) => (
-                <PostCard key={post.id} post={post} />
+                <PostCard key={post.id} post={post} csrfToken={csrfToken} />
               ))}
             </div>
           )}
