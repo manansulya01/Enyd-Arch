@@ -7,7 +7,7 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -316,12 +316,23 @@ export async function editMessage(input: {
         eq(messages.senderId, actor.userId),
         isNull(messages.removedAt),
       ));
-    await tx.update(conversations)
-      .set({ lastMessagePreview: body.slice(0, 160) || 'Message' })
+    const [latest] = await tx.select({
+      id: messages.id,
+      body: messages.body,
+      attachmentFileId: messages.attachmentFileId,
+    })
+      .from(messages)
       .where(and(
-        eq(conversations.id, row.conversationId),
-        eq(conversations.lastMessageAt, row.createdAt),
-      ));
+        eq(messages.conversationId, row.conversationId),
+        isNull(messages.removedAt),
+      ))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    if (latest?.id === row.id) {
+      await tx.update(conversations)
+        .set({ lastMessagePreview: body.slice(0, 160) || (latest.attachmentFileId ? 'Attachment' : 'Message') })
+        .where(eq(conversations.id, row.conversationId));
+    }
     return row;
   });
   if (!target) return fail('That message cannot be edited. Only your recent messages can be edited.');
@@ -371,12 +382,24 @@ export async function removeMessage(input: {
         eq(messages.senderId, actor.userId),
         isNull(messages.removedAt),
       ));
-    await tx.update(conversations)
-      .set({ lastMessagePreview: 'Message removed' })
+    const [latest] = await tx.select({
+      body: messages.body,
+      attachmentFileId: messages.attachmentFileId,
+      createdAt: messages.createdAt,
+    })
+      .from(messages)
       .where(and(
-        eq(conversations.id, row.conversationId),
-        eq(conversations.lastMessageAt, row.createdAt),
-      ));
+        eq(messages.conversationId, row.conversationId),
+        isNull(messages.removedAt),
+      ))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
+    await tx.update(conversations)
+      .set({
+        lastMessageAt: latest?.createdAt ?? null,
+        lastMessagePreview: latest?.body.slice(0, 160) || (latest?.attachmentFileId ? 'Attachment' : 'No messages yet'),
+      })
+      .where(eq(conversations.id, row.conversationId));
     return row;
   });
   if (!target) return fail('That message cannot be removed.');
