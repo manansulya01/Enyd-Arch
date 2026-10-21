@@ -59,7 +59,7 @@ export interface RateLimitResult {
 function incrementSql(key: string, windowSeconds: number) {
   return sql`
     insert into ${rateLimits} (key, count, window_start, expires_at)
-    values (${key}, 1, now(), make_interval(secs => ${windowSeconds}))
+    values (${key}, 1, now(), now() + make_interval(secs => ${windowSeconds}))
     on conflict (key) do update set
       count = case
         when ${rateLimits.expiresAt} <= now() then 1
@@ -70,7 +70,7 @@ function incrementSql(key: string, windowSeconds: number) {
         else ${rateLimits.windowStart}
       end,
       expires_at = case
-        when ${rateLimits.expiresAt} <= now() then make_interval(secs => ${windowSeconds})
+        when ${rateLimits.expiresAt} <= now() then now() + make_interval(secs => ${windowSeconds})
         else ${rateLimits.expiresAt}
       end
     returning count, expires_at
