@@ -203,24 +203,6 @@ function scanWithClamAv(data: Uint8Array, host: string, port: number): Promise<S
       const reply = Buffer.concat(chunks).toString('utf8');
       finish(parseClamAvReply(reply, uploaded));
     });
-        return;
-      }
-      if (errored) {
-        finish({
-          verdict: 'error',
-          provider: 'clamav',
-          detail: `Scanner reported: ${reply.slice(0, 180)}`,
-          release: false,
-        });
-        return;
-      }
-      finish({
-        verdict: 'clean',
-        provider: 'clamav',
-        detail: `No threat found (${(uploaded / 1024).toFixed(0)} KB scanned).`,
-        release: true,
-      });
-    });
   });
 }
 
