@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { communityMembers, communityPosts, communities, users } from '~db/schema';
+import { communityMembers, communityPostComments, communityPosts, communities, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -119,5 +119,99 @@ export async function createCommunityPost(input: {
     body,
   });
   revalidatePath('/communities');
+  return ok();
+}
+
+
+export async function createCommunityComment(input: {
+  postId: string;
+  body: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Commenting is not available for this identity.');
+  const limiter = await acquire('post', actor.userId);
+  if (!limiter.allowed) return fail('You are commenting too quickly. Wait a moment.');
+
+  const body = cleanText(input.body, 2500);
+  if (!body) return fail('Write a comment before publishing.');
+
+  const [target] = await db.select({ postId: communityPosts.id, communityId: communityPosts.communityId, slug: communities.slug })
+    .from(communityPosts)
+    .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+    .innerJoin(communityMembers, and(
+      eq(communityMembers.communityId, communityPosts.communityId),
+      eq(communityMembers.userId, actor.userId),
+    ))
+    .where(and(
+      eq(communityPosts.id, input.postId),
+      eq(communityPosts.status, 'published'),
+      isNull(communityPosts.removedAt),
+      eq(communities.isPrivate, false),
+    ))
+    .limit(1);
+  if (!target) return fail('Join the community and choose an available discussion before commenting.');
+
+  await db.insert(communityPostComments).values({
+    postId: target.postId,
+    authorId: actor.userId,
+    body,
+  });
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${target.slug}`);
+  return ok();
+}
+
+export async function removeCommunityComment(commentId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing discussion comments.');
+
+  const [comment] = await db.select({
+    id: communityPostComments.id,
+    authorId: communityPostComments.authorId,
+    postId: communityPosts.id,
+    communityId: communities.id,
+    slug: communities.slug,
+  })
+    .from(communityPostComments)
+    .innerJoin(communityPosts, eq(communityPosts.id, communityPostComments.postId))
+    .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+    .where(and(
+      eq(communityPostComments.id, commentId),
+      eq(communityPostComments.status, 'published'),
+      isNull(communityPostComments.removedAt),
+      eq(communityPosts.status, 'published'),
+      isNull(communityPosts.removedAt),
+    ))
+    .limit(1);
+  if (!comment) return fail('That comment is no longer available.');
+
+  const [membership] = await db.select({ role: communityMembers.role })
+    .from(communityMembers)
+    .where(and(
+      eq(communityMembers.communityId, comment.communityId),
+      eq(communityMembers.userId, actor.userId),
+    ))
+    .limit(1);
+  const canModerate = membership?.role === 'owner' || membership?.role === 'moderator';
+  if (comment.authorId !== actor.userId && !canModerate) {
+    return fail('Only the author or a community moderator can remove this comment.');
+  }
+
+  await db.update(communityPostComments).set({
+    status: 'removed',
+    removedAt: new Date(),
+  }).where(and(
+    eq(communityPostComments.id, comment.id),
+    eq(communityPostComments.status, 'published'),
+    isNull(communityPostComments.removedAt),
+  ));
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${comment.slug}`);
   return ok();
 }
