@@ -85,6 +85,7 @@ export function MessageComposer({
         <div className="card-pad" aria-label="Replying to message">
           <p className="t-meta">Replying to</p>
           <p className="t-small">{replyPreview}</p>
+          <a className="lnk" href={`/messages?c=${conversationId}`}>Cancel reply</a>
         </div>
       )}
       <div className="composer-tools">
