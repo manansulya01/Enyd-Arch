@@ -282,8 +282,11 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
       }
     }
 
-    // Data descriptors (bit 3) hide the real size; stop rather than guess.
-    if (flags & 0x08) break;
+    // Data descriptors (bit 3) hide the real size in the local header. This
+    // parser does not verify the central directory, so accepting a partial
+    // census here could let an archive bypass expansion and entry-count limits.
+    // Fail closed until central-directory parsing is implemented.
+    if (flags & 0x08) return null;
     const advance = 30 + nameLength + extraLength + compressedSize;
     if (advance <= 0) break;
     offset += advance;
