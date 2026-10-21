@@ -6,6 +6,7 @@ import { ConversationList } from '~/components/messages/conversation-list';
 import { MessageComposer } from '~/components/messages/message-composer';
 import { GroupConversationComposer } from '~/components/messages/group-conversation-composer';
 import { ConversationPoller } from '~/components/messages/conversation-poller';
+import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
@@ -79,6 +80,7 @@ export default async function MessagesPage({
             ) : (
               <>
                 <ConversationPoller conversationId={active.id} />
+                <ConversationReadMarker conversationId={active.id} csrfToken={csrfToken} />
                 <div className="thread-scroll">
                   {messages.length === 0 ? (
                     <p className="t-small t-subtle card-pad">
