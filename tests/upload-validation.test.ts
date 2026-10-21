@@ -83,6 +83,20 @@ test('upload validator fails closed on ZIP data descriptors it cannot census', a
   assert.ok(result.findings.some((finding) => finding.code === 'unreadable_archive'));
 });
 
+test('upload validator rejects truncated ZIP local headers', async () => {
+  const bytes = new Uint8Array(31);
+  bytes.set([0x50, 0x4b, 0x03, 0x04], 0);
+  new DataView(bytes.buffer).setUint16(26, 100, true); // claims a name beyond the payload
+  const result = await validateUpload({
+    filename: 'broken.zip',
+    declaredMime: 'application/zip',
+    data: bytes,
+    expect: 'archive',
+  });
+  assert.equal(result.ok, false);
+  assert.ok(result.findings.some((finding) => finding.code === 'unreadable_archive'));
+});
+
 test('upload validator rejects parent-relative paths inside ZIP archives', async () => {
   const result = await validateUpload({
     filename: 'bundle.zip',
