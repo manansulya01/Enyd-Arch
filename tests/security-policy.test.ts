@@ -4,6 +4,8 @@ import { deriveCapabilities } from '../src/server/auth/capabilities';
 import { buildKey } from '../src/server/storage/keys';
 import { mayInitiateMessage } from '../src/server/auth/messaging-policy';
 import { coarseDeviceLabel, resolveClientIp } from '../src/server/crypto';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { buildRateLimitIncrementSql } from '../src/server/auth/rate-limit';
 
 test('inactive identities receive no capabilities', () => {
   assert.deepEqual(
@@ -141,4 +143,11 @@ test('session device labels discard detailed user-agent fingerprints', () => {
   assert.equal(coarseDeviceLabel(userAgent), 'Chrome on Windows');
   assert.ok(!coarseDeviceLabel(userAgent).includes('123.0.0.0'));
   assert.ok(!coarseDeviceLabel(userAgent).includes('Win64'));
+});
+
+
+test('rate-limit upsert writes timestamp expiry values, not bare intervals', () => {
+  const query = new PgDialect().sqlToQuery(buildRateLimitIncrementSql('write:test:bucket', 60));
+  assert.match(query.sql, /values \(\$1, 1, now\(\), now\(\) \+ make_interval\(secs => \$2\)\)/);
+  assert.match(query.sql, /then now\(\) \+ make_interval\(secs => \$2\)/);
 });
