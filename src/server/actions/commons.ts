@@ -463,6 +463,48 @@ export async function toggleReaction(
     .limit(1);
   if (!availableTarget) return fail('That item is no longer available.');
 
+  // Reaction APIs must enforce the same visibility boundary as the feed. A
+  // valid UUID is not proof that a caller can see the underlying content.
+  if (input.targetType === 'post') {
+    const [visiblePost] = await db
+      .select({ id: posts.id })
+      .from(posts)
+      .where(and(
+        eq(posts.id, input.targetId),
+        eq(posts.status, 'published'),
+        inArray(posts.visibility, ['members', 'public']),
+        isNull(posts.removedAt),
+      ))
+      .limit(1);
+    if (!visiblePost) return fail('That item is no longer available.');
+  } else if (input.targetType === 'comment') {
+    const [visibleComment] = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .innerJoin(posts, eq(posts.id, comments.postId))
+      .where(and(
+        eq(comments.id, input.targetId),
+        eq(comments.status, 'published'),
+        isNull(comments.removedAt),
+        eq(posts.status, 'published'),
+        inArray(posts.visibility, ['members', 'public']),
+        isNull(posts.removedAt),
+      ))
+      .limit(1);
+    if (!visibleComment) return fail('That item is no longer available.');
+  } else if (input.targetType === 'gallery_post') {
+    const [visibleGalleryPost] = await db
+      .select({ id: galleryPosts.id })
+      .from(galleryPosts)
+      .where(and(
+        eq(galleryPosts.id, input.targetId),
+        inArray(galleryPosts.visibility, ['members', 'public']),
+        isNull(galleryPosts.removedAt),
+      ))
+      .limit(1);
+    if (!visibleGalleryPost) return fail('That item is no longer available.');
+  }
+
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
