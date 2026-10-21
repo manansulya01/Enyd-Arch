@@ -1845,7 +1845,10 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       lastMessagePreview: conversationTable.lastMessagePreview,
     })
     .from(conversationTable)
-    .where(inArray(conversationTable.id, conversationIds))
+    .where(and(
+      inArray(conversationTable.id, conversationIds),
+      isNull(conversationTable.removedAt),
+    ))
     .orderBy(desc(sql`coalesce(${conversationTable.lastMessageAt}, ${conversationTable.createdAt})`));
 
   if (rows.length === 0) return [];
@@ -2001,6 +2004,7 @@ export async function conversationMessages(
       and(
         eq(conversationMembers.conversationId, conversationId),
         eq(conversationMembers.userId, viewerId),
+        isNull(conversationMembers.removedAt),
       ),
     );
 
