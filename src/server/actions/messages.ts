@@ -28,6 +28,7 @@ import { mayInitiateMessage } from '~/server/auth/messaging-policy';
 import { acquire } from '~/server/auth/rate-limit';
 import { normalizeGroupMembers } from '~/server/auth/group-policy';
 import { normalizeMessageBody } from '~/server/auth/message-content';
+import { isUuid } from '~/server/auth/identifiers';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 /** Blocks are symmetric for contact purposes: either member can close the path. */
@@ -85,6 +86,7 @@ export async function startDirectConversation(
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  if (!isUuid(otherUserId)) return fail('That member is not available.');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
 
   const limiter = await acquire('write', actor.userId);
@@ -144,7 +146,10 @@ export async function createGroupConversation(input: {
   memberUserIds: string[];
   csrf: string;
 }): Promise<ActionResult<{ conversationId: string }>> {
-  await verifyCsrfValue(input.csrf);
+  await verifyCsrfValue(input?.csrf);
+  if (!input || typeof input !== 'object' || typeof input.title !== 'string' || !Array.isArray(input.memberUserIds)) {
+    return fail('That group request is not valid.');
+  }
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
@@ -158,6 +163,7 @@ export async function createGroupConversation(input: {
   const selection = normalizeGroupMembers(actor.userId, input.memberUserIds);
   if (!selection.ok) return fail(selection.reason);
   const memberIds = selection.memberIds;
+  if (!memberIds.every(isUuid)) return fail('One of those members is not available.');
 
   const found = await db
     .select({ id: users.id })
@@ -200,7 +206,8 @@ export async function sendMessage(
   const body = normalizeMessageBody(formData.get('body'));
   const attachmentFileId = String(formData.get('attachmentFileId') ?? '') || null;
 
-  if (!conversationId) return fail('Missing conversation.');
+  if (!isUuid(conversationId)) return fail('That conversation is not available.');
+  if (attachmentFileId && !isUuid(attachmentFileId)) return fail('That file is not available.');
   if (!body && !attachmentFileId) return fail('Write a message or attach a file.');
 
   // Membership first — no membership, no message, and no hint that the
@@ -423,11 +430,12 @@ export async function markConversationRead(input: {
   conversationId: string;
   csrf: string;
 }): Promise<ActionResult> {
-  await verifyCsrfValue(input.csrf);
+  await verifyCsrfValue(input?.csrf);
+  if (!input || !isUuid(input.conversationId)) return fail('That conversation is not available.');
   const actor = await currentActor();
   if (!actor) return fail('Sign in to update message read state.');
   if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
-  if (typeof input.conversationId !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.conversationId)) {
+  if (!isUuid(input.conversationId)) {
     return fail('That conversation is not available.');
   }
   const limiter = await acquire('write', actor.userId);
