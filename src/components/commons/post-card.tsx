@@ -5,7 +5,7 @@ import { Avatar } from '~/components/ui';
 import { ReactionBar } from './reaction-bar';
 
 /** One post, rendered the same way in the feed and on its own page. */
-export function PostCard({ post, detail }: { post: PostView; detail?: boolean }) {
+export function PostCard({ post, detail, csrfToken }: { post: PostView; detail?: boolean; csrfToken: string }) {
   return (
     <article className="post card">
       <header className="post-header">
@@ -102,6 +102,7 @@ export function PostCard({ post, detail }: { post: PostView; detail?: boolean })
 
       <footer className="post-foot">
         <ReactionBar
+          csrfToken={csrfToken}
           targetType="post"
           targetId={post.id}
           myReactions={post.myReactions}
