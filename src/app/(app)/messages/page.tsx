@@ -118,7 +118,7 @@ export default async function MessagesPage({
                             messageId={message.id}
                             body={message.body}
                             csrfToken={csrfToken}
-                            canEdit={Boolean(message.body)}
+                            canEdit={Boolean(message.body) && Date.now() - new Date(message.createdAt).getTime() < 15 * 60 * 1000}
                           />
                         )}
                       </div>
