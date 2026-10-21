@@ -768,6 +768,9 @@ export async function requestDeviceTransferAction(
   const actor = await currentActor();
   if (!actor) return fail('You must be signed in to request a transfer.');
 
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before submitting another transfer request.');
+
   const reason = String(formData.get('reason') ?? '');
   const explanation = String(formData.get('explanation') ?? '').trim();
   const newDeviceLabel = String(formData.get('newDeviceLabel') ?? '').trim();
@@ -805,14 +808,28 @@ export async function requestDeviceTransferAction(
     .where(and(eq(devices.userId, actor.userId), eq(devices.status, 'active')))
     .limit(1);
 
-  await db.insert(deviceTransferRequests).values({
-    userId: actor.userId,
-    reason,
-    explanation,
-    fromDeviceId: deviceRows[0]?.id ?? null,
-    newDeviceLabel: newDeviceLabel || null,
-    state: 'pending',
-  });
+  try {
+    await db.insert(deviceTransferRequests).values({
+      userId: actor.userId,
+      reason,
+      explanation,
+      fromDeviceId: deviceRows[0]?.id ?? null,
+      newDeviceLabel: newDeviceLabel || null,
+      state: 'pending',
+    });
+  } catch (error) {
+    // The partial unique index is the race-safe authority; the earlier lookup
+    // only provides a friendly fast path for an existing pending request.
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505'
+    ) {
+      return fail('You already have a transfer request awaiting review.');
+    }
+    throw error;
+  }
 
   const traits = await requestTraits();
   await writeAudit(
