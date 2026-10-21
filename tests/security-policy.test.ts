@@ -3,7 +3,7 @@ import test from 'node:test';
 import { deriveCapabilities } from '../src/server/auth/capabilities';
 import { buildKey } from '../src/server/storage/keys';
 import { mayInitiateMessage } from '../src/server/auth/messaging-policy';
-import { resolveClientIp } from '../src/server/crypto';
+import { coarseDeviceLabel, resolveClientIp } from '../src/server/crypto';
 
 test('inactive identities receive no capabilities', () => {
   assert.deepEqual(
@@ -134,3 +134,11 @@ test('message policy fails closed for missing or future policy values', () => {
   assert.equal(mayInitiateMessage({ ...base, messagePolicy: 'future-policy' }), false);
 });
 
+
+
+test('session device labels discard detailed user-agent fingerprints', () => {
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0.0.0 Safari/537.36';
+  assert.equal(coarseDeviceLabel(userAgent), 'Chrome on Windows');
+  assert.ok(!coarseDeviceLabel(userAgent).includes('123.0.0.0'));
+  assert.ok(!coarseDeviceLabel(userAgent).includes('Win64'));
+});
