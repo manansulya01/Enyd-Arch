@@ -628,6 +628,21 @@ export async function voteInPoll(
 
   const found = poll[0];
   if (!found || found.optionPollId !== found.id) return fail('That option is not available.');
+
+  // Poll IDs are not authorization. Voting must inherit the parent post's
+  // published/visible boundary, just like reading the poll in the feed.
+  const [visiblePost] = await db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(and(
+      eq(posts.id, found.postId),
+      eq(posts.status, 'published'),
+      inArray(posts.visibility, ['members', 'public']),
+      isNull(posts.removedAt),
+    ))
+    .limit(1);
+  if (!visiblePost) return fail('That poll is no longer available.');
+
   if (found.closesAt && found.closesAt.getTime() < Date.now()) {
     return fail('This poll has closed.');
   }
@@ -676,10 +691,15 @@ export async function voteInPoll(
   const existing = await db
     .select({ optionId: pollVotes.optionId })
     .from(pollVotes)
-    .where(and(eq(pollVotes.pollId, input.pollId), eq(pollVotes.userId, actor.userId)))
+    .where(and(
+      eq(pollVotes.pollId, input.pollId),
+      eq(pollVotes.userId, actor.userId),
+      eq(pollVotes.optionId, input.optionId),
+    ))
     .limit(1);
 
-  if (existing[0]?.optionId === input.optionId) return ok();
+  // Multi-select means one vote per option, not an unbounded duplicate count.
+  if (existing[0]) return ok();
 
   await db.insert(pollVotes).values({
     pollId: input.pollId,
