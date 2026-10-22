@@ -84,7 +84,7 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
                   Download
                 </a>
               )}
-              <BookmarkButton targetType="archive_object" targetId={object.id} csrfToken={csrfToken} initialSaved={bookmarked} />
+              {(['public', 'members'].includes(object.visibility) || bookmarked) && <BookmarkButton targetType="archive_object" targetId={object.id} csrfToken={csrfToken} initialSaved={bookmarked} />}
               <ReactionBar
                 csrfToken={csrfToken}
                 targetType="archive_object"
