@@ -311,6 +311,11 @@ export async function createComment(
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
         inArray(posts.visibility, ['members', 'public']),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
       ),
     )
     .limit(1);
@@ -327,7 +332,13 @@ export async function createComment(
         and(
           eq(comments.id, input.parentId),
           eq(comments.postId, input.postId),
+          eq(comments.status, 'published'),
           isNull(comments.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${actor.userId} and b.blocked_id = ${comments.authorId})
+               or (b.blocker_id = ${comments.authorId} and b.blocked_id = ${actor.userId})
+          )`,
         ),
       )
       .limit(1);
