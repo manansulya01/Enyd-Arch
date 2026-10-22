@@ -17,12 +17,8 @@ export const metadata: Metadata = {
 const DEFAULTS = {
   profileVisibility: 'members',
   messagePolicy: 'members',
-  showActivity: true,
-  showCreations: true,
-  showArchiveContributions: true,
   discoverable: true,
   showRegion: false,
-  searchableByEmail: false,
   hideAgeBand: false,
 };
 
@@ -70,18 +66,6 @@ export default async function PrivacySettingsPage({
               <span>Allow my profile to appear in member discovery</span>
             </label>
             <label className="check-row">
-              <input type="checkbox" name="showActivity" defaultChecked={settings.showActivity} />
-              <span>Show my activity on my profile</span>
-            </label>
-            <label className="check-row">
-              <input type="checkbox" name="showCreations" defaultChecked={settings.showCreations} />
-              <span>Show my creations</span>
-            </label>
-            <label className="check-row">
-              <input type="checkbox" name="showArchiveContributions" defaultChecked={settings.showArchiveContributions} />
-              <span>Show my Archive contributions</span>
-            </label>
-            <label className="check-row">
               <input type="checkbox" name="showRegion" defaultChecked={settings.showRegion} />
               <span>Show my broad region on my profile</span>
             </label>
@@ -100,10 +84,6 @@ export default async function PrivacySettingsPage({
                 <option value="connections">My connections only</option>
                 <option value="nobody">Nobody</option>
               </select>
-            </label>
-            <label className="check-row">
-              <input type="checkbox" name="searchableByEmail" defaultChecked={settings.searchableByEmail} />
-              <span>Allow people who already know my email to find my account</span>
             </label>
             <p className="t-small t-subtle">
               Email is never displayed on your public profile. This option only controls account discovery.
