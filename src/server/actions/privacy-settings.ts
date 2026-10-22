@@ -10,7 +10,7 @@ import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
 
 const VISIBILITIES = new Set(['public', 'members', 'connections', 'private']);
-const MESSAGE_POLICIES = new Set(['members', 'connections', 'nobody']);
+const MESSAGE_POLICIES = new Set(['everyone', 'members', 'connections', 'nobody']);
 
 function checked(formData: FormData, name: string): boolean {
   return formData.get(name) === 'on';
