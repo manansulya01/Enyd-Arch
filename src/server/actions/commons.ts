@@ -327,7 +327,7 @@ export async function createComment(
         eq(posts.id, input.postId),
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
-        inArray(posts.visibility, ['members', 'public']),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
         sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
@@ -544,7 +544,7 @@ export async function toggleReaction(
       .where(and(
         eq(posts.id, input.targetId),
         eq(posts.status, 'published'),
-        inArray(posts.visibility, ['members', 'public']),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
         isNull(posts.removedAt),
         sql`not exists (
           select 1 from ${blocks} b
@@ -565,7 +565,7 @@ export async function toggleReaction(
         eq(comments.status, 'published'),
         isNull(comments.removedAt),
         eq(posts.status, 'published'),
-        inArray(posts.visibility, ['members', 'public']),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
         isNull(posts.removedAt),
         sql`not exists (
           select 1 from ${blocks} b
@@ -734,7 +734,7 @@ export async function voteInPoll(
     .where(and(
       eq(posts.id, found.postId),
       eq(posts.status, 'published'),
-      inArray(posts.visibility, ['members', 'public']),
+      visibleToActor(posts.visibility, posts.authorId, actor.userId),
       isNull(posts.removedAt),
       sql`not exists (
         select 1 from ${blocks} b
@@ -862,7 +862,7 @@ export async function toggleBookmark(
     const [row] = await db.select({ id: posts.id }).from(posts).where(and(
       eq(posts.id, input.targetId),
       eq(posts.status, 'published'),
-      inArray(posts.visibility, ['members', 'public']),
+      visibleToActor(posts.visibility, posts.authorId, actor.userId),
       isNull(posts.removedAt),
       sql`not exists (
         select 1 from ${blocks} b
@@ -875,7 +875,7 @@ export async function toggleBookmark(
   } else if (input.targetType === 'archive_object') {
     const [row] = await db.select({ id: archiveObjects.id }).from(archiveObjects).where(and(
       eq(archiveObjects.id, input.targetId),
-      inArray(archiveObjects.visibility, ['members', 'public']),
+      visibleToActor(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
       isNull(archiveObjects.removedAt),
       sql`not exists (
         select 1 from ${blocks} b
@@ -901,7 +901,7 @@ export async function toggleBookmark(
   } else if (input.targetType === 'gallery_post') {
     const [row] = await db.select({ id: galleryPosts.id }).from(galleryPosts).where(and(
       eq(galleryPosts.id, input.targetId),
-      inArray(galleryPosts.visibility, ['members', 'public']),
+      visibleToActor(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
       isNull(galleryPosts.removedAt),
       sql`not exists (
         select 1 from ${blocks} b
