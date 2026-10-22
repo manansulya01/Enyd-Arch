@@ -11,6 +11,7 @@ import { slugify } from '~/lib/format';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
+import { isUuid } from '~/server/auth/identifiers';
 
 export async function addFilm(
   _previous: ActionResult<{ slug: string }> | null,
@@ -80,7 +81,10 @@ export async function reviewFilm(
   const body = String(formData.get('body') ?? '').trim().slice(0, 4000);
   const spoilers = formData.get('spoilers') === 'on';
 
-  if (!filmId || !(rating >= 0 && rating <= 10)) return fail('A rating from 0 to 10 is required.');
+  if (!isUuid(filmId)) return fail('That film is not available.');
+  if (!(rating >= 0 && rating <= 10)) return fail('A rating from 0 to 10 is required.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before updating another review.');
 
   const [film] = await db.select({ slug: films.slug }).from(films).where(eq(films.id, filmId)).limit(1);
   if (!film) return fail('That film is not available.');
@@ -109,7 +113,10 @@ export async function commentOnFilm(
   const body = String(formData.get('body') ?? '').trim().slice(0, 2000);
   const sceneLabel = String(formData.get('sceneLabel') ?? '').trim().slice(0, 120);
   const spoilers = formData.get('spoilers') === 'on';
-  if (!filmId || !body) return fail('Write something first.');
+  if (!isUuid(filmId)) return fail('That film is not available.');
+  if (!body) return fail('Write something first.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before adding another comment.');
 
   const [film] = await db.select({ slug: films.slug }).from(films).where(eq(films.id, filmId)).limit(1);
   if (!film) return fail('That film is not available.');
@@ -130,6 +137,11 @@ export async function toggleWatchlist(filmId: string, csrf: string): Promise<Act
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(filmId)) return fail('That film is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing your watchlist.');
+  const [film] = await db.select({ id: films.id }).from(films).where(eq(films.id, filmId)).limit(1);
+  if (!film) return fail('That film is not available.');
 
   let [list] = await db.select().from(watchlists).where(eq(watchlists.userId, actor.userId)).limit(1);
   if (!list) {
@@ -170,9 +182,11 @@ export async function createWatchEvent(
   const roomProvider = String(formData.get('roomProvider') ?? '').trim().slice(0, 48);
 
   const startsAt = new Date(startsAtRaw);
-  if (!filmId || Number.isNaN(startsAt.getTime())) {
-    return fail('Choose a film and a valid time.');
+  if (!isUuid(filmId) || Number.isNaN(startsAt.getTime())) {
+    return fail('Choose an available film and a valid time.');
   }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before scheduling another watch event.');
   if (roomUrl) {
     try {
       const url = new URL(roomUrl);
