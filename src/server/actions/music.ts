@@ -9,6 +9,7 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrfValue } from '~/server/csrf';
+import { isUuid } from '~/server/auth/identifiers';
 
 async function authorizedPlaylist(playlistId: string, userId: string) {
   const [playlist] = await db.select({ id: musicPlaylists.id })
@@ -24,6 +25,7 @@ export async function toggleMusicLike(input: {
   csrf: string;
 }): Promise<ActionResult<{ liked: boolean }>> {
   await verifyCsrfValue(input.csrf);
+  if (!isUuid(input.fileId)) return fail('That track is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
@@ -96,6 +98,7 @@ export async function addMusicTrackToPlaylist(input: {
   csrf: string;
 }): Promise<ActionResult> {
   await verifyCsrfValue(input.csrf);
+  if (!isUuid(input.playlistId) || !isUuid(input.fileId)) return fail('That playlist or track is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
@@ -148,6 +151,7 @@ export async function removeMusicTrackFromPlaylist(input: {
   csrf: string;
 }): Promise<ActionResult> {
   await verifyCsrfValue(input.csrf);
+  if (!isUuid(input.playlistId) || !isUuid(input.fileId)) return fail('That playlist or track is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
@@ -181,6 +185,7 @@ export async function moveMusicTrackInPlaylist(input: {
   csrf: string;
 }): Promise<ActionResult> {
   await verifyCsrfValue(input.csrf);
+  if (!isUuid(input.playlistId) || !isUuid(input.fileId)) return fail('That playlist or track is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
@@ -250,6 +255,7 @@ export async function deleteMusicPlaylist(input: {
   csrf: string;
 }): Promise<ActionResult> {
   await verifyCsrfValue(input.csrf);
+  if (!isUuid(input.playlistId)) return fail('That playlist is not available.');
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'upload')) return fail('Music is not available for this account.');
