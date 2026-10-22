@@ -5,7 +5,8 @@ import { PageShell } from '~/components/ui/page-shell';
 import { Avatar, EmptyState } from '~/components/ui';
 import { ArchiveComments } from '~/components/archive/archive-comments';
 import { ReactionBar } from '~/components/commons/reaction-bar';
-import { archiveBySlug, archiveComments } from '~/server/queries';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
+import { archiveBySlug, archiveComments, isBookmarked } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 import { ARCHIVE_CATEGORY_MAP } from '~/lib/domain';
@@ -26,9 +27,10 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
   const object = await archiveBySlug(slug, actor.userId);
   if (!object) notFound();
 
-  const [comments, csrfToken] = await Promise.all([
+  const [comments, csrfToken, bookmarked] = await Promise.all([
     archiveComments(object.id, actor.userId),
     sessionCsrfToken(),
+    isBookmarked(actor.userId, 'archive_object', object.id),
   ]);
   const catalogueNumber = Number(object.catalogueNumber.replace(/\D/g, ''));
   const inlineImage = object.file?.contentType.startsWith('image/') ?? false;
@@ -82,6 +84,7 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
                   Download
                 </a>
               )}
+              <BookmarkButton targetType="archive_object" targetId={object.id} csrfToken={csrfToken} initialSaved={bookmarked} />
               <ReactionBar
                 csrfToken={csrfToken}
                 targetType="archive_object"
