@@ -8,7 +8,7 @@
  * notification, and every count is maintained in the same statement as the row
  * that changed it so a feed can never disagree with the row it rendered from.
  */
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, sql, type SQLWrapper } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '~db';
 import {
@@ -45,6 +45,22 @@ import { maybeUnlock } from '~/server/society';
 const MAX_POST_LENGTH = 5000;
 const MAX_COMMENT_LENGTH = 2500;
 const RESERVED_HANDLE = /[<>]/;
+
+/** Keep mutation authorization aligned with the viewer-aware feed visibility rule. */
+function visibleToActor(visibility: SQLWrapper, ownerId: SQLWrapper, actorId: string) {
+  return sql`(
+    ${visibility} in ('members', 'public')
+    or (
+      ${visibility} = 'connections'
+      and exists (
+        select 1 from matches m
+        where m.status = 'accepted'
+          and ((m.user_a_id = ${ownerId} and m.user_b_id = ${actorId})
+            or (m.user_b_id = ${ownerId} and m.user_a_id = ${actorId}))
+      )
+    )
+  )`;
+}
 
 export type ReactionTargetType = 'post' | 'comment' | 'archive_object' | 'game' | 'gallery_post' | 'game_comment';
 
@@ -168,7 +184,7 @@ export async function createPost(
       .where(and(
         eq(posts.id, repostOfId),
         eq(posts.status, 'published'),
-        inArray(posts.visibility, ['members', 'public']),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
         isNull(posts.removedAt),
         sql`not exists (
           select 1 from ${blocks} b
@@ -572,7 +588,7 @@ export async function toggleReaction(
       .from(galleryPosts)
       .where(and(
         eq(galleryPosts.id, input.targetId),
-        inArray(galleryPosts.visibility, ['members', 'public']),
+        visibleToActor(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
         isNull(galleryPosts.removedAt),
         sql`not exists (
           select 1 from ${blocks} b
@@ -589,7 +605,7 @@ export async function toggleReaction(
       .from(archiveObjects)
       .where(and(
         eq(archiveObjects.id, input.targetId),
-        inArray(archiveObjects.visibility, ['members', 'public']),
+        visibleToActor(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
         isNull(archiveObjects.removedAt),
         sql`not exists (
           select 1 from ${blocks} b
