@@ -32,7 +32,7 @@ export const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { href: '/commons', label: 'The Commons', glyph: '❝', primary: true, requires: ['post'] },
       { href: '/messages', label: 'Messages', glyph: '✉', requires: ['message'], description: 'Conversations' },
       { href: '/notifications', label: 'Notifications', glyph: '◔' },
-      { href: '/bookmarks', label: 'Saved posts', glyph: '☆', description: 'Your private collection of saved posts' },
+      { href: '/bookmarks', label: 'Saved items', glyph: '☆', description: 'Your private collection of saved content' },
     ],
   },
   {
