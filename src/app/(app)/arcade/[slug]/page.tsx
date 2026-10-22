@@ -6,7 +6,8 @@ import { Avatar, EmptyState } from '~/components/ui';
 import { GamePlayer } from '~/components/arcade/player';
 import { GameComments } from '~/components/arcade/comments';
 import { RatingWidget } from '~/components/arcade/rating';
-import { gameBySlug, getGameComments } from '~/server/queries';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
+import { gameBySlug, getGameComments, isBookmarked } from '~/server/queries';
 import { mintPlayGrant } from '~/server/arcade/play-grant';
 import { requireOnboarded } from '~/server/guard';
 import { formatCount, starString } from '~/lib/format';
@@ -28,9 +29,10 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
 
   const grant = game.status === 'approved' ? await mintPlayGrant(game.id) : { ok: false };
   const stars = starString(game.rating);
-  const [gameComments, csrfToken] = await Promise.all([
+  const [gameComments, csrfToken, bookmarked] = await Promise.all([
     getGameComments(game.id, actor.userId),
     sessionCsrfToken(),
+    isBookmarked(actor.userId, 'game', game.id),
   ]);
 
   return (
@@ -58,6 +60,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
           <article className="card card-pad-lg stack stack-3">
             <div className="row row-wrap row-between">
               <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} csrfToken={csrfToken} />
+              <BookmarkButton targetType="game" targetId={game.id} csrfToken={csrfToken} initialSaved={bookmarked} />
               <span className="t-meta">
                 {formatCount(game.playCount)} plays · {game.ratingCount} rating
                 {game.ratingCount === 1 ? '' : 's'} · {game.commentCount} comments
