@@ -439,6 +439,7 @@ export async function feed(options: {
     db
       .select({
         postId: sql<string>`${postTable.id}`,
+        pollId: sql<string>`pl.id`,
         question: sql<string>`pl.question`,
         multiSelect: sql<boolean>`pl.multi_select`,
         closesAt: sql<Date | null>`pl.closes_at`,
@@ -448,6 +449,10 @@ export async function feed(options: {
         viewerPicked: sql<boolean>`exists (
           select 1 from poll_votes pv
           where pv.poll_id = pl.id and pv.user_id = ${options.viewerId}
+        )`,
+        optionSelected: sql<boolean>`exists (
+          select 1 from poll_votes pv
+          where pv.poll_id = pl.id and pv.option_id = po.id and pv.user_id = ${options.viewerId}
         )`,
       })
       .from(postTable)
