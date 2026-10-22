@@ -11,6 +11,7 @@ import { mintPlayGrant } from '~/server/arcade/play-grant';
 import { requireOnboarded } from '~/server/guard';
 import { formatCount, starString } from '~/lib/format';
 import { CsrfField } from '~/components/shell/csrf-field';
+import { sessionCsrfToken } from '~/server/csrf';
 import { db, schema } from '~db';
 import { eq, desc } from 'drizzle-orm';
 
@@ -27,7 +28,10 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
 
   const grant = game.status === 'approved' ? await mintPlayGrant(game.id) : { ok: false };
   const stars = starString(game.rating);
-  const gameComments = await getGameComments(game.id, actor.userId);
+  const [gameComments, csrfToken] = await Promise.all([
+    getGameComments(game.id, actor.userId),
+    sessionCsrfToken(),
+  ]);
 
   return (
     <PageShell title={game.title} sub={game.tagline}>
@@ -53,7 +57,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
 
           <article className="card card-pad-lg stack stack-3">
             <div className="row row-wrap row-between">
-              <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} />
+              <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} csrfToken={csrfToken} />
               <span className="t-meta">
                 {formatCount(game.playCount)} plays · {game.ratingCount} rating
                 {game.ratingCount === 1 ? '' : 's'} · {game.commentCount} comments
@@ -89,7 +93,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
             </div>
           </article>
 
-          <GameComments gameId={game.id} comments={gameComments} />
+          <GameComments gameId={game.id} comments={gameComments} csrfToken={csrfToken} />
         </div>
 
         <aside className="aside">
