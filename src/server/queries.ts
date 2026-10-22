@@ -563,56 +563,15 @@ export async function postById(postId: string, viewerId: string): Promise<PostVi
 }
 
 export async function networkBySlug(slug: string, viewerId: string): Promise<NetworkPostView | null> {
-  const rows = await feed({ viewerId, limit: 1, ...{} }).catch(() => []);
-  void rows;
-
-  const [row] = await db
-    .select({
-      id: postTable.id,
-      body: postTable.body,
-      createdAt: postTable.createdAt,
-      lastActivityAt: postTable.lastActivityAt,
-      editedAt: postTable.editedAt,
-      pinned: postTable.pinned,
-      reactionCount: postTable.reactionCount,
-      commentCount: postTable.commentCount,
-      repostCount: postTable.repostCount,
-      visibility: postTable.visibility,
-      repostOfId: postTable.repostOfId,
-      authorId: postTable.authorId,
-    })
-    .from(postTable)
-    .innerJoin(users, eq(users.id, postTable.authorId))
-    .where(
-      and(
-        eq(postTable.id, slug),
-        eq(postTable.status, 'published'),
-        isNull(postTable.removedAt),
-        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
-        eq(users.status, 'active'),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
-             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
-        )`,
-      ),
-    )
-    .limit(1);
-
-  if (!row) return null;
-
-  // Reuse the projection by asking the feed for exactly this post.
-  const base = await projectPosts([row], viewerId);
-  const post = base[0];
-  if (post == null) return null;
+  const post = await postById(slug, viewerId);
+  if (!post) return null;
   const body = post.body ?? '';
   const title = (body.split('\n')[0] ?? '').trim();
-  const content = post.body;
   return {
     ...post,
     title,
-    content,
-  } as NetworkPostView;
+    content: post.body,
+  };
 }
 
 export { postComments as networkComments };
