@@ -578,6 +578,118 @@ export async function feed(options: {
   }));
 }
 
+export type SavedNonPostView = {
+  targetType: 'archive_object' | 'game' | 'gallery_post';
+  targetId: string;
+  title: string;
+  href: string;
+  createdAt: Date;
+};
+
+/** Return only saved items that the member can still legitimately view. */
+export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostView[]> {
+  const [archives, arcadeGames, galleryPieces] = await Promise.all([
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: archiveObjectTable.title,
+      slug: archiveObjectTable.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(archiveObjectTable, eq(archiveObjectTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'archive_object'),
+        inArray(archiveObjectTable.visibility, ['members', 'public']),
+        isNull(archiveObjectTable.removedAt),
+        sql`(${archiveObjectTable.contributorId} is null or exists (
+          select 1 from users u
+          where u.id = ${archiveObjectTable.contributorId}
+            and u.status = 'active' and u.removed_at is null
+        ))`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${archiveObjectTable.contributorId})
+             or (b.blocker_id = ${archiveObjectTable.contributorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: gameTable.title,
+      slug: gameTable.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(gameTable, eq(gameTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'game'),
+        eq(gameTable.status, 'approved'),
+        isNull(gameTable.removedAt),
+        sql`exists (
+          select 1 from users u where u.id = ${gameTable.creatorId}
+            and u.status = 'active' and u.removed_at is null
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${gameTable.creatorId})
+             or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: galleryPostTable.title,
+      slug: galleryPostTable.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(galleryPostTable, eq(galleryPostTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'gallery_post'),
+        inArray(galleryPostTable.visibility, ['members', 'public']),
+        isNull(galleryPostTable.removedAt),
+        sql`exists (
+          select 1 from users u where u.id = ${galleryPostTable.authorId}
+            and u.status = 'active' and u.removed_at is null
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${galleryPostTable.authorId})
+             or (b.blocker_id = ${galleryPostTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+  ]);
+
+  return [
+    ...archives.map((item) => ({ ...item, targetType: 'archive_object' as const, href: `/archive/${item.slug}` })),
+    ...arcadeGames.map((item) => ({ ...item, targetType: 'game' as const, href: `/arcade/${item.slug}` })),
+    ...galleryPieces.map((item) => ({ ...item, targetType: 'gallery_post' as const, href: `/gallery/${item.slug}` })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80);
+}
+
+export async function isBookmarked(
+  viewerId: string,
+  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post',
+  targetId: string,
+): Promise<boolean> {
+  const [row] = await db.select({ targetId: bookmarkTable.targetId })
+    .from(bookmarkTable)
+    .where(and(
+      eq(bookmarkTable.userId, viewerId),
+      eq(bookmarkTable.targetType, targetType),
+      eq(bookmarkTable.targetId, targetId),
+    ))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function postById(postId: string, viewerId: string): Promise<PostView | null> {
   // Use the feed's viewer-aware projection so detail pages preserve poll state
   // and the same visibility, block, and attachment rules as the main feed.
