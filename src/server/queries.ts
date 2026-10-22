@@ -296,7 +296,6 @@ export interface PostView {
   hashtags: string[];
   myReactions: string[];
   bookmarked: boolean;
-  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
@@ -318,6 +317,7 @@ export interface NetworkPostView {
   poll: PollView | null;
   hashtags: string[];
   myReactions: string[];
+  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
