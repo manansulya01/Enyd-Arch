@@ -51,7 +51,6 @@ export function OnboardingWizard({
 
   const [profileVisibility, setProfileVisibility] = useState(context.settings.profileVisibility);
   const [discoverable, setDiscoverable] = useState(context.settings.discoverable);
-  const [showActivity, setShowActivity] = useState(context.settings.showActivity);
   const [messagePolicy, setMessagePolicy] = useState(context.settings.messagePolicy);
 
   const [connectionsEnabled, setConnectionsEnabled] = useState(context.connections.enabled);
@@ -101,9 +100,6 @@ export function OnboardingWizard({
         const result = await onSavePrivacy({
           profileVisibility,
           discoverable,
-          showActivity,
-          showCreations: showActivity,
-          showArchiveContributions: showActivity,
           showRegion: Boolean(region),
           messagePolicy,
         }, csrfToken);
@@ -278,13 +274,6 @@ export function OnboardingWizard({
             <span className="switch-text">
               <span className="switch-title">Discoverable in the Network</span>
               <span className="switch-desc">Members with shared interests can find you.</span>
-            </span>
-          </label>
-          <label className="setting-row">
-            <input type="checkbox" checked={showActivity} onChange={(event) => setShowActivity(event.target.checked)} />
-            <span className="switch-text">
-              <span className="switch-title">Show my activity</span>
-              <span className="switch-desc">Posts, creations and contributions appear on your profile.</span>
             </span>
           </label>
         </div>
