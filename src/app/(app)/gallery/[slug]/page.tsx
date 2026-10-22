@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageShell } from '~/components/ui/page-shell';
 import { requireOnboarded } from '~/server/guard';
-import { galleryBySlug, galleryMedia } from '~/server/queries';
+import { sessionCsrfToken } from '~/server/csrf';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
+import { galleryBySlug, galleryMedia, isBookmarked } from '~/server/queries';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -17,6 +19,10 @@ export default async function GalleryPiecePage({ params }: { params: Promise<{ s
   const { slug } = await params;
   const [piece, media] = await Promise.all([galleryBySlug(slug, actor.userId), galleryMedia(slug)]);
   if (!piece) notFound();
+  const [csrfToken, bookmarked] = await Promise.all([
+    sessionCsrfToken(),
+    isBookmarked(actor.userId, 'gallery_post', piece.id),
+  ]);
 
   return (
     <PageShell title={piece.title} sub={piece.kind.replaceAll('_', ' ')} wide>
@@ -36,7 +42,10 @@ export default async function GalleryPiecePage({ params }: { params: Promise<{ s
             ))}
           </div>
         )}
-        <p className="t-meta">{piece.reactionCount} reactions · {piece.commentCount} comments</p>
+        <div className="row row-between row-wrap">
+          <p className="t-meta">{piece.reactionCount} reactions · {piece.commentCount} comments</p>
+          <BookmarkButton targetType="gallery_post" targetId={piece.id} csrfToken={csrfToken} initialSaved={bookmarked} />
+        </div>
         <Link className="btn btn-ghost" href="/gallery">Back to the Gallery</Link>
       </article>
     </PageShell>
