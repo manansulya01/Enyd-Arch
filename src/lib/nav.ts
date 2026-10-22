@@ -61,6 +61,7 @@ export const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { href: '/chronicle', label: 'The Chronicle', glyph: '✦', description: 'Our history' },
       { href: '/registry', label: 'The Registry', glyph: '❒', description: 'Levels and standing' },
       { href: '/inner-arch', label: 'The Inner Arch', glyph: '✦', requires: ['inner_arch'] },
+      { href: '/settings/privacy', label: 'Privacy settings', glyph: '⚙', description: 'Control profile visibility and contact preferences' },
       { href: '/admin', label: 'Administration', glyph: '⚿', adminPermission: 'reports.read' },
     ],
   },
