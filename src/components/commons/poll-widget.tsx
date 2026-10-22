@@ -77,7 +77,7 @@ export function PollWidget({ poll, csrfToken }: { poll: PollView; csrfToken: str
       <div className="row row-between row-wrap">
         <span className="poll-foot t-meta">
           {poll.totalVotes} vote{poll.totalVotes === 1 ? '' : 's'}
-          {poll.closesAt ? ` · ${closed ? 'closed' : 'closes'} ${poll.closesAt.toLocaleDateString()}` : ''}
+          {poll.closesAt ? ` · ${closed ? 'closed' : 'closes'} ${poll.closesAt.toISOString().slice(0, 10)}` : ''}
           {poll.multiSelect ? ' · select all that apply' : ''}
         </span>
         {!closed && (
