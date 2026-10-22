@@ -571,6 +571,9 @@ export async function toggleReaction(
           where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
              or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
         )`,
+        sql`(${archiveObjects.contributorId} is null or exists (
+          select 1 from users u where u.id = ${archiveObjects.contributorId} and u.status = 'active' and u.removed_at is null
+        ))`,
       ))
       .limit(1);
     if (!visibleArchiveObject) return fail('That item is no longer available.');
@@ -612,6 +615,8 @@ export async function toggleReaction(
           where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
              or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
         )`,
+        sql`exists (select 1 from users u where u.id = ${gameComments.authorId} and u.status = 'active' and u.removed_at is null)`,
+        sql`exists (select 1 from users u where u.id = ${games.creatorId} and u.status = 'active' and u.removed_at is null)`,
       ))
       .limit(1);
     if (!visibleGameComment) return fail('That item is no longer available.');
@@ -718,6 +723,7 @@ export async function voteInPoll(
         where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
            or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
       )`,
+      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
     ))
     .limit(1);
   if (!visiblePost) return fail('That poll is no longer available.');
