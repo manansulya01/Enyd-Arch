@@ -9,6 +9,7 @@ import { networkBySlug, networkComments } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { absoluteDate } from '~/lib/format';
 import { sessionCsrfToken } from '~/server/csrf';
+import { PollWidget } from '~/components/commons/poll-widget';
 
 export async function generateMetadata({
   params,
@@ -64,6 +65,8 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
             <div className="prose prose-lg t-base">
               {post.content}
             </div>
+
+            {post.poll && <PollWidget poll={post.poll} csrfToken={csrfToken} />}
 
             {post.hashtags.length > 0 && (
               <div className="shared-tags mt-6">
