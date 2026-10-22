@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { onToggleBookmark } from '~/server/actions/commons-client';
 
 type BookmarkTarget = 'post' | 'archive_object' | 'game' | 'gallery_post';
@@ -16,6 +17,7 @@ export function BookmarkButton({
   csrfToken: string;
   initialSaved: boolean;
 }) {
+  const router = useRouter();
   const [saved, setSaved] = useState(initialSaved);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -24,8 +26,10 @@ export function BookmarkButton({
     setError(null);
     startTransition(async () => {
       const result = await onToggleBookmark({ targetType, targetId }, csrfToken);
-      if (result.ok && result.data) setSaved(result.data.saved);
-      else setError(result.message ?? 'That item could not be saved.');
+      if (result.ok && result.data) {
+        setSaved(result.data.saved);
+        router.refresh();
+      } else setError(result.message ?? 'That item could not be saved.');
     });
   }
 
