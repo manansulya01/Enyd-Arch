@@ -332,6 +332,7 @@ export async function feed(options: {
   cursor?: Date | null;
   followingOnly?: boolean;
   postId?: string;
+  bookmarkedOnly?: boolean;
 }): Promise<PostView[]> {
   const limit = Math.min(options.limit ?? 20, 40);
   const sort = options.sort ?? 'active';
@@ -374,6 +375,14 @@ export async function feed(options: {
              or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
         )`,
         options.postId ? eq(postTable.id, options.postId) : sql`true`,
+        options.bookmarkedOnly
+          ? sql`exists (
+              select 1 from ${bookmarkTable} bm
+              where bm.user_id = ${options.viewerId}
+                and bm.target_type = 'post'
+                and bm.target_id = ${postTable.id}
+            )`
+          : sql`true`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
         options.followingOnly
           ? sql`exists (
