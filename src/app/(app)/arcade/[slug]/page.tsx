@@ -60,7 +60,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
           <article className="card card-pad-lg stack stack-3">
             <div className="row row-wrap row-between">
               <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} csrfToken={csrfToken} />
-              <BookmarkButton targetType="game" targetId={game.id} csrfToken={csrfToken} initialSaved={bookmarked} />
+              {(game.status === 'approved' || bookmarked) && <BookmarkButton targetType="game" targetId={game.id} csrfToken={csrfToken} initialSaved={bookmarked} />}
               <span className="t-meta">
                 {formatCount(game.playCount)} plays · {game.ratingCount} rating
                 {game.ratingCount === 1 ? '' : 's'} · {game.commentCount} comments
