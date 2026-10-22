@@ -71,6 +71,7 @@ export function NetworkCard({ post, detail, viewerId, csrfToken, isFollowing }: 
 
       <footer className="post-foot">
         <ReactionBar
+          csrfToken={csrfToken}
           targetType="post"
           targetId={post.id}
           myReactions={post.myReactions}
