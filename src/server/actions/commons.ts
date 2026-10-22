@@ -687,6 +687,11 @@ export async function voteInPoll(
       eq(posts.status, 'published'),
       inArray(posts.visibility, ['members', 'public']),
       isNull(posts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+           or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
     ))
     .limit(1);
   if (!visiblePost) return fail('That poll is no longer available.');
