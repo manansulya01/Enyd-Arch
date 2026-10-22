@@ -44,7 +44,7 @@ export default async function GalleryPiecePage({ params }: { params: Promise<{ s
         )}
         <div className="row row-between row-wrap">
           <p className="t-meta">{piece.reactionCount} reactions · {piece.commentCount} comments</p>
-          {(['public', 'members'].includes(piece.visibility) || bookmarked) && <BookmarkButton targetType="gallery_post" targetId={piece.id} csrfToken={csrfToken} initialSaved={bookmarked} />
+          {(['public', 'members'].includes(piece.visibility) || bookmarked) && <BookmarkButton targetType="gallery_post" targetId={piece.id} csrfToken={csrfToken} initialSaved={bookmarked} />}
         </div>
         <Link className="btn btn-ghost" href="/gallery">Back to the Gallery</Link>
       </article>
