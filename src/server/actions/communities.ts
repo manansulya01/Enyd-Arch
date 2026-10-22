@@ -9,6 +9,7 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrfValue } from '~/server/csrf';
+import { isUuid } from '~/server/auth/identifiers';
 
 function cleanText(value: string, max: number): string {
   return value.replace(/\r\n/g, '\n').replace(/[<>]/g, '').trim().slice(0, max);
@@ -59,6 +60,7 @@ export async function joinCommunity(communityId: string, csrf: string): Promise<
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Community membership is not available for this identity.');
+  if (!isUuid(communityId)) return fail('That community is not available.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before joining another community.');
   const [community] = await db.select({ id: communities.id, isPrivate: communities.isPrivate })
@@ -76,6 +78,9 @@ export async function leaveCommunity(communityId: string, csrf: string): Promise
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Community membership is not available for this identity.');
+  if (!isUuid(communityId)) return fail('That community is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing community membership.');
   const [membership] = await db.select({ role: communityMembers.role }).from(communityMembers)
     .where(and(eq(communityMembers.communityId, communityId), eq(communityMembers.userId, actor.userId)))
     .limit(1);
@@ -99,6 +104,7 @@ export async function createCommunityPost(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Posting is not available for this identity.');
+  if (!isUuid(input.communityId)) return fail('That community is not available.');
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) return fail('You are posting too quickly. Wait a moment.');
   const title = cleanText(input.title, 160);
@@ -132,6 +138,7 @@ export async function createCommunityComment(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Commenting is not available for this identity.');
+  if (!isUuid(input.postId)) return fail('That discussion is not available.');
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) return fail('You are commenting too quickly. Wait a moment.');
 
@@ -168,6 +175,7 @@ export async function removeCommunityComment(commentId: string, csrf: string): P
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(commentId)) return fail('That comment is not available.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before changing discussion comments.');
 
@@ -226,6 +234,7 @@ export async function voteCommunityPost(input: {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Voting is not available for this identity.');
+  if (!isUuid(input.postId)) return fail('That discussion is not available.');
   if (input.value !== 1 && input.value !== -1) return fail('Choose a valid vote.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before voting again.');
