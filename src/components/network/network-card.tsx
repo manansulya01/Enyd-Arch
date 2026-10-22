@@ -3,6 +3,7 @@ import type { PostView } from '~/server/queries';
 import { relativeTime, excerpt } from '~/lib/format';
 import { Avatar } from '~/components/ui';
 import { ReactionBar } from '~/components/commons/reaction-bar';
+import { PollWidget } from '~/components/commons/poll-widget';
 import { FollowButton } from './follow-button';
 
 /** One network post, rendered the same way in the feed and on its own page. */
@@ -39,6 +40,8 @@ export function NetworkCard({ post, detail, viewerId, csrfToken, isFollowing }: 
           )}
         </div>
       )}
+
+      {post.poll && <PollWidget poll={post.poll} csrfToken={csrfToken} />}
 
       {post.attachments.length > 0 && (
         <div className="post-attachments">
