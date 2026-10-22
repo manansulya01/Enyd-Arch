@@ -488,6 +488,28 @@ export async function toggleReaction(
   if (!target) return fail('That cannot be reacted to.');
   const { table, column } = target;
 
+  // Let members remove their own old reaction even if the content was later
+  // hidden, blocked, or soft-deleted. Adding a reaction still requires access.
+  const existing = await db
+    .select({ id: reactions.id })
+    .from(reactions)
+    .where(and(
+      eq(reactions.userId, actor.userId),
+      eq(reactions.targetType, input.targetType),
+      eq(reactions.targetId, input.targetId),
+      eq(reactions.kind, input.kind),
+    ))
+    .limit(1);
+  if (existing[0]) {
+    await db.delete(reactions).where(eq(reactions.id, existing[0].id));
+    const [updated] = await db
+      .update(table)
+      .set({ [column.name]: sql`greatest(0, ${column} - 1)` })
+      .where(eq(table.id, input.targetId))
+      .returning({ count: column });
+    return ok({ active: false, count: Number(updated?.count ?? 0) });
+  }
+
   // Do not create reaction rows for missing or soft-deleted targets. This
   // lookup is also a guard against callers forging a target type/id pair.
   const [availableTarget] = await db
@@ -623,29 +645,6 @@ export async function toggleReaction(
       ))
       .limit(1);
     if (!visibleGameComment) return fail('That item is no longer available.');
-  }
-
-  const existing = await db
-    .select({ id: reactions.id })
-    .from(reactions)
-    .where(
-      and(
-        eq(reactions.userId, actor.userId),
-        eq(reactions.targetType, input.targetType),
-        eq(reactions.targetId, input.targetId),
-        eq(reactions.kind, input.kind),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    await db.delete(reactions).where(eq(reactions.id, existing[0].id));
-    const [updated] = await db
-      .update(table)
-      .set({ [column.name]: sql`greatest(0, ${column} - 1)` })
-      .where(eq(table.id, input.targetId))
-      .returning({ count: column });
-    return ok({ active: false, count: Number(updated?.count ?? 0) });
   }
 
   await db.insert(reactions).values({
@@ -819,6 +818,26 @@ export async function toggleBookmark(
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
+  // Removing an existing bookmark must remain possible after its target is
+  // hidden, removed, or blocked. New bookmarks are checked below.
+  const existing = await db
+    .select({ id: bookmarks.userId })
+    .from(bookmarks)
+    .where(and(
+      eq(bookmarks.userId, actor.userId),
+      eq(bookmarks.targetType, input.targetType),
+      eq(bookmarks.targetId, input.targetId),
+    ))
+    .limit(1);
+  if (existing[0]) {
+    await db.delete(bookmarks).where(and(
+      eq(bookmarks.userId, actor.userId),
+      eq(bookmarks.targetType, input.targetType),
+      eq(bookmarks.targetId, input.targetId),
+    ));
+    return ok({ saved: false });
+  }
+
   // A bookmark is private, but creating one must not be an oracle for
   // private, removed, draft, or unapproved content. Match the visibility
   // boundary used by the corresponding public-facing catalogue.
@@ -875,31 +894,6 @@ export async function toggleBookmark(
     available = Boolean(row);
   }
   if (!available) return fail('That item is no longer available.');
-
-  const existing = await db
-    .select({ id: bookmarks.userId })
-    .from(bookmarks)
-    .where(
-      and(
-        eq(bookmarks.userId, actor.userId),
-        eq(bookmarks.targetType, input.targetType),
-        eq(bookmarks.targetId, input.targetId),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .delete(bookmarks)
-      .where(
-        and(
-          eq(bookmarks.userId, actor.userId),
-          eq(bookmarks.targetType, input.targetType),
-          eq(bookmarks.targetId, input.targetId),
-        ),
-      );
-    return ok({ saved: false });
-  }
 
   await db.insert(bookmarks).values({
     userId: actor.userId,
