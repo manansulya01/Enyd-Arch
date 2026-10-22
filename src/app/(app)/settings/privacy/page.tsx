@@ -80,6 +80,7 @@ export default async function PrivacySettingsPage({
             <label className="field">
               <span className="field-label">Who can start a message?</span>
               <select className="input" name="messagePolicy" defaultValue={settings.messagePolicy}>
+                <option value="everyone">Everyone</option>
                 <option value="members">Signed-in members</option>
                 <option value="connections">My connections only</option>
                 <option value="nobody">Nobody</option>
