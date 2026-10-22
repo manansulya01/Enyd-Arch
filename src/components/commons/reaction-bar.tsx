@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { REACTIONS } from '~/lib/domain';
-import { onToggleReaction } from '~/server/actions/commons-client';
+import { onToggleBookmark, onToggleReaction } from '~/server/actions/commons-client';
 
 /**
  * Reaction bar. Optimistic in the common case and always reconciled by the
@@ -30,6 +30,18 @@ export function ReactionBar({
   const [total, setTotal] = useState(count);
   const [saved, setSaved] = useState(Boolean(bookmarked));
   const [open, setOpen] = useState(false);
+
+  function toggleSaved() {
+    if (targetType !== 'post' && targetType !== 'archive_object' && targetType !== 'gallery_post') return;
+    startTransition(async () => {
+      const result = await onToggleBookmark(
+        { targetType, targetId },
+        csrfToken,
+      );
+      if (result.ok && result.data) setSaved(result.data.saved);
+      else router.refresh();
+    });
+  }
 
   function toggle(kind: string) {
     const wasActive = active.includes(kind);
@@ -100,7 +112,8 @@ export function ReactionBar({
         <button
           type="button"
           className="reaction-pill"
-          onClick={() => setSaved((value) => !value)}
+          onClick={toggleSaved}
+          aria-pressed={saved}
           title="Save to your bookmarks"
         >
           <span aria-hidden="true">{saved ? '★' : '☆'}</span> Save
