@@ -79,6 +79,7 @@ export function NetworkCard({ post, detail, viewerId, csrfToken, isFollowing }: 
           targetId={post.id}
           myReactions={post.myReactions}
           count={post.reactionCount}
+          bookmarked={post.bookmarked}
         />
         <Link className="reaction-pill" href={`/network/${post.id}`}>
           <span aria-hidden="true">❝</span> Reply
