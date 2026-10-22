@@ -296,6 +296,7 @@ export interface PostView {
   hashtags: string[];
   myReactions: string[];
   bookmarked: boolean;
+  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
