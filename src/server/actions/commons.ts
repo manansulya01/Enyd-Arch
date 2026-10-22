@@ -794,6 +794,11 @@ export async function toggleBookmark(
       eq(posts.status, 'published'),
       inArray(posts.visibility, ['members', 'public']),
       isNull(posts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+           or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
     )).limit(1);
     available = Boolean(row);
   } else if (input.targetType === 'archive_object') {
@@ -801,6 +806,11 @@ export async function toggleBookmark(
       eq(archiveObjects.id, input.targetId),
       inArray(archiveObjects.visibility, ['members', 'public']),
       isNull(archiveObjects.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
+           or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
+      )`,
     )).limit(1);
     available = Boolean(row);
   } else if (input.targetType === 'game') {
@@ -808,6 +818,11 @@ export async function toggleBookmark(
       eq(games.id, input.targetId),
       eq(games.status, 'approved'),
       isNull(games.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+           or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+      )`,
     )).limit(1);
     available = Boolean(row);
   } else if (input.targetType === 'gallery_post') {
@@ -815,6 +830,11 @@ export async function toggleBookmark(
       eq(galleryPosts.id, input.targetId),
       inArray(galleryPosts.visibility, ['members', 'public']),
       isNull(galleryPosts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
+           or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
     )).limit(1);
     available = Boolean(row);
   }
