@@ -55,7 +55,7 @@ export default async function PrivacySettingsPage({
             <label className="field">
               <span className="field-label">Who can view your profile?</span>
               <select className="input" name="profileVisibility" defaultValue={settings.profileVisibility}>
-                <option value="public">Anyone with the link</option>
+                <option value="public">Anyone (public profile)</option>
                 <option value="members">Signed-in members</option>
                 <option value="connections">Your connections</option>
                 <option value="private">Only you</option>
