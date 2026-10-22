@@ -6,6 +6,7 @@ import {
   archiveObjectTags,
   archiveObjects as archiveObjectTable,
   blocks,
+  bookmarks as bookmarkTable,
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
@@ -294,6 +295,7 @@ export interface PostView {
   poll: PollView | null;
   hashtags: string[];
   myReactions: string[];
+  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
@@ -396,7 +398,7 @@ export async function feed(options: {
   const postIds = rows.map((row) => row.id);
   const authorMap = await membersByIds(rows.map((row) => row.authorId), options.viewerId);
 
-  const [attachmentRows, tagRows, reactionRows, pollRows] = await Promise.all([
+  const [attachmentRows, tagRows, reactionRows, pollRows, bookmarkRows] = await Promise.all([
     db
       .select({
         postId: postAttachments.postId,
@@ -459,9 +461,19 @@ export async function feed(options: {
       .innerJoin(sql`polls pl on pl.post_id = ${postTable.id}`, sql`true`)
       .leftJoin(sql`poll_options po on po.poll_id = pl.id`, sql`true`)
       .where(inArray(postTable.id, postIds)),
+
+    db
+      .select({ targetId: bookmarkTable.targetId })
+      .from(bookmarkTable)
+      .where(and(
+        eq(bookmarkTable.userId, options.viewerId),
+        eq(bookmarkTable.targetType, 'post'),
+        inArray(bookmarkTable.targetId, postIds),
+      )),
   ]);
 
   const myReactions = groupStrings(reactionRows, 'targetId', 'kind');
+  const bookmarkedIds = new Set(bookmarkRows.map((row) => row.targetId));
   const tagsByPost = groupStrings(tagRows, 'postId', 'tag');
 
   const attachmentsByPost = new Map<string, PostAttachmentView[]>();
@@ -542,6 +554,7 @@ export async function feed(options: {
     poll: pollsByPost.get(row.id) ?? null,
     hashtags: tagsByPost.get(row.id) ?? [],
     myReactions: myReactions.get(row.id) ?? [],
+    bookmarked: bookmarkedIds.has(row.id),
     repostOf: row.repostOfId
       ? (() => {
           const original = originalMap.get(row.repostOfId);
@@ -599,7 +612,7 @@ export async function projectPosts(
   const postIds = rows.map((row) => row.id);
   const authorMap = await membersByIds(rows.map((row) => row.authorId), viewerId);
 
-  const [attachmentRows, tagRows, reactionRows] = await Promise.all([
+  const [attachmentRows, tagRows, reactionRows, bookmarkRows] = await Promise.all([
     db
       .select({
         postId: postAttachments.postId,
@@ -625,9 +638,18 @@ export async function projectPosts(
           inArray(reactions.targetId, postIds),
         ),
       ),
+    db
+      .select({ targetId: bookmarkTable.targetId })
+      .from(bookmarkTable)
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'post'),
+        inArray(bookmarkTable.targetId, postIds),
+      )),
   ]);
 
   const myReactions = groupStrings(reactionRows, 'targetId', 'kind');
+  const bookmarkedIds = new Set(bookmarkRows.map((row) => row.targetId));
   const tagsByPost = groupStrings(tagRows, 'postId', 'tag');
 
   const attachmentsByPost = new Map<string, PostAttachmentView[]>();
@@ -685,6 +707,7 @@ export async function projectPosts(
     poll: null,
     hashtags: tagsByPost.get(row.id) ?? [],
     myReactions: myReactions.get(row.id) ?? [],
+    bookmarked: bookmarkedIds.has(row.id),
     repostOf: row.repostOfId
       ? {
           id: row.repostOfId,
