@@ -267,6 +267,7 @@ export interface PostAttachmentView {
 }
 
 export interface PollView {
+  id: string;
   question: string;
   multiSelect: boolean;
   closesAt: Date | null;
@@ -327,6 +328,7 @@ export async function feed(options: {
   limit?: number;
   cursor?: Date | null;
   followingOnly?: boolean;
+  postId?: string;
 }): Promise<PostView[]> {
   const limit = Math.min(options.limit ?? 20, 40);
   const sort = options.sort ?? 'active';
@@ -368,6 +370,7 @@ export async function feed(options: {
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${postTable.authorId})
              or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
         )`,
+        options.postId ? eq(postTable.id, options.postId) : sql`true`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
         options.followingOnly
           ? sql`exists (
@@ -474,6 +477,7 @@ export async function feed(options: {
     const existing = pollsByPost.get(row.postId);
     const poll: PollView =
       existing ?? {
+        id: row.pollId,
         question: row.question,
         multiSelect: row.multiSelect,
         closesAt: row.closesAt,
@@ -485,7 +489,7 @@ export async function feed(options: {
 
     if (row.optionId && row.optionLabel) {
       const votes = Number(row.optionVotes ?? 0);
-      poll.options.push({ id: row.optionId, label: row.optionLabel, votes, selected: false });
+      poll.options.push({ id: row.optionId, label: row.optionLabel, votes, selected: row.optionSelected });
       poll.totalVotes += votes;
     }
     pollsByPost.set(row.postId, poll);
@@ -547,47 +551,10 @@ export async function feed(options: {
 }
 
 export async function postById(postId: string, viewerId: string): Promise<PostView | null> {
-  const rows = await feed({ viewerId, limit: 1, ...{} }).catch(() => []);
-  void rows;
-
-  const [row] = await db
-    .select({
-      id: postTable.id,
-      body: postTable.body,
-      createdAt: postTable.createdAt,
-      lastActivityAt: postTable.lastActivityAt,
-      editedAt: postTable.editedAt,
-      pinned: postTable.pinned,
-      reactionCount: postTable.reactionCount,
-      commentCount: postTable.commentCount,
-      repostCount: postTable.repostCount,
-      visibility: postTable.visibility,
-      repostOfId: postTable.repostOfId,
-      authorId: postTable.authorId,
-    })
-    .from(postTable)
-    .innerJoin(users, eq(users.id, postTable.authorId))
-    .where(
-      and(
-        eq(postTable.id, postId),
-        eq(postTable.status, 'published'),
-        isNull(postTable.removedAt),
-        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
-        eq(users.status, 'active'),
-        sql`not exists (
-          select 1 from ${blocks} b
-          where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
-             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
-        )`,
-      ),
-    )
-    .limit(1);
-
-  if (!row) return null;
-
-  // Reuse the projection by asking the feed for exactly this post.
-  const projected = await projectPosts([row], viewerId);
-  return projected[0] ?? null;
+  // Use the feed's viewer-aware projection so detail pages preserve poll state
+  // and the same visibility, block, and attachment rules as the main feed.
+  const rows = await feed({ viewerId, postId, limit: 1 });
+  return rows[0] ?? null;
 }
 
 export async function networkBySlug(slug: string, viewerId: string): Promise<NetworkPostView | null> {
