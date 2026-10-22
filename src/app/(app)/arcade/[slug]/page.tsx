@@ -53,7 +53,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
             </p>
           )}
 
-          <GamePlayer gameId={game.id} title={game.title} grantUrl={grant.url ?? null} grantError={grant.ok ? null : grant.reason ?? 'Unknown error'} />
+          <GamePlayer gameId={game.id} title={game.title} grantUrl={grant.url ?? null} grantError={grant.ok ? null : grant.reason ?? 'Unknown error'} csrfToken={csrfToken} />
 
           <article className="card card-pad-lg stack stack-3">
             <div className="row row-wrap row-between">
