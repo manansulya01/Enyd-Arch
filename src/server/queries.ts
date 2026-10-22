@@ -600,7 +600,7 @@ export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostV
       .where(and(
         eq(bookmarkTable.userId, viewerId),
         eq(bookmarkTable.targetType, 'archive_object'),
-        inArray(archiveObjectTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, viewerId),
         isNull(archiveObjectTable.removedAt),
         sql`(${archiveObjectTable.contributorId} is null or exists (
           select 1 from users u
@@ -651,7 +651,7 @@ export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostV
       .where(and(
         eq(bookmarkTable.userId, viewerId),
         eq(bookmarkTable.targetType, 'gallery_post'),
-        inArray(galleryPostTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(galleryPostTable.visibility, galleryPostTable.authorId, viewerId),
         isNull(galleryPostTable.removedAt),
         sql`exists (
           select 1 from users u where u.id = ${galleryPostTable.authorId}
