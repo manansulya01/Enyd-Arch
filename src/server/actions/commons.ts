@@ -866,6 +866,7 @@ export async function toggleBookmark(
         where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
            or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
       )`,
+      sql`(${archiveObjects.contributorId} is null or exists (select 1 from users u where u.id = ${archiveObjects.contributorId} and u.status = 'active' and u.removed_at is null))`,
     )).limit(1);
     available = Boolean(row);
   } else if (input.targetType === 'game') {
@@ -878,6 +879,7 @@ export async function toggleBookmark(
         where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
            or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
       )`,
+      sql`exists (select 1 from users u where u.id = ${games.creatorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
     available = Boolean(row);
   } else if (input.targetType === 'gallery_post') {
@@ -890,6 +892,7 @@ export async function toggleBookmark(
         where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
            or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
       )`,
+      sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
     available = Boolean(row);
   }
