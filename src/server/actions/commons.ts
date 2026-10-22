@@ -318,7 +318,6 @@ export async function createComment(
              or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
         )`,
         sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
-        sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
       ),
     )
     .limit(1);
@@ -728,8 +727,6 @@ export async function voteInPoll(
            or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
       )`,
       sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
-      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
-      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
     ))
     .limit(1);
   if (!visiblePost) return fail('That poll is no longer available.');
@@ -837,7 +834,6 @@ export async function toggleBookmark(
         where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
            or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
       )`,
-      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
       sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
     available = Boolean(row);
