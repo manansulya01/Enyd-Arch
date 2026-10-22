@@ -7,7 +7,7 @@
  * so discussion lives next to the task board and the file tray rather than in
  * another app.
  */
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -248,7 +248,7 @@ export async function addProjectResource(
   const [owned] = await db
     .select({ id: files.id })
     .from(files)
-     .where(and(
+    .where(and(
       eq(files.id, fileId),
       eq(files.uploaderId, actor.userId),
       eq(files.state, 'clean'),
