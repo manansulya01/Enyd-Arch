@@ -1580,6 +1580,7 @@ export interface GalleryView {
   coverUrl: string | null;
   mediaCount: number;
   showInPortfolio: boolean;
+  visibility: 'public' | 'members' | 'connections' | 'private';
   myReactions: string[];
 }
 
@@ -1605,6 +1606,7 @@ export async function galleryPosts(options: {
       commentCount: galleryPostTable.commentCount,
       viewCount: galleryPostTable.viewCount,
       showInPortfolio: galleryPostTable.showInPortfolio,
+      visibility: galleryPostTable.visibility,
       authorId: galleryPostTable.authorId,
       coverObjectId: galleryPostTable.coverObjectId,
       mediaCount: sql<number>`(
@@ -1659,6 +1661,7 @@ export async function galleryPosts(options: {
     commentCount: row.commentCount,
     viewCount: row.viewCount,
     showInPortfolio: row.showInPortfolio,
+    visibility: row.visibility,
     mediaCount: row.mediaCount,
     coverUrl: row.coverObjectId ? `/objects/${row.coverObjectId}` : null,
     author: authorMap.get(row.authorId)!,
