@@ -17,6 +17,7 @@ import {
 } from '~/server/queries';
 import { countdown, relativeTime, excerpt } from '~/lib/format';
 import { CONNECTION_MODES } from '~/lib/domain';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Your Arch' };
 
@@ -31,7 +32,7 @@ function greeting(now = new Date()): string {
 export default async function HomePage() {
   const { actor } = await requireOnboarded();
 
-  const [posts, objects, upcoming, art, conversations, projects, connections, notices, neighbours] =
+  const [posts, objects, upcoming, art, conversations, projects, connections, notices, neighbours, csrfToken] =
     await Promise.all([
       feed({ viewerId: actor.userId, sort: 'active', limit: 6 }),
       archiveObjects({ viewerId: actor.userId, sort: 'recent', limit: 4 }),
@@ -43,6 +44,7 @@ export default async function HomePage() {
       notificationList(actor.userId, { limit: 5 }),
       // People with shared interests, resolved from the seed catalogue.
       memberByUsername('mira', actor.userId).catch(() => null),
+      sessionCsrfToken(),
     ]);
 
   const unreadMessages = conversations.reduce((total, conversation) => total + conversation.unread, 0);
@@ -236,7 +238,7 @@ export default async function HomePage() {
               body="The Commons is the first thing most people open. Start it."
             />
           ) : (
-            posts.map((post) => <PostCard key={post.id} post={post} />)
+            posts.map((post) => <PostCard key={post.id} post={post} csrfToken={csrfToken} />)
           )}
         </section>
       </div>
