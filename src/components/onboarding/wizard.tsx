@@ -27,7 +27,9 @@ import {
 export function OnboardingWizard({
   identity,
   context,
+  csrfToken,
 }: {
+  csrfToken: string;
   identity: { username: string; displayName: string; memberId: string; isMinor: boolean; ageBand: string };
   context: OnboardingContext;
 }) {
@@ -81,11 +83,11 @@ export function OnboardingWizard({
           region,
           avatarGlyph: '◈',
           avatarHue: 40,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 1) {
         if (interests.length < 3) return setError('Choose at least three interests.');
-        const result = await onSaveInterests(interests);
+        const result = await onSaveInterests(interests, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 2) {
         const skills = skillsRaw
@@ -93,7 +95,7 @@ export function OnboardingWizard({
           .map((label) => label.trim())
           .filter(Boolean)
           .map((label) => ({ key: label.toLowerCase().replace(/\s+/g, '-'), label }));
-        const result = await onSaveProfileDetail({ bio, skills, links: [] });
+        const result = await onSaveProfileDetail({ bio, skills, links: [] }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 3) {
         const result = await onSavePrivacy({
@@ -104,7 +106,7 @@ export function OnboardingWizard({
           showArchiveContributions: showActivity,
           showRegion: Boolean(region),
           messagePolicy,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 4) {
         const result = await onSaveConnections({
@@ -115,10 +117,10 @@ export function OnboardingWizard({
           showInDating: identity.isMinor ? false : datingOptIn,
           datingIntent: '',
           interests: connectionInterests,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 5) {
-        const result = await onCompleteOnboarding();
+        const result = await onCompleteOnboarding(csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
         router.push('/home');
         return;
