@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache';
 import { db } from '~db';
 import {
   archiveObjects,
+  blocks,
   bookmarks,
   comments,
   files,
@@ -483,6 +484,11 @@ export async function toggleReaction(
         eq(posts.status, 'published'),
         inArray(posts.visibility, ['members', 'public']),
         isNull(posts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!visiblePost) return fail('That item is no longer available.');
@@ -498,6 +504,16 @@ export async function toggleReaction(
         eq(posts.status, 'published'),
         inArray(posts.visibility, ['members', 'public']),
         isNull(posts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${comments.authorId})
+             or (b.blocker_id = ${comments.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!visibleComment) return fail('That item is no longer available.');
@@ -509,6 +525,11 @@ export async function toggleReaction(
         eq(galleryPosts.id, input.targetId),
         inArray(galleryPosts.visibility, ['members', 'public']),
         isNull(galleryPosts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
+             or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!visibleGalleryPost) return fail('That item is no longer available.');
@@ -520,6 +541,11 @@ export async function toggleReaction(
         eq(archiveObjects.id, input.targetId),
         inArray(archiveObjects.visibility, ['members', 'public']),
         isNull(archiveObjects.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
+             or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!visibleArchiveObject) return fail('That item is no longer available.');
@@ -531,6 +557,11 @@ export async function toggleReaction(
         eq(games.id, input.targetId),
         eq(games.status, 'approved'),
         isNull(games.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+             or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!approvedGame) return fail('That item is no longer available.');
@@ -545,6 +576,16 @@ export async function toggleReaction(
         isNull(gameComments.removedAt),
         eq(games.status, 'approved'),
         isNull(games.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${gameComments.authorId})
+             or (b.blocker_id = ${gameComments.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+             or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+        )`,
       ))
       .limit(1);
     if (!visibleGameComment) return fail('That item is no longer available.');
