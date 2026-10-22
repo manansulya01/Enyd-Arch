@@ -81,6 +81,7 @@ export function PostCard({ post, detail, csrfToken }: { post: PostView; detail?:
           targetId={post.id}
           myReactions={post.myReactions}
           count={post.reactionCount}
+          bookmarked={post.bookmarked}
         />
         <Link className="reaction-pill" href={`/commons/${post.id}`}>
           <span aria-hidden="true">❝</span> Reply
