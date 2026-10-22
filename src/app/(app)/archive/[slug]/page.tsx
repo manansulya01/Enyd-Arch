@@ -7,6 +7,7 @@ import { ArchiveComments } from '~/components/archive/archive-comments';
 import { ReactionBar } from '~/components/commons/reaction-bar';
 import { archiveBySlug, archiveComments } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
+import { sessionCsrfToken } from '~/server/csrf';
 import { ARCHIVE_CATEGORY_MAP } from '~/lib/domain';
 import { absoluteDate, formatBytes, volumeDesignator } from '~/lib/format';
 
@@ -25,7 +26,10 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
   const object = await archiveBySlug(slug, actor.userId);
   if (!object) notFound();
 
-  const comments = await archiveComments(object.id, actor.userId);
+  const [comments, csrfToken] = await Promise.all([
+    archiveComments(object.id, actor.userId),
+    sessionCsrfToken(),
+  ]);
   const catalogueNumber = Number(object.catalogueNumber.replace(/\D/g, ''));
   const inlineImage = object.file?.contentType.startsWith('image/') ?? false;
 
@@ -79,6 +83,7 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
                 </a>
               )}
               <ReactionBar
+                csrfToken={csrfToken}
                 targetType="archive_object"
                 targetId={object.id}
                 myReactions={object.myReactions}
