@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { eq } from 'drizzle-orm';
 import { db } from '~db';
-import { userSettings } from '~db/schema';
+import { profiles, userSettings } from '~db/schema';
 import { currentActor, can } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
@@ -34,12 +34,8 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
 
   const values = {
     profileVisibility: profileVisibility as 'public' | 'members' | 'connections' | 'private',
-    showActivity: checked(formData, 'showActivity'),
-    showCreations: checked(formData, 'showCreations'),
-    showArchiveContributions: checked(formData, 'showArchiveContributions'),
     discoverable: checked(formData, 'discoverable'),
     showRegion: checked(formData, 'showRegion'),
-    searchableByEmail: checked(formData, 'searchableByEmail'),
     hideAgeBand: checked(formData, 'hideAgeBand'),
     messagePolicy,
     updatedAt: new Date(),
@@ -52,6 +48,10 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
       target: userSettings.userId,
       set: values,
     });
+
+  await db.update(profiles)
+    .set({ profileVisibility: values.profileVisibility, updatedAt: new Date() })
+    .where(eq(profiles.userId, actor.userId));
 
   revalidatePath('/settings/privacy');
   revalidatePath('/network');
