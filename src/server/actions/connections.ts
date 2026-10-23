@@ -21,6 +21,7 @@ import {
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
+import { isUuid } from '~/server/auth/identifiers';
 import { checkPairEligibility, orderPair } from '~/server/safety/connections';
 import { notify } from '~/server/notify';
 import { verifyCsrfValue } from '~/server/csrf';
@@ -160,6 +161,9 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'connections')) return fail('Connections are not available until onboarding is complete.');
+  if (!isUuid(requestId) || typeof accept !== 'boolean') return fail('That request is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   const [request] = await db
     .select()
@@ -234,6 +238,9 @@ export async function unmatch(matchId: string, csrf: string): Promise<ActionResu
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(matchId)) return fail('That connection is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   const [match] = await db
     .select()
@@ -256,7 +263,9 @@ export async function blockUser(userId: string, csrf: string): Promise<ActionRes
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
-  if (userId === actor.userId) return fail('You cannot block yourself.');
+  if (!isUuid(userId) || userId === actor.userId) return fail('That member is not available to block.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   await db
     .insert(blocks)
@@ -291,6 +300,9 @@ export async function unblockUser(userId: string, csrf: string): Promise<ActionR
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(userId) || userId === actor.userId) return fail('That member is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
   await db.delete(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, userId)));
   // Preserve relationship history but permit a fresh accepted request after
   // the member explicitly unblocks the other identity.
