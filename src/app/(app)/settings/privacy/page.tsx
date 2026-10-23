@@ -20,6 +20,9 @@ const DEFAULTS = {
   discoverable: true,
   showRegion: false,
   hideAgeBand: false,
+  showActivity: true,
+  showCreations: true,
+  showArchiveContributions: true,
 };
 
 export default async function PrivacySettingsPage({
@@ -72,6 +75,18 @@ export default async function PrivacySettingsPage({
             <label className="check-row">
               <input type="checkbox" name="hideAgeBand" defaultChecked={settings.hideAgeBand} />
               <span>Hide my age band from other members</span>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="showActivity" defaultChecked={settings.showActivity} />
+              <span>Show my recent activity to members who can view my profile</span>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="showCreations" defaultChecked={settings.showCreations} />
+              <span>Show my creative work on my profile</span>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="showArchiveContributions" defaultChecked={settings.showArchiveContributions} />
+              <span>Show my Archive contributions on my profile</span>
             </label>
           </section>
 
