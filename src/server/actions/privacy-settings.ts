@@ -37,6 +37,9 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
     discoverable: checked(formData, 'discoverable'),
     showRegion: checked(formData, 'showRegion'),
     hideAgeBand: checked(formData, 'hideAgeBand'),
+    showActivity: checked(formData, 'showActivity'),
+    showCreations: checked(formData, 'showCreations'),
+    showArchiveContributions: checked(formData, 'showArchiveContributions'),
     messagePolicy,
     updatedAt: new Date(),
   };
