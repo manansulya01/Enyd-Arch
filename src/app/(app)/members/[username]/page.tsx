@@ -45,8 +45,14 @@ export default async function MemberProfilePage({
   ]);
 
   const isSelf = actor.userId === member.userId;
+  const visibleSkills = details.showCreations
+    ? details.skills
+        .filter((item) => item && typeof item.key === 'string' && typeof item.label === 'string')
+        .slice(0, 30)
+    : [];
   const visibleLinks = details.showCreations
     ? details.links
+        .filter((item) => item && typeof item.label === 'string' && typeof item.url === 'string')
         .map((item) => ({ label: item.label.trim().slice(0, 80), url: safeExternalUrl(item.url) }))
         .filter((item): item is { label: string; url: string } => Boolean(item.label && item.url))
     : [];
@@ -77,9 +83,9 @@ export default async function MemberProfilePage({
               <h2>About and creations</h2>
               {details.institution && <p className="t-small">Institution: {details.institution}</p>}
               {details.fieldOfStudy && <p className="t-small">Field of study: {details.fieldOfStudy}</p>}
-              {details.skills.length > 0 && (
+              {visibleSkills.length > 0 && (
                 <div className="row row-wrap">
-                  {details.skills.slice(0, 30).map((skill) => (
+                  {visibleSkills.map((skill) => (
                     <span className="tag" key={skill.key}>{skill.label}</span>
                   ))}
                 </div>
