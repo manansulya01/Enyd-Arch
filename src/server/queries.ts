@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '~db';
 import {
   achievements,
@@ -419,6 +419,7 @@ export async function feed(options: {
   followingOnly?: boolean;
   postId?: string;
   bookmarkedOnly?: boolean;
+  query?: string | null;
 }): Promise<PostView[]> {
   const limit = Math.min(options.limit ?? 20, 40);
   const sort = options.sort ?? 'active';
@@ -470,6 +471,9 @@ export async function feed(options: {
             )`
           : sql`true`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
+        options.query?.trim()
+          ? ilike(postTable.body, `%${options.query.trim().slice(0, 100)}%`)
+          : sql`true`,
         options.followingOnly
           ? sql`exists (
               select 1 from ${userFollows} uf
