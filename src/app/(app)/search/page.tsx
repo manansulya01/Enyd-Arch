@@ -7,7 +7,7 @@ import { arcadeGames, archiveObjects, feed, memberDirectory, type ArchiveView, t
 
 export const metadata: Metadata = {
   title: 'Search the Arch',
-  description: 'Search members, Archive entries, and community-made games.',
+  description: 'Search Commons posts, members, Archive entries, and community-made games.',
   robots: { index: false, follow: false, noarchive: true, nosnippet: true },
 };
 
@@ -41,7 +41,7 @@ export default async function SearchPage({
           name="q"
           defaultValue={query}
           maxLength={100}
-          placeholder="Search members, Archive entries, games…"
+          placeholder="Search Commons, members, Archive, games…"
           autoComplete="off"
         />
         <button className="btn btn-primary" type="submit">Search</button>
