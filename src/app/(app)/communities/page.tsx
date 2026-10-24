@@ -20,6 +20,7 @@ export default async function CommunitiesPage() {
       memberCount: sql<number>`count(${communityMembers.userId})::int`,
     }).from(communities)
       .leftJoin(communityMembers, eq(communityMembers.communityId, communities.id))
+      .where(or(eq(communities.isPrivate, false), eq(communities.ownerId, actor.userId), inArray(communities.id, db.select({ communityId: communityMembers.communityId }).from(communityMembers).where(eq(communityMembers.userId, actor.userId)))))
       .groupBy(communities.id)
       .orderBy(desc(communities.createdAt)).limit(60),
     db.select({ communityId: communityMembers.communityId }).from(communityMembers)
