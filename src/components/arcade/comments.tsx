@@ -9,7 +9,7 @@ import { ReactionBar } from '~/components/commons/reaction-bar';
 import { onCommentOnGame } from '~/server/actions/arcade-client';
 
 /** The comment thread beneath a game. Replies are one level deep by design. */
-export function GameComments({ gameId, comments }: { gameId: string; comments: CommentView[] }) {
+export function GameComments({ gameId, comments, csrfToken }: { gameId: string; comments: CommentView[]; csrfToken: string }) {
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -23,7 +23,7 @@ export function GameComments({ gameId, comments }: { gameId: string; comments: C
     const text = body.trim();
     if (!text) return;
     startTransition(async () => {
-      const result = await onCommentOnGame({ gameId, body: text, parentId: replyTo, csrf: document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '' });
+      const result = await onCommentOnGame({ gameId, body: text, parentId: replyTo, csrf: csrfToken });
       if (!result.ok) {
         setError(result.message ?? 'That comment could not be saved.');
         return;
@@ -79,6 +79,7 @@ export function GameComments({ gameId, comments }: { gameId: string; comments: C
                     Reply
                   </button>
                   <ReactionBar
+                    csrfToken={csrfToken}
                     targetType="game_comment"
                     targetId={comment.id}
                     myReactions={comment.myReactions}

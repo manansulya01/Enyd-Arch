@@ -6,11 +6,13 @@ import { Avatar, EmptyState } from '~/components/ui';
 import { GamePlayer } from '~/components/arcade/player';
 import { GameComments } from '~/components/arcade/comments';
 import { RatingWidget } from '~/components/arcade/rating';
-import { gameBySlug, getGameComments } from '~/server/queries';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
+import { gameBySlug, getGameComments, isBookmarked } from '~/server/queries';
 import { mintPlayGrant } from '~/server/arcade/play-grant';
 import { requireOnboarded } from '~/server/guard';
 import { formatCount, starString } from '~/lib/format';
 import { CsrfField } from '~/components/shell/csrf-field';
+import { sessionCsrfToken } from '~/server/csrf';
 import { db, schema } from '~db';
 import { eq, desc } from 'drizzle-orm';
 
@@ -27,7 +29,11 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
 
   const grant = game.status === 'approved' ? await mintPlayGrant(game.id) : { ok: false };
   const stars = starString(game.rating);
-  const gameComments = await getGameComments(game.id, actor.userId);
+  const [gameComments, csrfToken, bookmarked] = await Promise.all([
+    getGameComments(game.id, actor.userId),
+    sessionCsrfToken(),
+    isBookmarked(actor.userId, 'game', game.id),
+  ]);
 
   return (
     <PageShell title={game.title} sub={game.tagline}>
@@ -49,11 +55,12 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
             </p>
           )}
 
-          <GamePlayer gameId={game.id} title={game.title} grantUrl={grant.url ?? null} grantError={grant.ok ? null : grant.reason ?? 'Unknown error'} />
+          <GamePlayer gameId={game.id} title={game.title} grantUrl={grant.url ?? null} grantError={grant.ok ? null : grant.reason ?? 'Unknown error'} csrfToken={csrfToken} />
 
           <article className="card card-pad-lg stack stack-3">
             <div className="row row-wrap row-between">
-              <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} />
+              <RatingWidget gameId={game.id} myStars={game.myStars} rating={game.rating} ratingCount={game.ratingCount} csrfToken={csrfToken} />
+              {(game.status === 'approved' || bookmarked) && <BookmarkButton targetType="game" targetId={game.id} csrfToken={csrfToken} initialSaved={bookmarked} />}
               <span className="t-meta">
                 {formatCount(game.playCount)} plays · {game.ratingCount} rating
                 {game.ratingCount === 1 ? '' : 's'} · {game.commentCount} comments
@@ -89,7 +96,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
             </div>
           </article>
 
-          <GameComments gameId={game.id} comments={gameComments} />
+          <GameComments gameId={game.id} comments={gameComments} csrfToken={csrfToken} />
         </div>
 
         <aside className="aside">

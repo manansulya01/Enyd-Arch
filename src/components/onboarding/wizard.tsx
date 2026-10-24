@@ -27,7 +27,9 @@ import {
 export function OnboardingWizard({
   identity,
   context,
+  csrfToken,
 }: {
+  csrfToken: string;
   identity: { username: string; displayName: string; memberId: string; isMinor: boolean; ageBand: string };
   context: OnboardingContext;
 }) {
@@ -49,7 +51,6 @@ export function OnboardingWizard({
 
   const [profileVisibility, setProfileVisibility] = useState(context.settings.profileVisibility);
   const [discoverable, setDiscoverable] = useState(context.settings.discoverable);
-  const [showActivity, setShowActivity] = useState(context.settings.showActivity);
   const [messagePolicy, setMessagePolicy] = useState(context.settings.messagePolicy);
 
   const [connectionsEnabled, setConnectionsEnabled] = useState(context.connections.enabled);
@@ -81,11 +82,11 @@ export function OnboardingWizard({
           region,
           avatarGlyph: '◈',
           avatarHue: 40,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 1) {
         if (interests.length < 3) return setError('Choose at least three interests.');
-        const result = await onSaveInterests(interests);
+        const result = await onSaveInterests(interests, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 2) {
         const skills = skillsRaw
@@ -93,18 +94,15 @@ export function OnboardingWizard({
           .map((label) => label.trim())
           .filter(Boolean)
           .map((label) => ({ key: label.toLowerCase().replace(/\s+/g, '-'), label }));
-        const result = await onSaveProfileDetail({ bio, skills, links: [] });
+        const result = await onSaveProfileDetail({ bio, skills, links: [] }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 3) {
         const result = await onSavePrivacy({
           profileVisibility,
           discoverable,
-          showActivity,
-          showCreations: showActivity,
-          showArchiveContributions: showActivity,
           showRegion: Boolean(region),
           messagePolicy,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 4) {
         const result = await onSaveConnections({
@@ -115,10 +113,10 @@ export function OnboardingWizard({
           showInDating: identity.isMinor ? false : datingOptIn,
           datingIntent: '',
           interests: connectionInterests,
-        });
+        }, csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
       } else if (step === 5) {
-        const result = await onCompleteOnboarding();
+        const result = await onCompleteOnboarding(csrfToken);
         if (!result.ok) return setError(result.message ?? 'Could not save.');
         router.push('/home');
         return;
@@ -276,13 +274,6 @@ export function OnboardingWizard({
             <span className="switch-text">
               <span className="switch-title">Discoverable in the Network</span>
               <span className="switch-desc">Members with shared interests can find you.</span>
-            </span>
-          </label>
-          <label className="setting-row">
-            <input type="checkbox" checked={showActivity} onChange={(event) => setShowActivity(event.target.checked)} />
-            <span className="switch-text">
-              <span className="switch-title">Show my activity</span>
-              <span className="switch-desc">Posts, creations and contributions appear on your profile.</span>
             </span>
           </label>
         </div>

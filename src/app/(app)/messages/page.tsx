@@ -4,7 +4,12 @@ import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState, Tabs } from '~/components/ui';
 import { ConversationList } from '~/components/messages/conversation-list';
 import { MessageComposer } from '~/components/messages/message-composer';
-import { conversationList, conversationMessages } from '~/server/queries';
+import { GroupConversationComposer } from '~/components/messages/group-conversation-composer';
+import { ConversationPoller } from '~/components/messages/conversation-poller';
+import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
+import { MessageActions } from '~/components/messages/message-actions';
+import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
+import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
 import { CsrfField } from '~/components/shell/csrf-field';
 
@@ -13,14 +18,23 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string }>;
+  searchParams: Promise<{ c?: string; reply?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const { c } = await searchParams;
-
-  const conversations = await conversationList(actor.userId);
+  const [{ c, reply }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+    searchParams,
+    conversationList(actor.userId),
+    matchesFor(actor.userId, 'accepted'),
+    sessionCsrfToken(),
+  ]);
+  const contacts = [...new Map(acceptedConnections.map((match) => [match.partner.userId, {
+    userId: match.partner.userId,
+    username: match.partner.username,
+    displayName: match.partner.displayName,
+  }])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   const active = c ? conversations.find((conversation) => conversation.id === c) : undefined;
   const messages = active ? await conversationMessages(active.id, actor.userId) : null;
+  const replyTarget = reply && messages ? messages.find((message) => message.id === reply && !message.removed) : undefined;
 
   return (
     <PageShell title="Messages" sub="Private, one-to-one, in small groups, and inside projects.">
@@ -39,6 +53,9 @@ export default async function MessagesPage({
             ) : (
               <ConversationList conversations={conversations} activeId={active?.id ?? null} />
             )}
+            <div className="card-pad">
+              <GroupConversationComposer contacts={contacts} csrfToken={csrfToken} />
+            </div>
           </div>
         </section>
 
@@ -63,6 +80,8 @@ export default async function MessagesPage({
               />
             ) : (
               <>
+                <ConversationPoller conversationId={active.id} />
+                <ConversationReadMarker conversationId={active.id} csrfToken={csrfToken} />
                 <div className="thread-scroll">
                   {messages.length === 0 ? (
                     <p className="t-small t-subtle card-pad">
@@ -84,6 +103,12 @@ export default async function MessagesPage({
                         ) : (
                           <p className="bubble-text">{message.body}</p>
                         )}
+                        {message.replyTo && (
+                          <blockquote className="bubble-reply">
+                            <span className="bubble-meta">Replying to an earlier message</span>
+                            <p className="t-small">{message.replyTo.preview}</p>
+                          </blockquote>
+                        )}
                         {message.attachment && (
                           <a className="post-attachment" href={`/files/${message.attachment.id}?download=1`}>
                             <span className="post-attachment-glyph" aria-hidden="true">
@@ -95,13 +120,32 @@ export default async function MessagesPage({
                         <span className="bubble-meta">
                           {new Date(message.createdAt).toISOString().slice(11, 16)} UTC
                           {message.isMine ? ' · sent' : ''}
+                          {message.editedAt ? ' · edited' : ''}
                         </span>
+                        {!message.removed && (
+                          <p className="bubble-meta">
+                            <Link href={`/messages?c=${active.id}&reply=${message.id}`}>Reply</Link>
+                          </p>
+                        )}
+                        {message.isMine && !message.removed && (
+                          <MessageActions
+                            messageId={message.id}
+                            body={message.body}
+                            csrfToken={csrfToken}
+                            canEdit={Boolean(message.body) && Date.now() - new Date(message.createdAt).getTime() < 15 * 60 * 1000}
+                          />
+                        )}
                       </div>
                     ))
                   )}
                 </div>
                 <div className="thread-composer">
-                  <MessageComposer conversationId={active.id} csrf={<CsrfField />} />
+                  <MessageComposer
+                    conversationId={active.id}
+                    csrf={<CsrfField />}
+                    replyToId={replyTarget?.id}
+                    replyPreview={replyTarget ? (replyTarget.body || (replyTarget.attachment ? 'Attachment' : 'Message')) : undefined}
+                  />
                 </div>
               </>
             )}
@@ -118,4 +162,3 @@ export default async function MessagesPage({
   );
 }
 
-export { Tabs };

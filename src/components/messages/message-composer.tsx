@@ -11,9 +11,13 @@ import { onSendMessage } from '~/server/actions/messages-client';
 export function MessageComposer({
   conversationId,
   csrf,
+  replyToId,
+  replyPreview,
 }: {
   conversationId: string;
   csrf?: ReactNode;
+  replyToId?: string;
+  replyPreview?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -36,6 +40,7 @@ export function MessageComposer({
           conversationId,
           body: text,
           attachmentFileId: attachment?.fileId ?? null,
+          replyToId: replyToId ?? null,
         },
         token,
       );
@@ -76,9 +81,17 @@ export function MessageComposer({
         </p>
       )}
 
+      {replyToId && replyPreview && (
+        <div className="card-pad" aria-label="Replying to message">
+          <p className="t-meta">Replying to</p>
+          <p className="t-small">{replyPreview}</p>
+          <a className="lnk" href={`/messages?c=${conversationId}`}>Cancel reply</a>
+        </div>
+      )}
       <div className="composer-tools">
         {csrf}
         <input type="hidden" name="conversationId" value={conversationId} />
+        {replyToId && <input type="hidden" name="replyToId" value={replyToId} />}
         <button
           type="button"
           className="btn btn-ghost btn-sm"

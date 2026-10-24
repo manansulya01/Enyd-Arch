@@ -19,13 +19,30 @@ import {
   users,
 } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
-import { currentActor } from '~/server/auth/session';
+import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
+import { isUuid } from '~/server/auth/identifiers';
 import { checkPairEligibility, orderPair } from '~/server/safety/connections';
 import { notify } from '~/server/notify';
+import { verifyCsrfValue } from '~/server/csrf';
 
 const MODES = ['friendship', 'collaboration', 'dating'] as const;
 type Mode = (typeof MODES)[number];
+
+function capabilityForMode(mode: Mode): string {
+  if (mode === 'dating') return 'connections_dating';
+  return mode === 'friendship' ? 'connect_friendship' : 'connect_collaboration';
+}
+
+async function pairIsBlocked(a: string, b: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`(blocker_id = ${a} and blocked_id = ${b})
+      or (blocker_id = ${b} and blocked_id = ${a})`)
+    .limit(1);
+  return Boolean(row);
+}
 
 async function eligibilityContext(userId: string) {
   const [row] = await db
@@ -69,10 +86,21 @@ export async function sendConnectionRequest(input: {
   toUserId: string;
   mode: Mode;
   note?: string;
+  csrf: string;
 }): Promise<ActionResult> {
+  await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!input || typeof input !== 'object' || !isUuid(input.toUserId)) {
+    return fail('That member is not available.');
+  }
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
+  if (input.note !== undefined && typeof input.note !== 'string') {
+    return fail('The connection note is invalid.');
+  }
+  if (!can(actor, 'connections') || !can(actor, capabilityForMode(input.mode))) {
+    return fail('This connection type is not available for your identity.');
+  }
 
   const limiter = await acquire('connectionRequest', actor.userId);
   if (!limiter.allowed) return fail('Too many requests. Wait a little while.');
@@ -134,9 +162,14 @@ export async function sendConnectionRequest(input: {
   return ok();
 }
 
-export async function respondToRequest(requestId: string, accept: boolean): Promise<ActionResult> {
+export async function respondToRequest(requestId: string, accept: boolean, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'connections')) return fail('Connections are not available until onboarding is complete.');
+  if (!isUuid(requestId) || typeof accept !== 'boolean') return fail('That request is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   const [request] = await db
     .select()
@@ -150,6 +183,21 @@ export async function respondToRequest(requestId: string, accept: boolean): Prom
     )
     .limit(1);
   if (!request) return fail('That request is not available.');
+  if (!MODES.includes(request.mode as Mode) || !can(actor, capabilityForMode(request.mode as Mode))) {
+    return fail('This connection type is not available for your identity.');
+  }
+  if (await pairIsBlocked(request.fromUserId, request.toUserId)) {
+    return fail('That request is no longer available.');
+  }
+
+  // Re-evaluate both members' current preferences and age-safety rules at
+  // acceptance time; a stale pending request is not permanent consent.
+  if (accept) {
+    const ctx = await eligibilityContext(actor.userId);
+    if (!ctx) return fail('Your Connections settings are incomplete.');
+    const verdict = await checkPairEligibility(ctx, request.fromUserId, request.mode);
+    if (!verdict.allowed) return fail('That request is no longer available.');
+  }
 
   await db
     .update(connectionRequests)
@@ -169,7 +217,15 @@ export async function respondToRequest(requestId: string, accept: boolean): Prom
         status: 'accepted',
         ageBandAtMatch: me?.ageBand ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [matches.userAId, matches.userBId, matches.mode],
+        set: {
+          requestId: request.id,
+          status: 'accepted',
+          ageBandAtMatch: me?.ageBand ?? null,
+          updatedAt: new Date(),
+        },
+      });
 
     await notify({
       userId: request.fromUserId,
@@ -184,9 +240,13 @@ export async function respondToRequest(requestId: string, accept: boolean): Prom
   return ok();
 }
 
-export async function unmatch(matchId: string): Promise<ActionResult> {
+export async function unmatch(matchId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(matchId)) return fail('That connection is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   const [match] = await db
     .select()
@@ -205,17 +265,31 @@ export async function unmatch(matchId: string): Promise<ActionResult> {
   return ok();
 }
 
-export async function blockUser(userId: string): Promise<ActionResult> {
+export async function blockUser(userId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
-  if (userId === actor.userId) return fail('You cannot block yourself.');
+  if (!isUuid(userId) || userId === actor.userId) return fail('That member is not available to block.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
   await db
     .insert(blocks)
     .values({ blockerId: actor.userId, blockedId: userId })
     .onConflictDoNothing();
 
-  // Any match or pending request between the pair is dead.
+  // A block also revokes pending requests, so an old request cannot be
+  // accepted after either member has closed the contact path.
+  await db
+    .update(connectionRequests)
+    .set({ state: 'revoked', respondedAt: new Date() })
+    .where(and(
+      sql`(${connectionRequests.fromUserId} = ${actor.userId} and ${connectionRequests.toUserId} = ${userId})
+        or (${connectionRequests.fromUserId} = ${userId} and ${connectionRequests.toUserId} = ${actor.userId})`,
+      eq(connectionRequests.state, 'pending'),
+    ));
+
+  // Any match between the pair is dead.
   await db
     .update(matches)
     .set({ status: 'blocked', updatedAt: new Date() })
@@ -228,10 +302,24 @@ export async function blockUser(userId: string): Promise<ActionResult> {
   return ok();
 }
 
-export async function unblockUser(userId: string): Promise<ActionResult> {
+export async function unblockUser(userId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(userId) || userId === actor.userId) return fail('That member is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
   await db.delete(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, userId)));
+  // Preserve relationship history but permit a fresh accepted request after
+  // the member explicitly unblocks the other identity.
+  await db
+    .update(matches)
+    .set({ status: 'unmatched', updatedAt: new Date() })
+    .where(and(
+      sql`(${matches.userAId} = ${actor.userId} and ${matches.userBId} = ${userId})
+        or (${matches.userAId} = ${userId} and ${matches.userBId} = ${actor.userId})`,
+      eq(matches.status, 'blocked'),
+    ));
   return ok();
 }
 

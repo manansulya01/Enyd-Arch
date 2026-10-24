@@ -11,11 +11,11 @@ import { verifyCsrf } from '~/server/csrf';
 import type { ActionResult } from '~/lib/action-result';
 import { createGroupConversation, sendMessage, startDirectConversation } from './messages';
 
-export async function onStartDirect(otherUserId: string) {
-  return startDirectConversation(otherUserId);
+export async function onStartDirect(otherUserId: string, csrf: string) {
+  return startDirectConversation(otherUserId, csrf);
 }
 
-export async function onCreateGroup(input: { title: string; memberUserIds: string[] }) {
+export async function onCreateGroup(input: { title: string; memberUserIds: string[]; csrf: string }) {
   return createGroupConversation(input);
 }
 
@@ -24,6 +24,7 @@ export async function onSendMessage(
     conversationId: string;
     body: string;
     attachmentFileId: string | null;
+    replyToId?: string | null;
   },
   csrfToken: string,
 ): Promise<ActionResult<{ messageId: string }>> {
@@ -35,6 +36,7 @@ export async function onSendMessage(
   formData.set('conversationId', input.conversationId);
   formData.set('body', input.body);
   if (input.attachmentFileId) formData.set('attachmentFileId', input.attachmentFileId);
+  if (input.replyToId) formData.set('replyToId', input.replyToId);
 
   // `sendMessage` verifies the CSRF token from the FormData it is handed, so
   // the structured call goes through the identical check.

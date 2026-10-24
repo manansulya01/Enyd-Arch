@@ -8,11 +8,12 @@
  * notification, and every count is maintained in the same statement as the row
  * that changed it so a feed can never disagree with the row it rendered from.
  */
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, sql, type SQLWrapper } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '~db';
 import {
   archiveObjects,
+  blocks,
   bookmarks,
   comments,
   files,
@@ -28,12 +29,14 @@ import {
   polls,
   pollVotes,
   reactions,
+  storageObjects,
   users,
 } from '~db/schema';
 import { fail, issuesToErrors, ok, type ActionResult } from '~/lib/action-result';
 import { REACTIONS } from '~/lib/domain';
 import { slugify } from '~/lib/format';
 import { can, type SessionActor } from '~/server/auth/session';
+import { isUuid } from '~/server/auth/identifiers';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
 import { notify } from '~/server/notify';
@@ -42,6 +45,22 @@ import { maybeUnlock } from '~/server/society';
 const MAX_POST_LENGTH = 5000;
 const MAX_COMMENT_LENGTH = 2500;
 const RESERVED_HANDLE = /[<>]/;
+
+/** Keep mutation authorization aligned with the viewer-aware feed visibility rule. */
+function visibleToActor(visibility: SQLWrapper, ownerId: SQLWrapper, actorId: string) {
+  return sql`(
+    ${visibility} in ('members', 'public')
+    or (
+      ${visibility} = 'connections'
+      and exists (
+        select 1 from matches m
+        where m.status = 'accepted'
+          and ((m.user_a_id = ${ownerId} and m.user_b_id = ${actorId})
+            or (m.user_b_id = ${ownerId} and m.user_a_id = ${actorId}))
+      )
+    )
+  )`;
+}
 
 export type ReactionTargetType = 'post' | 'comment' | 'archive_object' | 'game' | 'gallery_post' | 'game_comment';
 
@@ -57,7 +76,7 @@ export type ReactionTargetType = 'post' | 'comment' | 'archive_object' | 'game' 
  * silently dropped when they do not match — an unresolved mention must not
  * become a notification to nobody.
  */
-export function extractReferences(body: string): { tags: string[]; handles: string[] } {
+function extractReferences(body: string): { tags: string[]; handles: string[] } {
   const tags = new Set<string>();
   const handles = new Set<string>();
 
@@ -113,6 +132,8 @@ export async function createPost(
   if (!can(actor, 'post')) {
     return fail('You do not have permission to post in the Commons.');
   }
+  if (input.repostOfId && !isUuid(input.repostOfId)) return fail('That post is not available.');
+  if ((input.attachmentFileIds ?? []).some((id) => !isUuid(id))) return fail('One or more attachments are not available.');
 
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) {
@@ -140,12 +161,17 @@ export async function createPost(
           eq(files.uploaderId, actor.userId),
           eq(files.state, 'clean'),
           isNull(files.removedAt),
+          sql`exists (
+            select 1 from storage_objects so
+            where so.id = ${files.storageObjectId}
+              and so.removed_at is null
+          )`,
         ),
       );
     attachmentIds = owned.map((row) => row.id);
 
-    if (attachmentIds.length === 0) {
-      return fail('Those attachments are no longer available.');
+    if (attachmentIds.length !== new Set(input.attachmentFileIds).size) {
+      return fail('One or more attachments are no longer available.');
     }
   }
 
@@ -155,7 +181,18 @@ export async function createPost(
     const original = await db
       .select({ id: posts.id, repostOfId: posts.repostOfId })
       .from(posts)
-      .where(and(eq(posts.id, repostOfId), eq(posts.status, 'published'), isNull(posts.removedAt)))
+      .where(and(
+        eq(posts.id, repostOfId),
+        eq(posts.status, 'published'),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
+        isNull(posts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
       .limit(1);
     if (!original[0]) return fail('That post is no longer available.');
     if (original[0].repostOfId) return fail('That post is itself a repost.');
@@ -273,6 +310,7 @@ export async function createComment(
   input: { postId: string; body: string; parentId?: string | null },
 ): Promise<ActionResult<{ commentId: string }>> {
   if (!can(actor, 'comment')) return fail('You do not have permission to reply.');
+  if (!isUuid(input.postId) || (input.parentId && !isUuid(input.parentId))) return fail('That conversation is not available.');
 
   const limiter = await acquire('comment', actor.userId);
   if (!limiter.allowed) return fail('You are replying very quickly. Take a breath.');
@@ -289,7 +327,13 @@ export async function createComment(
         eq(posts.id, input.postId),
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
-        inArray(posts.visibility, ['members', 'public']),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
       ),
     )
     .limit(1);
@@ -306,7 +350,14 @@ export async function createComment(
         and(
           eq(comments.id, input.parentId),
           eq(comments.postId, input.postId),
+          eq(comments.status, 'published'),
           isNull(comments.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${actor.userId} and b.blocked_id = ${comments.authorId})
+               or (b.blocker_id = ${comments.authorId} and b.blocked_id = ${actor.userId})
+          )`,
+          sql`exists (select 1 from users u where u.id = ${comments.authorId} and u.status = 'active' and u.removed_at is null)`,
         ),
       )
       .limit(1);
@@ -364,6 +415,10 @@ export async function deleteComment(
   actor: SessionActor,
   commentId: string,
 ): Promise<ActionResult> {
+  if (!isUuid(commentId)) return fail('That comment is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
+
   const rows = await db
     .select({ id: comments.id, authorId: comments.authorId, postId: comments.postId })
     .from(comments)
@@ -436,29 +491,31 @@ export async function toggleReaction(
   actor: SessionActor,
   input: { targetType: ReactionTargetType; targetId: string; kind: string },
 ): Promise<ActionResult<{ active: boolean; count: number }>> {
+  if (!isUuid(input.targetId)) return fail('That item is not available.');
   if (!REACTION_KEYS.has(input.kind)) return fail('That is not a reaction Enyd Arch offers.');
   if (!can(actor, 'react')) return fail('You do not have permission to react.');
+
+  // Rate-limit before target lookups so forged IDs cannot turn this endpoint
+  // into an expensive database-probing primitive.
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
   const target = reactionCounter(input.targetType);
   if (!target) return fail('That cannot be reacted to.');
   const { table, column } = target;
 
-  const limiter = await acquire('write', actor.userId);
-  if (!limiter.allowed) return fail('Slow down a moment.');
-
+  // Let members remove their own old reaction even if the content was later
+  // hidden, blocked, or soft-deleted. Adding a reaction still requires access.
   const existing = await db
     .select({ id: reactions.id })
     .from(reactions)
-    .where(
-      and(
-        eq(reactions.userId, actor.userId),
-        eq(reactions.targetType, input.targetType),
-        eq(reactions.targetId, input.targetId),
-        eq(reactions.kind, input.kind),
-      ),
-    )
+    .where(and(
+      eq(reactions.userId, actor.userId),
+      eq(reactions.targetType, input.targetType),
+      eq(reactions.targetId, input.targetId),
+      eq(reactions.kind, input.kind),
+    ))
     .limit(1);
-
   if (existing[0]) {
     await db.delete(reactions).where(eq(reactions.id, existing[0].id));
     const [updated] = await db
@@ -467,6 +524,143 @@ export async function toggleReaction(
       .where(eq(table.id, input.targetId))
       .returning({ count: column });
     return ok({ active: false, count: Number(updated?.count ?? 0) });
+  }
+
+  // Do not create reaction rows for missing or soft-deleted targets. This
+  // lookup is also a guard against callers forging a target type/id pair.
+  const [availableTarget] = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(and(eq(table.id, input.targetId), isNull(table.removedAt)))
+    .limit(1);
+  if (!availableTarget) return fail('That item is no longer available.');
+
+  // Reaction APIs must enforce the same visibility boundary as the feed. A
+  // valid UUID is not proof that a caller can see the underlying content.
+  if (input.targetType === 'post') {
+    const [visiblePost] = await db
+      .select({ id: posts.id })
+      .from(posts)
+      .where(and(
+        eq(posts.id, input.targetId),
+        eq(posts.status, 'published'),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
+        isNull(posts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
+      .limit(1);
+    if (!visiblePost) return fail('That item is no longer available.');
+  } else if (input.targetType === 'comment') {
+    const [visibleComment] = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .innerJoin(posts, eq(posts.id, comments.postId))
+      .where(and(
+        eq(comments.id, input.targetId),
+        eq(comments.status, 'published'),
+        isNull(comments.removedAt),
+        eq(posts.status, 'published'),
+        visibleToActor(posts.visibility, posts.authorId, actor.userId),
+        isNull(posts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${comments.authorId})
+             or (b.blocker_id = ${comments.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${comments.authorId} and u.status = 'active' and u.removed_at is null)`,
+        sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
+      .limit(1);
+    if (!visibleComment) return fail('That item is no longer available.');
+  } else if (input.targetType === 'gallery_post') {
+    const [visibleGalleryPost] = await db
+      .select({ id: galleryPosts.id })
+      .from(galleryPosts)
+      .where(and(
+        eq(galleryPosts.id, input.targetId),
+        visibleToActor(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
+        isNull(galleryPosts.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
+             or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
+      .limit(1);
+    if (!visibleGalleryPost) return fail('That item is no longer available.');
+  } else if (input.targetType === 'archive_object') {
+    const [visibleArchiveObject] = await db
+      .select({ id: archiveObjects.id })
+      .from(archiveObjects)
+      .where(and(
+        eq(archiveObjects.id, input.targetId),
+        visibleToActor(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
+        isNull(archiveObjects.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
+             or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`(${archiveObjects.contributorId} is null or exists (
+          select 1 from users u where u.id = ${archiveObjects.contributorId} and u.status = 'active' and u.removed_at is null
+        ))`,
+      ))
+      .limit(1);
+    if (!visibleArchiveObject) return fail('That item is no longer available.');
+  } else if (input.targetType === 'game') {
+    const [approvedGame] = await db
+      .select({ id: games.id })
+      .from(games)
+      .where(and(
+        eq(games.id, input.targetId),
+        eq(games.status, 'approved'),
+        isNull(games.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+             or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${games.creatorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
+      .limit(1);
+    if (!approvedGame) return fail('That item is no longer available.');
+  } else if (input.targetType === 'game_comment') {
+    const [visibleGameComment] = await db
+      .select({ id: gameComments.id })
+      .from(gameComments)
+      .innerJoin(games, eq(games.id, gameComments.gameId))
+      .where(and(
+        eq(gameComments.id, input.targetId),
+        eq(gameComments.status, 'published'),
+        isNull(gameComments.removedAt),
+        eq(games.status, 'approved'),
+        isNull(games.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${gameComments.authorId})
+             or (b.blocker_id = ${gameComments.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+             or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+        )`,
+        sql`exists (select 1 from users u where u.id = ${gameComments.authorId} and u.status = 'active' and u.removed_at is null)`,
+        sql`exists (select 1 from users u where u.id = ${games.creatorId} and u.status = 'active' and u.removed_at is null)`,
+      ))
+      .limit(1);
+    if (!visibleGameComment) return fail('That item is no longer available.');
   }
 
   await db.insert(reactions).values({
@@ -511,6 +705,8 @@ export async function voteInPoll(
   actor: SessionActor,
   input: { pollId: string; optionId: string },
 ): Promise<ActionResult> {
+  if (!isUuid(input.pollId) || !isUuid(input.optionId)) return fail('That poll option is not available.');
+  if (!can(actor, 'react')) return fail('You do not have permission to vote.');
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
@@ -529,6 +725,27 @@ export async function voteInPoll(
 
   const found = poll[0];
   if (!found || found.optionPollId !== found.id) return fail('That option is not available.');
+
+  // Poll IDs are not authorization. Voting must inherit the parent post's
+  // published/visible boundary, just like reading the poll in the feed.
+  const [visiblePost] = await db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(and(
+      eq(posts.id, found.postId),
+      eq(posts.status, 'published'),
+      visibleToActor(posts.visibility, posts.authorId, actor.userId),
+      isNull(posts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+           or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
+      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
+    ))
+    .limit(1);
+  if (!visiblePost) return fail('That poll is no longer available.');
+
   if (found.closesAt && found.closesAt.getTime() < Date.now()) {
     return fail('This poll has closed.');
   }
@@ -577,10 +794,15 @@ export async function voteInPoll(
   const existing = await db
     .select({ optionId: pollVotes.optionId })
     .from(pollVotes)
-    .where(and(eq(pollVotes.pollId, input.pollId), eq(pollVotes.userId, actor.userId)))
+    .where(and(
+      eq(pollVotes.pollId, input.pollId),
+      eq(pollVotes.userId, actor.userId),
+      eq(pollVotes.optionId, input.optionId),
+    ))
     .limit(1);
 
-  if (existing[0]?.optionId === input.optionId) return ok();
+  // Multi-select means one vote per option, not an unbounded duplicate count.
+  if (existing[0]) return ok();
 
   await db.insert(pollVotes).values({
     pollId: input.pollId,
@@ -605,31 +827,92 @@ export async function toggleBookmark(
   input: { targetType: 'post' | 'archive_object' | 'game' | 'gallery_post'; targetId: string; note?: string },
 ): Promise<ActionResult<{ saved: boolean }>> {
   if (!can(actor, 'bookmark')) return fail('You do not have permission to save.');
+  if (!isUuid(input.targetId)) return fail('That item is not available.');
+  if (!['post', 'archive_object', 'game', 'gallery_post'].includes(input.targetType)) {
+    return fail('That item cannot be saved.');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
+  // Removing an existing bookmark must remain possible after its target is
+  // hidden, removed, or blocked. New bookmarks are checked below.
   const existing = await db
     .select({ id: bookmarks.userId })
     .from(bookmarks)
-    .where(
-      and(
-        eq(bookmarks.userId, actor.userId),
-        eq(bookmarks.targetType, input.targetType),
-        eq(bookmarks.targetId, input.targetId),
-      ),
-    )
+    .where(and(
+      eq(bookmarks.userId, actor.userId),
+      eq(bookmarks.targetType, input.targetType),
+      eq(bookmarks.targetId, input.targetId),
+    ))
     .limit(1);
-
   if (existing[0]) {
-    await db
-      .delete(bookmarks)
-      .where(
-        and(
-          eq(bookmarks.userId, actor.userId),
-          eq(bookmarks.targetType, input.targetType),
-          eq(bookmarks.targetId, input.targetId),
-        ),
-      );
+    await db.delete(bookmarks).where(and(
+      eq(bookmarks.userId, actor.userId),
+      eq(bookmarks.targetType, input.targetType),
+      eq(bookmarks.targetId, input.targetId),
+    ));
     return ok({ saved: false });
   }
+
+  // A bookmark is private, but creating one must not be an oracle for
+  // private, removed, draft, or unapproved content. Match the visibility
+  // boundary used by the corresponding public-facing catalogue.
+  let available = false;
+  if (input.targetType === 'post') {
+    const [row] = await db.select({ id: posts.id }).from(posts).where(and(
+      eq(posts.id, input.targetId),
+      eq(posts.status, 'published'),
+      visibleToActor(posts.visibility, posts.authorId, actor.userId),
+      isNull(posts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${posts.authorId})
+           or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
+      sql`exists (select 1 from users u where u.id = ${posts.authorId} and u.status = 'active' and u.removed_at is null)`,
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'archive_object') {
+    const [row] = await db.select({ id: archiveObjects.id }).from(archiveObjects).where(and(
+      eq(archiveObjects.id, input.targetId),
+      visibleToActor(archiveObjects.visibility, archiveObjects.contributorId, actor.userId),
+      isNull(archiveObjects.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${archiveObjects.contributorId})
+           or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${actor.userId})
+      )`,
+      sql`(${archiveObjects.contributorId} is null or exists (select 1 from users u where u.id = ${archiveObjects.contributorId} and u.status = 'active' and u.removed_at is null))`,
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'game') {
+    const [row] = await db.select({ id: games.id }).from(games).where(and(
+      eq(games.id, input.targetId),
+      eq(games.status, 'approved'),
+      isNull(games.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${games.creatorId})
+           or (b.blocker_id = ${games.creatorId} and b.blocked_id = ${actor.userId})
+      )`,
+      sql`exists (select 1 from users u where u.id = ${games.creatorId} and u.status = 'active' and u.removed_at is null)`,
+    )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'gallery_post') {
+    const [row] = await db.select({ id: galleryPosts.id }).from(galleryPosts).where(and(
+      eq(galleryPosts.id, input.targetId),
+      visibleToActor(galleryPosts.visibility, galleryPosts.authorId, actor.userId),
+      isNull(galleryPosts.removedAt),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${galleryPosts.authorId})
+           or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${actor.userId})
+      )`,
+      sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
+    )).limit(1);
+    available = Boolean(row);
+  }
+  if (!available) return fail('That item is no longer available.');
 
   await db.insert(bookmarks).values({
     userId: actor.userId,

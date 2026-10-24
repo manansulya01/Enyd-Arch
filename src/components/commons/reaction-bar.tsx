@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { REACTIONS } from '~/lib/domain';
-import { onToggleReaction } from '~/server/actions/commons-client';
+import { onToggleBookmark, onToggleReaction } from '~/server/actions/commons-client';
 
 /**
  * Reaction bar. Optimistic in the common case and always reconciled by the
@@ -15,7 +15,9 @@ export function ReactionBar({
   myReactions,
   count,
   bookmarked,
+  csrfToken,
 }: {
+  csrfToken: string;
   targetType: 'post' | 'comment' | 'archive_object' | 'gallery_post' | 'game_comment';
   targetId: string;
   myReactions: string[];
@@ -29,6 +31,18 @@ export function ReactionBar({
   const [saved, setSaved] = useState(Boolean(bookmarked));
   const [open, setOpen] = useState(false);
 
+  function toggleSaved() {
+    if (targetType !== 'post' && targetType !== 'archive_object' && targetType !== 'gallery_post') return;
+    startTransition(async () => {
+      const result = await onToggleBookmark(
+        { targetType, targetId },
+        csrfToken,
+      );
+      if (result.ok && result.data) setSaved(result.data.saved);
+      else router.refresh();
+    });
+  }
+
   function toggle(kind: string) {
     const wasActive = active.includes(kind);
     setActive((current) =>
@@ -36,7 +50,7 @@ export function ReactionBar({
     );
     setTotal((current) => Math.max(0, current + (wasActive ? -1 : 1)));
     startTransition(async () => {
-      const result = await onToggleReaction({ targetType, targetId, kind });
+      const result = await onToggleReaction({ targetType, targetId, kind }, csrfToken);
       if (result.ok && result.data) setTotal(result.data.count);
       else router.refresh();
     });
@@ -98,7 +112,8 @@ export function ReactionBar({
         <button
           type="button"
           className="reaction-pill"
-          onClick={() => setSaved((value) => !value)}
+          onClick={toggleSaved}
+          aria-pressed={saved}
           title="Save to your bookmarks"
         >
           <span aria-hidden="true">{saved ? '★' : '☆'}</span> Save

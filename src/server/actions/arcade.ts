@@ -21,6 +21,7 @@ import {
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
 import { randomUUID } from 'node:crypto';
+import { isUuid } from '~/server/auth/identifiers';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
@@ -137,12 +138,15 @@ async function uniqueSlug(title: string): Promise<string> {
 export async function rateGame(gameId: string, stars: number): Promise<ActionResult> {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(gameId)) return fail('That game is not available.');
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) return fail('Stars must be 1–5.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
   const [game] = await db
     .select({ id: games.id, status: games.status })
     .from(games)
-    .where(and(eq(games.id, gameId), eq(games.status, 'approved')))
+    .where(and(eq(games.id, gameId), eq(games.status, 'approved'), isNull(games.removedAt)))
     .limit(1);
   if (!game) return fail('That game is not available.');
 
@@ -185,10 +189,31 @@ export async function commentOnGame(
   const body = String(formData.get('body') ?? '').trim().slice(0, 2000);
   const parentIdValue = formData.get('parentId');
   const parentId = typeof parentIdValue === 'string' ? parentIdValue : null;
-  if (!gameId || !body) return fail('Write something first.');
+  if (!isUuid(gameId) || (parentId !== null && !isUuid(parentId))) return fail('That game or reply is not available.');
+  if (!body) return fail('Write something first.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
 
-  const [game] = await db.select({ slug: games.slug }).from(games).where(eq(games.id, gameId)).limit(1);
+  const [game] = await db
+    .select({ id: games.id, slug: games.slug })
+    .from(games)
+    .where(and(eq(games.id, gameId), eq(games.status, 'approved'), isNull(games.removedAt)))
+    .limit(1);
   if (!game) return fail('That game is not available.');
+
+  if (parentId) {
+    const [parent] = await db
+      .select({ id: gameComments.id })
+      .from(gameComments)
+      .where(and(
+        eq(gameComments.id, parentId),
+        eq(gameComments.gameId, gameId),
+        eq(gameComments.status, 'published'),
+        isNull(gameComments.removedAt),
+      ))
+      .limit(1);
+    if (!parent) return fail('That reply is no longer available.');
+  }
 
   await db.insert(gameComments).values({ gameId, authorId: actor.userId, body, parentId });
   await db
@@ -203,6 +228,15 @@ export async function commentOnGame(
 export async function recordPlay(gameId: string, seconds: number): Promise<ActionResult> {
   const actor = await currentActor();
   if (!actor) return fail('Sign in to record play.');
+  if (!isUuid(gameId) || !Number.isFinite(seconds) || seconds < 3) return fail('That play is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment.');
+  const [game] = await db
+    .select({ id: games.id })
+    .from(games)
+    .where(and(eq(games.id, gameId), eq(games.status, 'approved'), isNull(games.removedAt)))
+    .limit(1);
+  if (!game) return fail('That game is not available.');
   const bounded = Math.min(Math.max(0, Math.floor(seconds)), 24 * 3600);
 
   await db.insert(gamePlays).values({ gameId, userId: actor.userId, seconds: bounded });

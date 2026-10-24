@@ -1,4 +1,3 @@
-'use server';
 
 /**
  * Shared helpers for client components that talk to server actions directly.
@@ -10,10 +9,10 @@
 
 import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '~db';
 import { sessions as sessionsTable } from '~db/schema';
-import { safeEqual } from '~/server/crypto';
+import { hmacHex, safeEqual } from '~/server/crypto';
 
 export const CSRF_FIELD = '__csrf';
 
@@ -65,7 +64,11 @@ async function tokenMatches(presented: string): Promise<boolean> {
     const rows = await db
       .select({ csrfSecret: sessionsTable.csrfSecret })
       .from(sessionsTable)
-      .where(and(eq(sessionsTable.tokenHash, tokenHash), isNull(sessionsTable.revokedAt)))
+      .where(and(
+        eq(sessionsTable.tokenHash, tokenHash),
+        isNull(sessionsTable.revokedAt),
+        gt(sessionsTable.expiresAt, new Date()),
+      ))
       .limit(1);
 
     if (rows[0] && safeEqual(presented, rows[0].csrfSecret)) return true;
@@ -73,6 +76,20 @@ async function tokenMatches(presented: string): Promise<boolean> {
 
   const cookieToken = store.get('enyd_csrf')?.value;
   if (cookieToken && safeEqual(presented, cookieToken)) return true;
+
+  // Anonymous forms render in Server Components, where cookies cannot be
+  // mutated. A short-lived signed nonce works without a writable response
+  // cookie; the origin check above still rejects cross-site submissions.
+  const parts = presented.split('.');
+  if (parts.length === 4 && parts[0] === 'anon') {
+    const issuedAt = Number.parseInt(parts[1] ?? '', 36);
+    const now = Date.now();
+    if (Number.isFinite(issuedAt) && issuedAt <= now + 60_000 && now - issuedAt <= 4 * 60 * 60 * 1000) {
+      const payload = `${parts[1]}.${parts[2]}`;
+      const expected = hmacHex('csrf-anonymous', payload);
+      if (safeEqual(parts[3] ?? '', expected)) return true;
+    }
+  }
 
   return false;
 }
@@ -106,23 +123,14 @@ export async function verifyCsrfValue(presented: unknown): Promise<void> {
 }
 
 /**
- * Issues an anonymous token and mirrors it in a readable cookie, so a form
- * rendered before sign-in can embed it.
+ * Issues a short-lived signed anonymous token for forms rendered before sign-in.
+ * The token can be verified without mutating cookies during Server Component rendering.
  */
 export async function issueAnonymousCsrf(): Promise<string> {
-  const store = await cookies();
-  const existing = store.get('enyd_csrf')?.value;
-  if (existing) return existing;
-
-  const token = randomBytes(24).toString('base64url');
-  store.set('enyd_csrf', token, {
-    httpOnly: false,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 4,
-  });
-  return token;
+  const issuedAt = Date.now().toString(36);
+  const nonce = randomBytes(24).toString('base64url');
+  const payload = `${issuedAt}.${nonce}`;
+  return `anon.${payload}.${hmacHex('csrf-anonymous', payload)}`;
 }
 
 /** The current session's CSRF secret, for embedding in a hidden field. */
@@ -135,7 +143,11 @@ export async function sessionCsrfToken(): Promise<string> {
   const rows = await db
     .select({ csrfSecret: sessionsTable.csrfSecret })
     .from(sessionsTable)
-    .where(and(eq(sessionsTable.tokenHash, tokenHash), isNull(sessionsTable.revokedAt)))
+    .where(and(
+      eq(sessionsTable.tokenHash, tokenHash),
+      isNull(sessionsTable.revokedAt),
+      gt(sessionsTable.expiresAt, new Date()),
+    ))
     .limit(1);
 
   return rows[0]?.csrfSecret ?? issueAnonymousCsrf();

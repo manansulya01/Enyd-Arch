@@ -3,13 +3,15 @@ import type { PostView } from '~/server/queries';
 import { relativeTime, excerpt } from '~/lib/format';
 import { Avatar } from '~/components/ui';
 import { ReactionBar } from '~/components/commons/reaction-bar';
+import { PollWidget } from '~/components/commons/poll-widget';
+import { FollowButton } from './follow-button';
 
 /** One network post, rendered the same way in the feed and on its own page. */
-export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean }) {
+export function NetworkCard({ post, detail, viewerId, csrfToken, isFollowing }: { post: PostView; detail?: boolean; viewerId: string; csrfToken: string; isFollowing: boolean }) {
   return (
     <article className="post card">
       <header className="post-header">
-        <Link href={`/network/${post.author.username}`} className="who">
+        <Link href={`/members/${post.author.username}`} className="who">
           <Avatar
             displayName={post.author.displayName}
             avatarUrl={post.author.avatarUrl}
@@ -23,7 +25,10 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
             </span>
           </span>
         </Link>
-        <span className="post-meta">{relativeTime(post.createdAt)}</span>
+        <div className="row row-2">
+          {post.author.userId !== viewerId && <FollowButton targetUserId={post.author.userId} initialFollowing={isFollowing} csrfToken={csrfToken} />}
+          <span className="post-meta">{relativeTime(post.createdAt)}</span>
+        </div>
       </header>
 
       {post.body && (
@@ -35,6 +40,8 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
           )}
         </div>
       )}
+
+      {post.poll && <PollWidget poll={post.poll} csrfToken={csrfToken} />}
 
       {post.attachments.length > 0 && (
         <div className="post-attachments">
@@ -67,10 +74,12 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
 
       <footer className="post-foot">
         <ReactionBar
+          csrfToken={csrfToken}
           targetType="post"
           targetId={post.id}
           myReactions={post.myReactions}
           count={post.reactionCount}
+          bookmarked={post.bookmarked}
         />
         <Link className="reaction-pill" href={`/network/${post.id}`}>
           <span aria-hidden="true">❝</span> Reply

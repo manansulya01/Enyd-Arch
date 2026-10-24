@@ -23,7 +23,7 @@ import { PasskeyEnrol } from './passkey-enrol';
  * unexplained field error on a form the member has already filled in.
  */
 
-export function RegisterCredentialsForm() {
+export function RegisterCredentialsForm({ csrfToken }: { csrfToken: string }) {
   const [identity, setIdentity] = useState<{ username: string; memberId: string } | null>(null);
   const [availability, setAvailability] = useState<UsernameAvailability | null>(null);
   const [credentials, credentialsAction, pending] = useActionState<
@@ -42,13 +42,14 @@ export function RegisterCredentialsForm() {
     }
   }, [credentials]);
 
-  if (identity) return <PasskeyEnrol identity={identity} />;
+  if (identity) return <PasskeyEnrol identity={identity} csrfToken={csrfToken} />;
 
   const usernameError = fieldError(credentials, 'username');
   const deviceBlocked = Boolean(fieldError(credentials, 'device'));
 
   return (
     <form action={credentialsAction} className="auth-form" noValidate>
+      <input type="hidden" name="__csrf" value={csrfToken} />
       {credentials?.message && !deviceBlocked && (
         <p className="notice notice-danger" role="alert">
           <span className="notice-glyph" aria-hidden="true">
@@ -146,6 +147,13 @@ export function RegisterCredentialsForm() {
         hint="At least 12 characters. A short phrase you will remember beats a mangled word with symbols in it."
         error={fieldError(credentials, 'password')}
       />
+
+      <div className="field">
+        <label className="field-label" htmlFor="invitationCode">Invitation code</label>
+        <input className="input" id="invitationCode" name="invitationCode" type="text" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false} required maxLength={32} aria-invalid={Boolean(fieldError(credentials, 'invitationCode'))} aria-describedby="invitationCode-hint" />
+        <p className="field-hint" id="invitationCode-hint">Enyd Arch is invite-only. Ask an existing member for a code.</p>
+        {fieldError(credentials, 'invitationCode') && <p className="field-error" role="alert">{fieldError(credentials, 'invitationCode')}</p>}
+      </div>
 
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend className="field-label" style={{ padding: 0, marginBottom: 'var(--sp-2)' }}>

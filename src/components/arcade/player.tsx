@@ -16,8 +16,10 @@ export function GamePlayer({
   title,
   grantUrl,
   grantError,
+  csrfToken,
 }: {
   gameId: string;
+  csrfToken: string;
   title: string;
   grantUrl: string | null;
   grantError: string | null;
@@ -36,7 +38,7 @@ export function GamePlayer({
   useEffect(() => {
     if (!launched || recorded.current || elapsed < 3) return;
     recorded.current = true;
-    void onRecordPlay(gameId, elapsed);
+    void onRecordPlay(gameId, elapsed, csrfToken);
   }, [elapsed, gameId, launched]);
 
   if (!grantUrl) {
