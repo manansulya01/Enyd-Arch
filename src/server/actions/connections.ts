@@ -91,7 +91,13 @@ export async function sendConnectionRequest(input: {
   await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!input || typeof input !== 'object' || !isUuid(input.toUserId)) {
+    return fail('That member is not available.');
+  }
   if (!MODES.includes(input.mode)) return fail('Unknown connection mode.');
+  if (input.note !== undefined && typeof input.note !== 'string') {
+    return fail('The connection note is invalid.');
+  }
   if (!can(actor, 'connections') || !can(actor, capabilityForMode(input.mode))) {
     return fail('This connection type is not available for your identity.');
   }
