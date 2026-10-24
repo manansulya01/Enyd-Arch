@@ -21,18 +21,22 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
     .where(eq(communities.slug, slug)).limit(1);
   if (!community) notFound();
 
-  const [membership, rows, blockRows, csrfToken] = await Promise.all([
+  const [membership, csrfToken] = await Promise.all([
     db.select().from(communityMembers).where(and(eq(communityMembers.communityId, community.id), eq(communityMembers.userId, actor.userId))).limit(1),
+    sessionCsrfToken(),
+  ]);
+  const joined = membership.length > 0;
+  if (community.isPrivate && !joined && community.ownerId !== actor.userId) notFound();
+
+  const [rows, blockRows] = await Promise.all([
     db.select({ id: communityPosts.id, title: communityPosts.title, body: communityPosts.body, createdAt: communityPosts.createdAt, authorId: users.id, username: users.username, displayName: users.displayName })
       .from(communityPosts).innerJoin(users, eq(users.id, communityPosts.authorId))
       .where(and(eq(communityPosts.communityId, community.id), eq(communityPosts.status, 'published'), isNull(communityPosts.removedAt), eq(users.status, 'active'), isNull(users.removedAt)))
       .orderBy(desc(communityPosts.createdAt)).limit(100),
     db.select().from(blocks).where(or(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, actor.userId))),
-    sessionCsrfToken(),
   ]);
   const hidden = new Set(blockRows.map(row => row.blockerId === actor.userId ? row.blockedId : row.blockerId));
   const posts = rows.filter(post => !hidden.has(post.authorId));
-  const joined = membership.length > 0;
   const commentRows = rows.length === 0 ? [] : await db.select({
     id: communityPostComments.id,
     postId: communityPostComments.postId,
