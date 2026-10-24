@@ -44,7 +44,7 @@ export default async function RegistryPage({
       ) : (
         <div className="stack stack-3">
           {members.map((member) => (
-            <Link key={member.userId} href={`/registry/${member.username}`} className="panel panel-body member-directory-card">
+            <Link key={member.userId} href={`/members/${member.username}`} className="panel panel-body member-directory-card">
               <div className="row row-3">
                 <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size="lg" />
                 <div className="grow">
