@@ -117,6 +117,10 @@ export default async function MemberProfilePage({
           )}
         </section>
 
+        {!isSelf && (
+          <p><Link className="btn btn-secondary" href={`/registry/${member.username}`}>Contact and connection options</Link></p>
+        )}
+
         <section className="stack stack-3">
           <h2>Recent activity</h2>
           {!details.showActivity ? (
