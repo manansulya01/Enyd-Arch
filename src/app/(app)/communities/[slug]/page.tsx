@@ -18,7 +18,7 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
   const { actor } = await requireOnboarded();
   const { slug } = await params;
   const [community] = await db.select().from(communities)
-    .where(and(eq(communities.slug, slug), eq(communities.isPrivate, false))).limit(1);
+    .where(eq(communities.slug, slug)).limit(1);
   if (!community) notFound();
 
   const [membership, rows, blockRows, csrfToken] = await Promise.all([
