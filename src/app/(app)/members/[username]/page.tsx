@@ -5,7 +5,7 @@ import { Avatar, EmptyState } from '~/components/ui';
 import { PageShell } from '~/components/ui/page-shell';
 import { absoluteDate } from '~/lib/format';
 import { requireOnboarded } from '~/server/guard';
-import { feed, memberByUsername, memberProfileDetails } from '~/server/queries';
+import { feed, memberArchiveContributions, memberByUsername, memberProfileDetails } from '~/server/queries';
 
 export const metadata: Metadata = {
   title: 'Member profile',
@@ -35,9 +35,14 @@ export default async function MemberProfilePage({
   const details = await memberProfileDetails(member.userId, actor.userId);
   if (!details) notFound();
 
-  const recentPosts = details.showActivity
-    ? await feed({ viewerId: actor.userId, authorId: member.userId, sort: 'recent', limit: 8 })
-    : [];
+  const [recentPosts, archiveContributions] = await Promise.all([
+    details.showActivity
+      ? feed({ viewerId: actor.userId, authorId: member.userId, sort: 'recent', limit: 8 })
+      : Promise.resolve([]),
+    details.showArchiveContributions
+      ? memberArchiveContributions(member.userId, actor.userId)
+      : Promise.resolve([]),
+  ]);
 
   const isSelf = actor.userId === member.userId;
   const visibleLinks = details.showCreations
@@ -94,9 +99,21 @@ export default async function MemberProfilePage({
           )}
 
           {details.showArchiveContributions && (
-            <p className="t-small">
-              <Link className="lnk" href="/archive">Explore the Archive</Link>
-            </p>
+            <section className="stack stack-2">
+              <h2>Archive contributions</h2>
+              {archiveContributions.length === 0 ? (
+                <p className="t-small t-subtle">No visible Archive contributions yet.</p>
+              ) : (
+                <ul className="stack stack-1">
+                  {archiveContributions.map((item) => (
+                    <li key={item.slug}>
+                      <Link className="lnk" href={`/archive/${item.slug}`}>{item.title}</Link>
+                      <span className="t-small t-meta"> · {item.category}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
         </section>
 
