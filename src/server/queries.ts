@@ -227,6 +227,54 @@ export async function memberByUsername(
   return row ? projectMember(row, viewerId) : null;
 }
 
+export interface MemberProfileDetails {
+  bio: string | null;
+  pronouns: string | null;
+  institution: string | null;
+  fieldOfStudy: string | null;
+  skills: Array<{ key: string; label: string }>;
+  links: Array<{ label: string; url: string }>;
+  showActivity: boolean;
+  showCreations: boolean;
+  showArchiveContributions: boolean;
+}
+
+export async function memberProfileDetails(
+  userId: string,
+  viewerId: string,
+): Promise<MemberProfileDetails | null> {
+  const [row] = await db
+    .select({
+      bio: profiles.bio,
+      pronouns: profiles.pronouns,
+      institution: profiles.institution,
+      fieldOfStudy: profiles.fieldOfStudy,
+      skills: profiles.skills,
+      links: profiles.links,
+      showActivity: userSettings.showActivity,
+      showCreations: userSettings.showCreations,
+      showArchiveContributions: userSettings.showArchiveContributions,
+    })
+    .from(users)
+    .leftJoin(profiles, eq(profiles.userId, users.id))
+    .leftJoin(userSettings, eq(userSettings.userId, users.id))
+    .where(and(eq(users.id, userId), visibleMemberConditions(viewerId)))
+    .limit(1);
+
+  if (!row) return null;
+  return {
+    bio: row.bio ?? null,
+    pronouns: row.pronouns ?? null,
+    institution: row.institution ?? null,
+    fieldOfStudy: row.fieldOfStudy ?? null,
+    skills: Array.isArray(row.skills) ? row.skills : [],
+    links: Array.isArray(row.links) ? row.links : [],
+    showActivity: row.showActivity ?? true,
+    showCreations: row.showCreations ?? true,
+    showArchiveContributions: row.showArchiveContributions ?? true,
+  };
+}
+
 export async function memberDirectory(
   viewerId: string,
   options: { query?: string | null; level?: string | null; limit?: number } = {},
