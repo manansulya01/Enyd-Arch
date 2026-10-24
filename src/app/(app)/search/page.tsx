@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
 import { Avatar, EmptyState } from '~/components/ui';
 import { requireOnboarded } from '~/server/guard';
-import { arcadeGames, archiveObjects, memberDirectory, type ArchiveView, type GameView, type MemberSummary } from '~/server/queries';
+import { arcadeGames, archiveObjects, feed, memberDirectory, type ArchiveView, type GameView, type MemberSummary } from '~/server/queries';
 
 export const metadata: Metadata = {
   title: 'Search the Arch',
@@ -19,15 +19,16 @@ export default async function SearchPage({
   const { actor } = await requireOnboarded();
   const params = await searchParams;
   const query = (params.q ?? '').trim().slice(0, 100);
-  const [members, archives, games] = query.length >= 2
+  const [members, archives, games, posts] = query.length >= 2
     ? await Promise.all([
         memberDirectory(actor.userId, { query, limit: 8 }),
         archiveObjects({ viewerId: actor.userId, query, limit: 8 }),
         arcadeGames({ viewerId: actor.userId, query, limit: 8 }),
+        feed({ viewerId: actor.userId, query, sort: 'recent', limit: 8 }),
       ])
-    : [[] as MemberSummary[], [] as ArchiveView[], [] as GameView[]];
+    : [[] as MemberSummary[], [] as ArchiveView[], [] as GameView[], []];
 
-  const hasResults = members.length + archives.length + games.length > 0;
+  const hasResults = members.length + archives.length + games.length + posts.length > 0;
 
   return (
     <PageShell title="Search the Arch" sub="Find members, knowledge, and games." wide>
@@ -73,6 +74,18 @@ export default async function SearchPage({
                     </div>
                     <span className="t-meta" aria-hidden="true">View →</span>
                   </div>
+                </Link>
+              ))}
+            </section>
+          )}
+
+          {posts.length > 0 && (
+            <section className="stack stack-2">
+              <h2>The Commons</h2>
+              {posts.map((post) => (
+                <Link key={post.id} href={`/commons/${post.id}`} className="panel panel-body">
+                  <p className="t-small t-meta">{post.author.displayName} · {post.createdAt.toLocaleDateString()}</p>
+                  <p>{post.body?.slice(0, 240) || 'Post with attachments'}</p>
                 </Link>
               ))}
             </section>
