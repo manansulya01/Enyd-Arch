@@ -105,7 +105,7 @@ export default async function MemberProfilePage({
           {!details.showActivity ? (
             <p className="t-small t-subtle">This member has chosen to hide recent activity.</p>
           ) : recentPosts.length === 0 ? (
-            <EmptyState title="No recent public posts" description="Posts shared with you will appear here when available." />
+            <EmptyState title="No recent public posts" body="Posts shared with you will appear here when available." />
           ) : (
             recentPosts.map((post) => (
               <article className="card card-pad stack stack-2" key={post.id}>
