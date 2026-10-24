@@ -1678,6 +1678,7 @@ export async function galleryPosts(options: {
   viewerId: string;
   kind?: string | null;
   authorId?: string | null;
+  query?: string | null;
   limit?: number;
   offset?: number;
 }): Promise<GalleryView[]> {
@@ -1717,6 +1718,13 @@ export async function galleryPosts(options: {
         )`,
         options.kind ? eq(galleryPostTable.kind, options.kind as never) : sql`true`,
         options.authorId ? eq(galleryPostTable.authorId, options.authorId) : sql`true`,
+        options.query?.trim()
+          ? or(
+              ilike(galleryPostTable.title, `%${options.query.trim().slice(0, 100)}%`),
+              ilike(galleryPostTable.caption, `%${options.query.trim().slice(0, 100)}%`),
+              ilike(galleryPostTable.body, `%${options.query.trim().slice(0, 100)}%`),
+            )
+          : sql`true`,
       ),
     )
     .orderBy(desc(galleryPostTable.createdAt))
