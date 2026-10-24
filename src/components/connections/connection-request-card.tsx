@@ -27,7 +27,7 @@ export function ConnectionRequestCard({
   return (
     <article className="panel panel-body stack stack-2">
       <div className="row row-between">
-        <div><h3><Link href={'/registry/' + request.from.username}>{request.from.displayName}</Link></h3><p className="t-meta">{request.mode.replaceAll('_', ' ')} · {new Date(request.createdAt).toLocaleDateString()}</p></div>
+        <div><h3><Link href={'/members/' + request.from.username}>{request.from.displayName}</Link></h3><p className="t-meta">{request.mode.replaceAll('_', ' ')} · {new Date(request.createdAt).toLocaleDateString()}</p></div>
       </div>
       {request.note && <p className="t-small">{request.note}</p>}
       <div className="row row-3">
