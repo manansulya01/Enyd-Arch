@@ -49,7 +49,7 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
                 />
                 <span className="t-small">
                   by{' '}
-                  <Link className="lnk" href={`/network/${post.author.username}`}>
+                  <Link className="lnk" href={`/members/${post.author.username}`}>
                     {post.author.displayName}
                   </Link>{' '}
                   <span className="t-meta">@{post.author.username}</span>
