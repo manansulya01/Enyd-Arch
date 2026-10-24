@@ -275,6 +275,44 @@ export async function memberProfileDetails(
   };
 }
 
+export interface MemberArchiveContribution {
+  slug: string;
+  title: string;
+  category: string;
+  createdAt: Date;
+}
+
+export async function memberArchiveContributions(
+  userId: string,
+  viewerId: string,
+): Promise<MemberArchiveContribution[]> {
+  return db
+    .select({
+      slug: archiveObjectTable.slug,
+      title: archiveObjectTable.title,
+      category: archiveObjectTable.category,
+      createdAt: archiveObjectTable.createdAt,
+    })
+    .from(archiveObjectTable)
+    .innerJoin(users, eq(users.id, archiveObjectTable.contributorId))
+    .innerJoin(userSettings, eq(userSettings.userId, users.id))
+    .where(and(
+      eq(archiveObjectTable.contributorId, userId),
+      eq(userSettings.showArchiveContributions, true),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+      isNull(archiveObjectTable.removedAt),
+      resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, viewerId),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${viewerId} and b.blocked_id = ${userId})
+           or (b.blocker_id = ${userId} and b.blocked_id = ${viewerId})
+      )`,
+    ))
+    .orderBy(desc(archiveObjectTable.createdAt))
+    .limit(8);
+}
+
 export async function memberDirectory(
   viewerId: string,
   options: { query?: string | null; level?: string | null; limit?: number } = {},
