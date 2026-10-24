@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
 import { Avatar, EmptyState } from '~/components/ui';
 import { requireOnboarded } from '~/server/guard';
-import { arcadeGames, archiveObjects, memberDirectory } from '~/server/queries';
+import { arcadeGames, archiveObjects, memberDirectory, type ArchiveView, type GameView, type MemberSummary } from '~/server/queries';
 
 export const metadata: Metadata = {
   title: 'Search the Arch',
@@ -25,7 +25,7 @@ export default async function SearchPage({
         archiveObjects({ viewerId: actor.userId, query, limit: 8 }),
         arcadeGames({ viewerId: actor.userId, query, limit: 8 }),
       ])
-    : [[], [], []];
+    : [[] as MemberSummary[], [] as ArchiveView[], [] as GameView[]];
 
   const hasResults = members.length + archives.length + games.length > 0;
 
