@@ -28,7 +28,7 @@ export default async function ConnectionsPage() {
         <h2 className="section-heading">Your connections</h2>
         {matches.length === 0 ? <div className="panel panel-body"><h3>Your network starts with a conversation</h3><p className="t-small t-muted">Visit the Registry and send a friendship or collaboration request to someone who has opted in.</p><Link className="btn btn-primary" href="/registry">Open the Registry</Link></div> : matches.map((match) => (
           <article className="panel panel-body row row-3" key={match.id}>
-            <div className="grow"><h3><Link href={'/registry/' + match.partner.username}>{match.partner.displayName}</Link></h3><p className="t-meta">{match.mode.replaceAll('_', ' ')} · {match.sharedInterestCount} shared interests</p></div>
+            <div className="grow"><h3><Link href={'/members/' + match.partner.username}>{match.partner.displayName}</Link></h3><p className="t-meta">{match.mode.replaceAll('_', ' ')} · {match.sharedInterestCount} shared interests</p></div>
           </article>
         ))}
       </section>
