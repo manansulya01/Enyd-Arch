@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '~db';
 import { communities, communityMembers } from '~db/schema';
 import { PageShell } from '~/components/ui/page-shell';
