@@ -20,7 +20,7 @@ This is an engineering contract for privacy work, not a claim that every control
 - New uploaded objects use AES-256-GCM authenticated encryption at rest, with a separate storage key. This does not hide file contents from the running server.
 - Private routes and object/file responses use no-store controls; the app uses a CSP nonce and a restrictive referrer policy.
 - Private messaging is **not** end-to-end encrypted. The server/database can read message content.
-- A universal self-service export and verified erasure workflow is **not yet guaranteed** for every table, external provider, and backup.
+- A self-service JSON account export is implemented in Privacy Settings with authentication, rate limiting, private/no-store response headers, and a content-free audit event. Its table coverage still needs a completeness audit; binary objects, external providers, and backups are not bundled. A verified account-erasure workflow is **not implemented**.
 
 ## Required work before describing Enyd Arch as privacy-first
 
@@ -36,7 +36,7 @@ This is an engineering contract for privacy work, not a claim that every control
 ### B. Data inventory, export, deletion, and retention
 
 - Inventory every database table, object-store prefix, search index, email/push provider, audit record, moderation report, and analytics/monitoring integration.
-- Implement a versioned export of a member's data with strict re-authentication, authorization, rate limits, short-lived download links, no-store headers, and audit of the export event without logging the export contents.
+- Complete the table-by-table coverage review for the existing versioned JSON export; add any missing personal-data tables and define binary-object export where appropriate. Consider step-up re-authentication and a short-lived export artifact for large accounts; retain rate limits, no-store headers, and content-free audit events.
 - Implement account deletion as an idempotent workflow: revoke sessions and credentials first; remove or anonymize owned content according to explicit policy; handle direct/group messages and other participants' legitimate records carefully; purge object-store objects, thumbnails, derived files, indexes, caches, and provider-side records where supported.
 - Define a short, documented retention schedule for security logs, abuse reports, invitation redemption metadata, quarantined uploads, deleted-account tombstones, and backups. Automate expiration and test it.
 - Keep backups encrypted and access-restricted; deletion from live tables does not instantly erase immutable backups. Document the backup expiry window and prevent restored backups from resurrecting deleted accounts without replaying deletion records.
