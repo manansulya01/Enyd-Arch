@@ -45,7 +45,7 @@ import {
 } from '~db/schema';
 import { requireOnboarded } from '~/server/guard';
 import { acquire } from '~/server/auth/rate-limit';
-import { auditFromSession } from '~/server/security/audit';
+import { writeAudit } from '~/server/security/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -244,7 +244,7 @@ export async function GET() {
     ],
   };
 
-  await auditFromSession({
+  await writeAudit({ id: userId, label: 'member' }, {
     action: 'account.export',
     targetType: 'account',
     targetId: userId,
