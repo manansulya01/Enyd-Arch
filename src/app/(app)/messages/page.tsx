@@ -39,6 +39,16 @@ export default async function MessagesPage({
 
   return (
     <PageShell title="Messages" sub="Private, one-to-one, in small groups, and inside projects.">
+      {updated === '1' && <p className="notice notice-success" role="status">Group details updated.</p>}
+      {ownership === 'transferred' && <p className="notice notice-success" role="status">Group ownership was transferred.</p>}
+      {left === '1' && <p className="notice notice-success" role="status">You left the group conversation.</p>}
+      {error && <p className="notice notice-danger" role="alert">
+        {error === 'transfer-first'
+          ? 'Transfer ownership to another group member before leaving.'
+          : error === 'slow-down'
+            ? 'Please wait before making another conversation change.'
+            : 'That conversation change could not be completed.'}
+      </p>}
       <div className="messages-layout">
         <section className="panel" aria-label="Conversations">
           <div className="panel-head">
