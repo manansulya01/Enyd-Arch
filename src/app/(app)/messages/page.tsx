@@ -8,6 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
+import { leaveGroupConversation, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -18,10 +19,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; reply?: string }>;
+  searchParams: Promise<{ c?: string; reply?: string; updated?: string; ownership?: string; left?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, reply }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, reply, updated, ownership, left, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
