@@ -110,20 +110,27 @@ export async function createCommunityPost(input: {
   const title = cleanText(input.title, 160);
   const body = cleanText(input.body, 5000);
   if (!body) return fail('Write something before publishing.');
-  const [membership] = await db.select({ communityId: communityMembers.communityId })
-    .from(communityMembers).innerJoin(communities, eq(communities.id, communityMembers.communityId))
-    .where(and(
-      eq(communityMembers.communityId, input.communityId),
-      eq(communityMembers.userId, actor.userId),
-      eq(communities.isPrivate, false),
-    )).limit(1);
-  if (!membership) return fail('Join this community before posting.');
-  await db.insert(communityPosts).values({
-    communityId: input.communityId,
-    authorId: actor.userId,
-    title: title || null,
-    body,
+  const created = await db.transaction(async (tx) => {
+    const [membership] = await tx.select({ communityId: communityMembers.communityId })
+      .from(communityMembers).innerJoin(communities, eq(communities.id, communityMembers.communityId))
+      .where(and(
+        eq(communityMembers.communityId, input.communityId),
+        eq(communityMembers.userId, actor.userId),
+        isNull(communityMembers.removedAt),
+        eq(communities.isPrivate, false),
+      ))
+      .for('update')
+      .limit(1);
+    if (!membership) return false;
+    await tx.insert(communityPosts).values({
+      communityId: input.communityId,
+      authorId: actor.userId,
+      title: title || null,
+      body,
+    });
+    return true;
   });
+  if (!created) return fail('Join this community before posting.');
   revalidatePath('/communities');
   return ok();
 }
