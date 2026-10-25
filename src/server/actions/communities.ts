@@ -8,7 +8,7 @@ import { communityMembers, communityPostComments, communityPosts, communityPostV
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrfValue } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 import { isUuid } from '~/server/auth/identifiers';
 
 function cleanText(value: string, max: number): string {
@@ -287,4 +287,66 @@ export async function voteCommunityPost(input: {
   revalidatePath('/communities');
   revalidatePath(`/communities/${target.slug}`);
   return ok();
+}
+
+
+/**
+ * Transfer ownership to an existing, active community member.
+ * The current owner becomes a moderator so the community is never left without
+ * a responsible owner and the transfer does not silently remove moderation.
+ */
+export async function transferCommunityOwnership(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) redirect('/communities?error=unavailable');
+
+  const communityId = String(formData.get('communityId') ?? '');
+  const targetUserId = String(formData.get('targetUserId') ?? '');
+  if (!isUuid(communityId) || !isUuid(targetUserId) || targetUserId === actor.userId ||
+      formData.get('confirmTransfer') !== 'on') {
+    redirect('/communities?error=invalid-transfer');
+  }
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/communities?error=slow-down');
+
+  const result = await db.transaction(async (tx) => {
+    const [community] = await tx.select({
+      id: communities.id,
+      slug: communities.slug,
+      ownerId: communities.ownerId,
+    }).from(communities).where(eq(communities.id, communityId)).for('update').limit(1);
+    if (!community || community.ownerId !== actor.userId) return null;
+
+    const [target] = await tx.select({
+      userId: communityMembers.userId,
+    }).from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(and(
+        eq(communityMembers.communityId, communityId),
+        eq(communityMembers.userId, targetUserId),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!target) return null;
+
+    await tx.update(communityMembers).set({ role: 'moderator' }).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, actor.userId),
+    ));
+    await tx.update(communityMembers).set({ role: 'owner' }).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, targetUserId),
+    ));
+    await tx.update(communities).set({ ownerId: targetUserId }).where(eq(communities.id, communityId));
+    return { slug: community.slug };
+  });
+
+  if (!result) redirect('/communities?error=transfer-not-allowed');
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${result.slug}`);
+  redirect(`/communities/${result.slug}?transferred=1`);
 }
