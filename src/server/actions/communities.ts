@@ -116,7 +116,6 @@ export async function createCommunityPost(input: {
       .where(and(
         eq(communityMembers.communityId, input.communityId),
         eq(communityMembers.userId, actor.userId),
-        isNull(communityMembers.removedAt),
         eq(communities.isPrivate, false),
       ))
       .for('update')
@@ -169,7 +168,6 @@ export async function createCommunityComment(input: {
         eq(communityPosts.status, 'published'),
         isNull(communityPosts.removedAt),
         eq(communities.isPrivate, false),
-        isNull(communityMembers.removedAt),
       ))
       .for('update')
       .limit(1);
@@ -289,7 +287,6 @@ export async function voteCommunityPost(input: {
       .where(and(
         eq(communityMembers.communityId, target.communityId),
         eq(communityMembers.userId, actor.userId),
-        isNull(communityMembers.removedAt),
       ))
       .for('update')
       .limit(1);
