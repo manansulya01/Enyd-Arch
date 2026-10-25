@@ -112,6 +112,18 @@ export default async function PrivacySettingsPage({
             <button className="btn btn-primary" type="submit">Save privacy settings</button>
           </div>
         </form>
+
+        <section className="panel panel-body stack stack-2" aria-labelledby="account-data-export">
+          <h2 id="account-data-export">Your account data</h2>
+          <p className="t-small t-subtle">
+            Download a private JSON copy of your account details, profile, settings, posts, comments,
+            bookmarks, reactions, messages you sent, notifications, file metadata, Archive and Gallery
+            contributions, and connection records. Passwords, session tokens, and security secrets are excluded.
+          </p>
+          <div>
+            <a className="btn btn-secondary" href="/api/account/export">Export my account data</a>
+          </div>
+        </section>
       </div>
     </PageShell>
   );
