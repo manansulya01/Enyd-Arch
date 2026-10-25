@@ -6,7 +6,7 @@
  * The opt-in social layer. Discovery is gated by age-safety rules and the
  * member's own settings; requests become matches only when both sides agree.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -171,53 +171,57 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Too many changes. Wait a little while.');
 
-  const [request] = await db
-    .select()
-    .from(connectionRequests)
-    .where(
-      and(
-        eq(connectionRequests.id, requestId),
+  // Lock the pending request so two simultaneous responses cannot accept and
+  // decline it in parallel. The state transition and match creation commit as
+  // one unit; block actions also revoke pending requests and block any match.
+  const result = await db.transaction(async (tx) => {
+    const [request] = await tx.select().from(connectionRequests).where(and(
+      eq(connectionRequests.id, requestId),
+      eq(connectionRequests.toUserId, actor.userId),
+      eq(connectionRequests.state, 'pending'),
+    )).for('update').limit(1);
+    if (!request) return { status: 'unavailable' as const };
+
+    if (!MODES.includes(request.mode as Mode) || !can(actor, capabilityForMode(request.mode as Mode))) {
+      return { status: 'mode-unavailable' as const };
+    }
+    const [blockedPair] = await tx.select({ id: blocks.id }).from(blocks).where(or(
+      and(eq(blocks.blockerId, request.fromUserId), eq(blocks.blockedId, request.toUserId)),
+      and(eq(blocks.blockerId, request.toUserId), eq(blocks.blockedId, request.fromUserId)),
+    )).limit(1);
+    if (blockedPair) return { status: 'unavailable' as const };
+
+    if (accept) {
+      // Re-evaluate both members' current preferences and age-safety rules at
+      // acceptance time; a stale pending request is not permanent consent.
+      const ctx = await eligibilityContext(actor.userId);
+      if (!ctx) return { status: 'settings-incomplete' as const };
+      const verdict = await checkPairEligibility(ctx, request.fromUserId, request.mode);
+      if (!verdict.allowed) return { status: 'unavailable' as const };
+    }
+
+    const [updated] = await tx.update(connectionRequests)
+      .set({ state: accept ? 'accepted' : 'declined', respondedAt: new Date() })
+      .where(and(
+        eq(connectionRequests.id, request.id),
         eq(connectionRequests.toUserId, actor.userId),
         eq(connectionRequests.state, 'pending'),
-      ),
-    )
-    .limit(1);
-  if (!request) return fail('That request is not available.');
-  if (!MODES.includes(request.mode as Mode) || !can(actor, capabilityForMode(request.mode as Mode))) {
-    return fail('This connection type is not available for your identity.');
-  }
-  if (await pairIsBlocked(request.fromUserId, request.toUserId)) {
-    return fail('That request is no longer available.');
-  }
+      ))
+      .returning({ id: connectionRequests.id });
+    if (!updated) return { status: 'unavailable' as const };
 
-  // Re-evaluate both members' current preferences and age-safety rules at
-  // acceptance time; a stale pending request is not permanent consent.
-  if (accept) {
-    const ctx = await eligibilityContext(actor.userId);
-    if (!ctx) return fail('Your Connections settings are incomplete.');
-    const verdict = await checkPairEligibility(ctx, request.fromUserId, request.mode);
-    if (!verdict.allowed) return fail('That request is no longer available.');
-  }
-
-  await db
-    .update(connectionRequests)
-    .set({ state: accept ? 'accepted' : 'declined', respondedAt: new Date() })
-    .where(eq(connectionRequests.id, requestId));
-
-  if (accept) {
-    const [a, b] = orderPair(request.fromUserId, request.toUserId);
-    const [me] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, actor.userId)).limit(1);
-    await db
-      .insert(matches)
-      .values({
+    if (accept) {
+      const [a, b] = orderPair(request.fromUserId, request.toUserId);
+      const [me] = await tx.select({ ageBand: users.ageBand }).from(users)
+        .where(eq(users.id, actor.userId)).limit(1);
+      await tx.insert(matches).values({
         userAId: a!,
         userBId: b!,
         mode: request.mode,
         requestId: request.id,
         status: 'accepted',
         ageBandAtMatch: me?.ageBand ?? null,
-      })
-      .onConflictDoUpdate({
+      }).onConflictDoUpdate({
         target: [matches.userAId, matches.userBId, matches.mode],
         set: {
           requestId: request.id,
@@ -226,11 +230,23 @@ export async function respondToRequest(requestId: string, accept: boolean, csrf:
           updatedAt: new Date(),
         },
       });
+    }
+    return { status: 'ok' as const, fromUserId: request.fromUserId, mode: request.mode };
+  });
 
+  if (result.status === 'mode-unavailable') {
+    return fail('This connection type is not available for your identity.');
+  }
+  if (result.status === 'settings-incomplete') {
+    return fail('Your Connections settings are incomplete.');
+  }
+  if (result.status !== 'ok') return fail('That request is no longer available.');
+
+  if (accept) {
     await notify({
-      userId: request.fromUserId,
+      userId: result.fromUserId,
       kind: 'connection_match',
-      title: `${actor.displayName} accepted your ${request.mode} request`,
+      title: `${actor.displayName} accepted your ${result.mode} request`,
       href: '/connections',
       actorId: actor.userId,
     });
