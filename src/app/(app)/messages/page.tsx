@@ -123,6 +123,19 @@ export default async function MessagesPage({
                         <button className="btn btn-secondary" type="submit">Transfer ownership</button>
                       </form>
                     )}
+                    {active.members.filter(member => member.userId !== actor.userId).map(member => (
+                      <form action={removeGroupMember} className="row row-wrap" key={member.userId}>
+                        <input type="hidden" name="__csrf" value={csrfToken} />
+                        <input type="hidden" name="conversationId" value={active.id} />
+                        <input type="hidden" name="targetUserId" value={member.userId} />
+                        <span className="t-small">{member.displayName} (@{member.username})</span>
+                        <label className="check-row">
+                          <input type="checkbox" name="confirmRemove" required />
+                          <span>Confirm removal</span>
+                        </label>
+                        <button className="btn btn-ghost btn-sm" type="submit">Remove member</button>
+                      </form>
+                    ))}
                   </section>
                 )}
                 {active.kind === 'group' && (active.myRole !== 'owner' || active.members.every(member => member.userId === actor.userId)) && (
