@@ -60,7 +60,9 @@ export async function GET() {
   const [accountRows, profileRows, settingsRows, authoredPosts, authoredComments,
     ownBookmarks, ownReactions, sentMessages, ownNotifications, ownFiles,
     ownArchiveObjects, ownGalleryPosts, outgoingRequests, incomingRequests,
-    ownMatches, ownFollows, ownInterests, ownAchievements] = await Promise.all([
+    ownMatches, ownFollows, ownInterests, ownAchievements, ownFilms, ownReviews, ownWatchlists,
+    ownWatchlistItems, ownRsvps, hostedEvents, ownMusicPlaylists, ownPlaylistTracks, ownLikedTracks,
+    ownProjects, ownProjectMemberships, ownProjectTasks, ownProjectResources] = await Promise.all([
     db.select({
       id: users.id, memberId: users.memberId, username: users.username,
       displayName: users.displayName, email: users.email, emailVerifiedAt: users.emailVerifiedAt,
@@ -131,6 +133,27 @@ export async function GET() {
     db.select().from(userFollows).where(or(eq(userFollows.followerId, userId), eq(userFollows.followedId, userId))),
     db.select().from(userInterests).where(eq(userInterests.userId, userId)),
     db.select().from(userAchievements).where(eq(userAchievements.userId, userId)),
+    db.select().from(films).innerJoin(watchlistItems, eq(watchlistItems.filmId, films.id))
+      .innerJoin(watchlists, eq(watchlists.id, watchlistItems.watchlistId))
+      .where(eq(watchlists.userId, userId)),
+    db.select().from(filmReviews).where(eq(filmReviews.authorId, userId)),
+    db.select().from(watchlists).where(eq(watchlists.userId, userId)),
+    db.select().from(watchlistItems).innerJoin(watchlists, eq(watchlists.id, watchlistItems.watchlistId))
+      .where(eq(watchlists.userId, userId)),
+    db.select().from(rsvps).where(eq(rsvps.userId, userId)),
+    db.select({
+      id: events.id, slug: events.slug, title: events.title, description: events.description,
+      kind: events.kind, startsAt: events.startsAt, endsAt: events.endsAt, location: events.location,
+      visibility: events.visibility, cancelledAt: events.cancelledAt, createdAt: events.createdAt,
+    }).from(events).where(eq(events.hostId, userId)),
+    db.select().from(musicPlaylists).where(eq(musicPlaylists.userId, userId)),
+    db.select().from(musicPlaylistTracks).innerJoin(musicPlaylists, eq(musicPlaylists.id, musicPlaylistTracks.playlistId))
+      .where(eq(musicPlaylists.userId, userId)),
+    db.select().from(musicLikedTracks).where(eq(musicLikedTracks.userId, userId)),
+    db.select().from(projects).where(eq(projects.ownerId, userId)),
+    db.select().from(projectMembers).where(eq(projectMembers.userId, userId)),
+    db.select().from(projectTasks).where(or(eq(projectTasks.createdBy, userId), eq(projectTasks.assigneeId, userId))),
+    db.select().from(projectResources).where(eq(projectResources.addedBy, userId)),
   ]);
 
   const payload = {
