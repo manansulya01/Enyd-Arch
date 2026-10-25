@@ -9,7 +9,9 @@ import {
   communityPostComments,
   communityPosts,
   communityPostVotes,
+  communityMembers,
   connectionRequests,
+  conversationMembers,
   files,
   galleryPosts,
   eventComments,
@@ -75,7 +77,7 @@ export async function GET() {
     ownWatchlistItems, ownRsvps, hostedEvents, ownMusicPlaylists, ownPlaylistTracks, ownLikedTracks,
     ownProjects, ownProjectMemberships, ownProjectTasks, ownProjectResources, ownPollVotes,
     ownGameRatings, ownGameComments, ownGamePlays, ownEventComments, ownLevelHistory, ownCollectionItems,
-    ownCommunityPosts, ownCommunityComments, ownCommunityVotes] = await Promise.all([
+    ownCommunityPosts, ownCommunityComments, ownCommunityVotes, ownCommunityMemberships, ownConversationMemberships] = await Promise.all([
     db.select({
       id: users.id, memberId: users.memberId, username: users.username,
       displayName: users.displayName, email: users.email, emailVerifiedAt: users.emailVerifiedAt,
@@ -177,6 +179,8 @@ export async function GET() {
     db.select().from(communityPosts).where(eq(communityPosts.authorId, userId)),
     db.select().from(communityPostComments).where(eq(communityPostComments.authorId, userId)),
     db.select().from(communityPostVotes).where(eq(communityPostVotes.userId, userId)),
+    db.select().from(communityMembers).where(eq(communityMembers.userId, userId)),
+    db.select().from(conversationMembers).where(eq(conversationMembers.userId, userId)),
   ]);
 
   const payload = {
