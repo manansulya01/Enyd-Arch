@@ -215,6 +215,17 @@ export async function GET() {
       tasksCreatedOrAssignedToYou: ownProjectTasks,
       resourcesAddedByYou: ownProjectResources,
     },
+    arcade: {
+      ratings: ownGameRatings,
+      comments: ownGameComments,
+      playHistory: ownGamePlays,
+    },
+    communityAndInteractionRecords: {
+      pollVotes: ownPollVotes,
+      eventComments: ownEventComments,
+      levelHistory: ownLevelHistory,
+      collectionItemsAddedByYou: ownCollectionItems,
+    },
     exclusions: [
       'Passwords, passkeys, session tokens, recovery secrets, encryption keys, IP hashes, and internal security audit records are not included.',
       'File contents are not embedded; this export includes file metadata only.',
