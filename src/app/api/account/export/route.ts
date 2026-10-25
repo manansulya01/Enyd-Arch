@@ -1,4 +1,4 @@
-import { and, eq, or } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { db } from '~db';
 import {
@@ -83,13 +83,16 @@ export async function GET() {
       readAt: notifications.readAt, createdAt: notifications.createdAt,
     }).from(notifications).where(eq(notifications.userId, userId)),
     db.select({
-      id: files.id, originalName: files.originalName, mimeType: files.mimeType,
-      sizeBytes: files.sizeBytes, purpose: files.purpose, scanStatus: files.scanStatus,
+      id: files.id, originalName: files.originalName, displayName: files.displayName,
+      extension: files.extension, byteSize: files.byteSize, declaredMime: files.declaredMime,
+      detectedMime: files.detectedMime, state: files.state,
       createdAt: files.createdAt, removedAt: files.removedAt,
     }).from(files).where(eq(files.uploaderId, userId)),
     db.select({
-      id: archiveObjects.id, title: archiveObjects.title, description: archiveObjects.description,
-      visibility: archiveObjects.visibility, status: archiveObjects.status, fileId: archiveObjects.fileId,
+      id: archiveObjects.id, slug: archiveObjects.slug, catalogueNumber: archiveObjects.catalogueNumber,
+      title: archiveObjects.title, description: archiveObjects.description, category: archiveObjects.category,
+      visibility: archiveObjects.visibility, fileId: archiveObjects.fileId, license: archiveObjects.license,
+      attribution: archiveObjects.attribution, removedAt: archiveObjects.removedAt,
       createdAt: archiveObjects.createdAt, updatedAt: archiveObjects.updatedAt,
     }).from(archiveObjects).where(eq(archiveObjects.contributorId, userId)),
     db.select({
