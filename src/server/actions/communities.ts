@@ -214,26 +214,29 @@ export async function removeCommunityComment(commentId: string, csrf: string): P
     .limit(1);
   if (!comment) return fail('That comment is no longer available.');
 
-  const [membership] = await db.select({ role: communityMembers.role })
-    .from(communityMembers)
-    .where(and(
-      eq(communityMembers.communityId, comment.communityId),
-      eq(communityMembers.userId, actor.userId),
-    ))
-    .limit(1);
-  const canModerate = membership?.role === 'owner' || membership?.role === 'moderator';
-  if (comment.authorId !== actor.userId && !canModerate) {
-    return fail('Only the author or a community moderator can remove this comment.');
-  }
+  const removed = await db.transaction(async (tx) => {
+    const [membership] = await tx.select({ role: communityMembers.role })
+      .from(communityMembers)
+      .where(and(
+        eq(communityMembers.communityId, comment.communityId),
+        eq(communityMembers.userId, actor.userId),
+      ))
+      .for('update')
+      .limit(1);
+    const canModerate = membership?.role === 'owner' || membership?.role === 'moderator';
+    if (comment.authorId !== actor.userId && !canModerate) return false;
 
-  await db.update(communityPostComments).set({
-    status: 'removed',
-    removedAt: new Date(),
-  }).where(and(
-    eq(communityPostComments.id, comment.id),
-    eq(communityPostComments.status, 'published'),
-    isNull(communityPostComments.removedAt),
-  ));
+    const [row] = await tx.update(communityPostComments).set({
+      status: 'removed',
+      removedAt: new Date(),
+    }).where(and(
+      eq(communityPostComments.id, comment.id),
+      eq(communityPostComments.status, 'published'),
+      isNull(communityPostComments.removedAt),
+    )).returning({ id: communityPostComments.id });
+    return Boolean(row);
+  });
+  if (!removed) return fail('Only the author or a current community moderator can remove this comment.');
   revalidatePath('/communities');
   revalidatePath(`/communities/${comment.slug}`);
   return ok();
