@@ -255,12 +255,22 @@ export async function voteCommunityPost(input: {
     .limit(1);
   if (!target) return fail('Join the community before voting on its discussions.');
 
-  await db.transaction(async (tx) => {
+  const voted = await db.transaction(async (tx) => {
     // Serialize votes on the post so a rapid double-click cannot leave a stale vote.
     await tx.select({ id: communityPosts.id })
       .from(communityPosts)
       .where(eq(communityPosts.id, target.postId))
       .for('update');
+    const [activeMembership] = await tx.select({ userId: communityMembers.userId })
+      .from(communityMembers)
+      .where(and(
+        eq(communityMembers.communityId, target.communityId),
+        eq(communityMembers.userId, actor.userId),
+        isNull(communityMembers.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!activeMembership) return false;
     const [existing] = await tx.select({ value: communityPostVotes.value })
       .from(communityPostVotes)
       .where(and(
@@ -273,7 +283,7 @@ export async function voteCommunityPost(input: {
         eq(communityPostVotes.postId, target.postId),
         eq(communityPostVotes.userId, actor.userId),
       ));
-      return;
+      return true;
     }
     await tx.insert(communityPostVotes).values({
       postId: target.postId,
@@ -283,7 +293,9 @@ export async function voteCommunityPost(input: {
       target: [communityPostVotes.postId, communityPostVotes.userId],
       set: { value: input.value },
     });
+    return true;
   });
+  if (!voted) return fail('Join the community before voting on its discussions.');
   revalidatePath('/communities');
   revalidatePath(`/communities/${target.slug}`);
   return ok();
