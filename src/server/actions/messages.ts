@@ -216,7 +216,7 @@ export async function renameGroupConversation(formData: FormData): Promise<void>
   if (!can(actor, 'message')) redirect('/messages?error=unavailable');
 
   const conversationId = String(formData.get('conversationId') ?? '');
-  const title = String(formData.get('title') ?? '').trim().replace(/\\s+/g, ' ').slice(0, 120);
+  const title = String(formData.get('title') ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
   if (!isUuid(conversationId) || title.length < 2) redirect('/messages?error=invalid-group');
 
   const limiter = await acquire('write', actor.userId);
