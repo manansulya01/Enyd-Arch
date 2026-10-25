@@ -6,6 +6,9 @@ import {
   bookmarks,
   comments,
   collectionItems,
+  communityPostComments,
+  communityPosts,
+  communityPostVotes,
   connectionRequests,
   files,
   galleryPosts,
@@ -70,7 +73,8 @@ export async function GET() {
     ownMatches, ownFollows, ownInterests, ownAchievements, ownFilms, ownReviews, ownWatchlists,
     ownWatchlistItems, ownRsvps, hostedEvents, ownMusicPlaylists, ownPlaylistTracks, ownLikedTracks,
     ownProjects, ownProjectMemberships, ownProjectTasks, ownProjectResources, ownPollVotes,
-    ownGameRatings, ownGameComments, ownGamePlays, ownEventComments, ownLevelHistory, ownCollectionItems] = await Promise.all([
+    ownGameRatings, ownGameComments, ownGamePlays, ownEventComments, ownLevelHistory, ownCollectionItems,
+    ownCommunityPosts, ownCommunityComments, ownCommunityVotes] = await Promise.all([
     db.select({
       id: users.id, memberId: users.memberId, username: users.username,
       displayName: users.displayName, email: users.email, emailVerifiedAt: users.emailVerifiedAt,
@@ -169,6 +173,9 @@ export async function GET() {
     db.select().from(eventComments).where(eq(eventComments.authorId, userId)),
     db.select().from(levelHistory).where(eq(levelHistory.userId, userId)),
     db.select().from(collectionItems).where(eq(collectionItems.addedBy, userId)),
+    db.select().from(communityPosts).where(eq(communityPosts.authorId, userId)),
+    db.select().from(communityPostComments).where(eq(communityPostComments.authorId, userId)),
+    db.select().from(communityPostVotes).where(eq(communityPostVotes.userId, userId)),
   ]);
 
   const payload = {
