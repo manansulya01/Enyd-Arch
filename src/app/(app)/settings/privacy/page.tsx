@@ -118,7 +118,7 @@ export default async function PrivacySettingsPage({
           <p className="t-small t-subtle">
             Download a private JSON copy of your account details, profile, settings, posts, comments,
             bookmarks, reactions, messages you sent, notifications, file metadata, Archive and Gallery
-            contributions, and connection records. Passwords, session tokens, and security secrets are excluded.
+            contributions, connection records, music, media, events, Arcade activity, and project records. Passwords, session tokens, and security secrets are excluded. Export requests are audited, but export contents are not logged.
           </p>
           <div>
             <a className="btn btn-secondary" href="/api/account/export">Export my account data</a>
