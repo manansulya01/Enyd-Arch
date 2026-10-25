@@ -232,6 +232,9 @@ export async function GET() {
       eventComments: ownEventComments,
       levelHistory: ownLevelHistory,
       collectionItemsAddedByYou: ownCollectionItems,
+      communityPosts: ownCommunityPosts,
+      communityComments: ownCommunityComments,
+      communityVotes: ownCommunityVotes,
     },
     exclusions: [
       'Passwords, passkeys, session tokens, recovery secrets, encryption keys, IP hashes, and internal security audit records are not included.',
