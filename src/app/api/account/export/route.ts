@@ -181,6 +181,25 @@ export async function GET() {
     },
     interests: ownInterests,
     achievements: ownAchievements,
+    filmsAndWatchlists: {
+      watchlists: ownWatchlists,
+      watchlistEntries: ownWatchlistItems,
+      filmReviews: ownReviews,
+      filmsInYourWatchlists: ownFilms,
+      eventRsvps: ownRsvps,
+    },
+    eventsHosted: hostedEvents,
+    music: {
+      playlists: ownMusicPlaylists,
+      playlistTracks: ownPlaylistTracks,
+      likedTracks: ownLikedTracks,
+    },
+    projectsAndCollaboration: {
+      projectsOwned: ownProjects,
+      projectMemberships: ownProjectMemberships,
+      tasksCreatedOrAssignedToYou: ownProjectTasks,
+      resourcesAddedByYou: ownProjectResources,
+    },
     exclusions: [
       'Passwords, passkeys, session tokens, recovery secrets, encryption keys, IP hashes, and internal security audit records are not included.',
       'File contents are not embedded; this export includes file metadata only.',
