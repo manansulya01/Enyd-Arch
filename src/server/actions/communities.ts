@@ -145,27 +145,37 @@ export async function createCommunityComment(input: {
   const body = cleanText(input.body, 2500);
   if (!body) return fail('Write a comment before publishing.');
 
-  const [target] = await db.select({ postId: communityPosts.id, communityId: communityPosts.communityId, slug: communities.slug })
-    .from(communityPosts)
-    .innerJoin(communities, eq(communities.id, communityPosts.communityId))
-    .innerJoin(communityMembers, and(
-      eq(communityMembers.communityId, communityPosts.communityId),
-      eq(communityMembers.userId, actor.userId),
-    ))
-    .where(and(
-      eq(communityPosts.id, input.postId),
-      eq(communityPosts.status, 'published'),
-      isNull(communityPosts.removedAt),
-      eq(communities.isPrivate, false),
-    ))
-    .limit(1);
+  const target = await db.transaction(async (tx) => {
+    const [row] = await tx.select({
+      postId: communityPosts.id,
+      communityId: communityPosts.communityId,
+      slug: communities.slug,
+    })
+      .from(communityPosts)
+      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+      .innerJoin(communityMembers, and(
+        eq(communityMembers.communityId, communityPosts.communityId),
+        eq(communityMembers.userId, actor.userId),
+      ))
+      .where(and(
+        eq(communityPosts.id, input.postId),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+        eq(communities.isPrivate, false),
+        isNull(communityMembers.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) return null;
+    await tx.insert(communityPostComments).values({
+      postId: row.postId,
+      authorId: actor.userId,
+      body,
+    });
+    return row;
+  });
   if (!target) return fail('Join the community and choose an available discussion before commenting.');
 
-  await db.insert(communityPostComments).values({
-    postId: target.postId,
-    authorId: actor.userId,
-    body,
-  });
   revalidatePath('/communities');
   revalidatePath(`/communities/${target.slug}`);
   return ok();
