@@ -239,7 +239,7 @@ export async function voteCommunityPost(input: {
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Please wait before voting again.');
 
-  const [target] = await db.select({ postId: communityPosts.id, slug: communities.slug })
+  const [target] = await db.select({ postId: communityPosts.id, communityId: communityPosts.communityId, slug: communities.slug })
     .from(communityPosts)
     .innerJoin(communities, eq(communities.id, communityPosts.communityId))
     .innerJoin(communityMembers, and(
