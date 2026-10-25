@@ -25,8 +25,9 @@ This file records implementation facts, not promises. A route or interface is no
 - Unonboarded accounts now receive read-only capabilities even if an elevated role was assigned early.
 - Direct and group conversation creation share a recipient-policy decision; group invitations cannot bypass a recipient's `nobody` or `connections only` setting.
 - Direct conversation creation is transactionally serialized per user pair to prevent duplicate threads; group creation and membership creation are atomic. Small groups now support owner-only rename, ownership transfer, member removal, and safe leave/close flows with CSRF, rate limits, active membership checks, and transactional locks.
+- Community post/comment creation and voting now revalidate and lock current membership in the same transaction as the write, preventing membership removal from racing a stale authorization check.
 - Arcade detail lookup is slug-scoped instead of scanning only the top 60 games, and listings/object retrieval exclude games owned by inactive or removed accounts.
-- The dependency lockfile now resolves Next.js to 15.5.28, Zod to 4.6.6, and PostCSS to 8.5.23 to address the audit findings observed during this work. A CI run at commit `8723a8a14e3a882b15470a6b24f15422c57293a8` passed type-checking, security regression tests, the production dependency audit, and the production build. Later code changes still require their own successful verification.
+- The dependency lockfile now resolves Next.js to 15.5.28, Zod to 4.6.6, and PostCSS to 8.5.23 to address the audit findings observed during this work. A CI run at commit `35269b4a7d40eb0163daaeb5877b7d7a783b5be2` passed type-checking, security regression tests, the production dependency audit, and the production build. Later code changes still require their own successful verification.
 
 ## Not yet complete — do not claim otherwise
 
