@@ -7,7 +7,7 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -96,35 +96,39 @@ export async function startDirectConversation(
     return fail('That member is not available for a new conversation.');
   }
 
-  // Reuse an existing direct thread between the same pair.
-  const mine = await db
-    .select({ id: conversationMembers.conversationId })
-    .from(conversationMembers)
-    .where(and(eq(conversationMembers.userId, actor.userId), isNull(conversationMembers.removedAt)));
-  if (mine.length > 0) {
-    const ids = mine.map((row) => row.id);
-    const theirs = await db
+  // Serialize the pair so simultaneous starts reuse one direct thread instead
+  // of creating duplicate conversations. The advisory lock is transaction-scoped.
+  const pairKey = [actor.userId, otherUserId].sort().join(':');
+  const conversationId = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${pairKey}, 0))`);
+    if (!(await canStartDirectMessage(actor.userId, otherUserId))) return null;
+
+    const mine = await tx
       .select({ id: conversationMembers.conversationId })
       .from(conversationMembers)
-      .where(
-        and(
+      .where(and(eq(conversationMembers.userId, actor.userId), isNull(conversationMembers.removedAt)));
+    if (mine.length > 0) {
+      const ids = mine.map((row) => row.id);
+      const theirs = await tx
+        .select({ id: conversationMembers.conversationId })
+        .from(conversationMembers)
+        .where(and(
           eq(conversationMembers.userId, otherUserId),
           isNull(conversationMembers.removedAt),
           inArray(conversationMembers.conversationId, ids),
-        ),
-      );
-    for (const candidate of theirs) {
-      const [meta] = await db
-        .select({ kind: conversations.kind })
-        .from(conversations)
-        .where(and(
-          eq(conversations.id, candidate.id),
-          eq(conversations.kind, 'direct'),
-          isNull(conversations.removedAt),
-        ))
-        .limit(1);
-      if (meta) {
-        const participants = await db
+        ));
+      for (const candidate of theirs) {
+        const [meta] = await tx
+          .select({ kind: conversations.kind })
+          .from(conversations)
+          .where(and(
+            eq(conversations.id, candidate.id),
+            eq(conversations.kind, 'direct'),
+            isNull(conversations.removedAt),
+          ))
+          .limit(1);
+        if (!meta) continue;
+        const participants = await tx
           .select({ userId: conversationMembers.userId })
           .from(conversationMembers)
           .where(and(
@@ -136,13 +140,11 @@ export async function startDirectConversation(
           participants.some((member) => member.userId === actor.userId) &&
           participants.some((member) => member.userId === otherUserId)
         ) {
-          return ok({ conversationId: candidate.id });
+          return candidate.id;
         }
       }
     }
-  }
 
-  const created = await db.transaction(async (tx) => {
     const [conversation] = await tx
       .insert(conversations)
       .values({ kind: 'direct', createdById: actor.userId })
@@ -152,11 +154,12 @@ export async function startDirectConversation(
       { conversationId: conversation.id, userId: actor.userId, role: 'member' },
       { conversationId: conversation.id, userId: otherUserId, role: 'member' },
     ]);
-    return conversation;
+    return conversation.id;
   });
 
+  if (!conversationId) return fail('That member is not available for a new conversation.');
   revalidatePath('/messages');
-  return ok({ conversationId: created.id });
+  return ok({ conversationId });
 }
 
 export async function createGroupConversation(input: {
