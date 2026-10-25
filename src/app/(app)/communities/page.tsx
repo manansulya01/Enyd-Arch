@@ -9,8 +9,9 @@ import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Communities' };
 
-export default async function CommunitiesPage() {
+export default async function CommunitiesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { actor } = await requireOnboarded();
+  const params = await searchParams;
   const [rows, memberships, csrfToken] = await Promise.all([
     db.select({
       id: communities.id,
@@ -28,6 +29,15 @@ export default async function CommunitiesPage() {
     sessionCsrfToken(),
   ]);
   return <PageShell title="Communities" sub="Public spaces for shared interests, questions, and projects." wide>
+    {params.error && <p className="notice notice-danger" role="alert">
+      {params.error === 'slow-down'
+        ? 'Please wait before trying that community change again.'
+        : params.error === 'transfer-not-allowed'
+          ? 'Ownership can only be transferred by the current owner to an active member.'
+          : params.error === 'invalid-transfer'
+            ? 'Confirm the ownership transfer and choose an eligible member.'
+            : 'That community change could not be completed.'}
+    </p>}
     <CommunityDirectory communities={rows} joinedIds={memberships.map(row => row.communityId)} csrfToken={csrfToken} />
   </PageShell>;
 }
