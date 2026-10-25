@@ -8,7 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
-import { leaveGroupConversation, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
+import { leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -19,10 +19,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; reply?: string; updated?: string; ownership?: string; left?: string; error?: string }>;
+  searchParams: Promise<{ c?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, reply, updated, ownership, left, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, reply, updated, ownership, left, memberRemoved, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -42,6 +42,7 @@ export default async function MessagesPage({
       {updated === '1' && <p className="notice notice-success" role="status">Group details updated.</p>}
       {ownership === 'transferred' && <p className="notice notice-success" role="status">Group ownership was transferred.</p>}
       {left === '1' && <p className="notice notice-success" role="status">You left the group conversation.</p>}
+      {memberRemoved === '1' && <p className="notice notice-success" role="status">The member was removed from this group.</p>}
       {error && <p className="notice notice-danger" role="alert">
         {error === 'transfer-first'
           ? 'Transfer ownership to another group member before leaving.'
