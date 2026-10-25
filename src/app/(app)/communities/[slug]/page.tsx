@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { db } from '~db';
 import { blocks, communities, communityMembers, communityPostComments, communityPostVotes, communityPosts, users } from '~db/schema';
@@ -9,14 +9,16 @@ import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
+import { transferCommunityOwnership } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Community' };
 
-export default async function CommunityPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
+  const query = await searchParams;
   const [community] = await db.select().from(communities)
     .where(eq(communities.slug, slug)).limit(1);
   if (!community) notFound();
@@ -27,6 +29,21 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
   ]);
   const joined = membership.length > 0;
   if (community.isPrivate && !joined && community.ownerId !== actor.userId) notFound();
+  const transferCandidates = membership[0]?.role === 'owner'
+    ? await db.select({
+        userId: communityMembers.userId,
+        username: users.username,
+        displayName: users.displayName,
+      }).from(communityMembers)
+        .innerJoin(users, eq(users.id, communityMembers.userId))
+        .where(and(
+          eq(communityMembers.communityId, community.id),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
+        ))
+        .orderBy(asc(users.username))
+        .limit(100)
+    : [];
 
   const [rows, blockRows] = await Promise.all([
     db.select({ id: communityPosts.id, title: communityPosts.title, body: communityPosts.body, createdAt: communityPosts.createdAt, authorId: users.id, username: users.username, displayName: users.displayName })
@@ -82,7 +99,32 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
   const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
   return <PageShell title={community.name} sub={community.description || 'Public community'} actions={<Link className="btn btn-ghost btn-sm" href="/communities">All communities</Link>}>
     <div className="stack stack-4">
+      {query.transferred === '1' && <p className="notice notice-success" role="status">Community ownership was transferred successfully.</p>}
       <p className="t-small">{posts.length} discussions · {community.name}</p>
+      {membership[0]?.role === 'owner' && transferCandidates.length > 1 && (
+        <section className="panel panel-body stack stack-3">
+          <h2>Transfer community ownership</h2>
+          <p className="t-small t-subtle">The selected active member becomes the owner. You will remain a moderator after the transfer.</p>
+          <form action={transferCommunityOwnership} className="stack stack-3">
+            <input type="hidden" name="__csrf" value={csrfToken} />
+            <input type="hidden" name="communityId" value={community.id} />
+            <label className="field">
+              <span className="field-label">New owner</span>
+              <select className="input" name="targetUserId" defaultValue="" required>
+                <option value="" disabled>Select a current member</option>
+                {transferCandidates.filter(candidate => candidate.userId !== actor.userId).map(candidate => (
+                  <option key={candidate.userId} value={candidate.userId}>{candidate.displayName} (@{candidate.username})</option>
+                ))}
+              </select>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="confirmTransfer" required />
+              <span>I understand this transfers ownership and leaves me as a moderator.</span>
+            </label>
+            <button className="btn btn-secondary" type="submit">Transfer ownership</button>
+          </form>
+        </section>
+      )}
       {!joined && <p className="t-small t-muted">Join this community from the directory before posting.</p>}
       {joined && <CommunityPostForm communityId={community.id} csrfToken={csrfToken} />}
       {posts.length === 0 ? <EmptyState glyph="▦" title="No discussions yet" body="Start a discussion to give this community its first thread." /> :
