@@ -91,6 +91,50 @@ export default async function MessagesPage({
               />
             ) : (
               <>
+                {active.kind === 'group' && active.myRole === 'owner' && (
+                  <section className="panel-body stack stack-3" aria-label="Group settings">
+                    <form action={renameGroupConversation} className="row row-wrap">
+                      <input type="hidden" name="__csrf" value={csrfToken} />
+                      <input type="hidden" name="conversationId" value={active.id} />
+                      <label className="field" style={{ flex: 1 }}>
+                        <span className="field-label">Group name</span>
+                        <input className="input" name="title" defaultValue={active.title} maxLength={120} minLength={2} required />
+                      </label>
+                      <button className="btn btn-secondary" type="submit">Rename group</button>
+                    </form>
+                    {active.members.some(member => member.userId !== actor.userId) && (
+                      <form action={transferGroupOwnership} className="stack stack-2">
+                        <input type="hidden" name="__csrf" value={csrfToken} />
+                        <input type="hidden" name="conversationId" value={active.id} />
+                        <label className="field">
+                          <span className="field-label">Transfer ownership to</span>
+                          <select className="input" name="targetUserId" defaultValue="" required>
+                            <option value="" disabled>Select a current member</option>
+                            {active.members.filter(member => member.userId !== actor.userId).map(member => (
+                              <option key={member.userId} value={member.userId}>{member.displayName} (@{member.username})</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="check-row">
+                          <input type="checkbox" name="confirmTransfer" required />
+                          <span>I understand the selected member will become the group owner.</span>
+                        </label>
+                        <button className="btn btn-secondary" type="submit">Transfer ownership</button>
+                      </form>
+                    )}
+                  </section>
+                )}
+                {active.kind === 'group' && (active.myRole !== 'owner' || active.members.every(member => member.userId === actor.userId)) && (
+                  <form action={leaveGroupConversation} className="panel-body row row-wrap">
+                    <input type="hidden" name="__csrf" value={csrfToken} />
+                    <input type="hidden" name="conversationId" value={active.id} />
+                    <label className="check-row">
+                      <input type="checkbox" name="confirmLeave" required />
+                      <span>Confirm leaving this group conversation</span>
+                    </label>
+                    <button className="btn btn-ghost btn-sm" type="submit">Leave group</button>
+                  </form>
+                )}
                 <ConversationPoller conversationId={active.id} />
                 <ConversationReadMarker conversationId={active.id} csrfToken={csrfToken} />
                 <div className="thread-scroll">
