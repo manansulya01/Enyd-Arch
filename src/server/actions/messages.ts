@@ -142,18 +142,21 @@ export async function startDirectConversation(
     }
   }
 
-  const [created] = await db
-    .insert(conversations)
-    .values({ kind: 'direct', createdById: actor.userId })
-    .returning({ id: conversations.id });
-
-  await db.insert(conversationMembers).values([
-    { conversationId: created!.id, userId: actor.userId, role: 'member' },
-    { conversationId: created!.id, userId: otherUserId, role: 'member' },
-  ]);
+  const created = await db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .insert(conversations)
+      .values({ kind: 'direct', createdById: actor.userId })
+      .returning({ id: conversations.id });
+    if (!conversation) throw new Error('Direct conversation creation failed.');
+    await tx.insert(conversationMembers).values([
+      { conversationId: conversation.id, userId: actor.userId, role: 'member' },
+      { conversationId: conversation.id, userId: otherUserId, role: 'member' },
+    ]);
+    return conversation;
+  });
 
   revalidatePath('/messages');
-  return ok({ conversationId: created!.id });
+  return ok({ conversationId: created.id });
 }
 
 export async function createGroupConversation(input: {
@@ -194,18 +197,21 @@ export async function createGroupConversation(input: {
     }
   }
 
-  const [created] = await db
-    .insert(conversations)
-    .values({ kind: 'group', title, createdById: actor.userId })
-    .returning({ id: conversations.id });
-
-  await db.insert(conversationMembers).values([
-    { conversationId: created!.id, userId: actor.userId, role: 'owner' },
-    ...memberIds.map((id) => ({ conversationId: created!.id, userId: id, role: 'member' })),
-  ]);
+  const created = await db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .insert(conversations)
+      .values({ kind: 'group', title, createdById: actor.userId })
+      .returning({ id: conversations.id });
+    if (!conversation) throw new Error('Group conversation creation failed.');
+    await tx.insert(conversationMembers).values([
+      { conversationId: conversation.id, userId: actor.userId, role: 'owner' },
+      ...memberIds.map((id) => ({ conversationId: conversation.id, userId: id, role: 'member' })),
+    ]);
+    return conversation;
+  });
 
   revalidatePath('/messages');
-  return ok({ conversationId: created!.id });
+  return ok({ conversationId: created.id });
 }
 
 /** Rename a small group; only its current owner may change its title. */
