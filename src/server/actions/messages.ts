@@ -208,6 +208,150 @@ export async function createGroupConversation(input: {
   return ok({ conversationId: created!.id });
 }
 
+/** Rename a small group; only its current owner may change its title. */
+export async function renameGroupConversation(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  const title = String(formData.get('title') ?? '').trim().replace(/\\s+/g, ' ').slice(0, 120);
+  if (!isUuid(conversationId) || title.length < 2) redirect('/messages?error=invalid-group');
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const allowed = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return false;
+    const [membership] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (membership?.role !== 'owner') return false;
+    await tx.update(conversations).set({ title }).where(eq(conversations.id, conversationId));
+    return true;
+  });
+  if (!allowed) redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}&updated=1`);
+}
+
+/** Transfer group ownership to a current, active member without changing membership. */
+export async function transferGroupOwnership(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  const targetUserId = String(formData.get('targetUserId') ?? '');
+  if (!isUuid(conversationId) || !isUuid(targetUserId) || targetUserId === actor.userId ||
+      formData.get('confirmTransfer') !== 'on') redirect('/messages?error=invalid-transfer');
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const allowed = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return false;
+    const [owner] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (owner?.role !== 'owner') return false;
+    const [target] = await tx.select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .innerJoin(users, eq(users.id, conversationMembers.userId))
+      .where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, targetUserId),
+        isNull(conversationMembers.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      )).for('update').limit(1);
+    if (!target) return false;
+    await tx.update(conversationMembers).set({ role: 'member' }).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, actor.userId),
+    ));
+    await tx.update(conversationMembers).set({ role: 'owner' }).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, targetUserId),
+    ));
+    return true;
+  });
+  if (!allowed) redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}&ownership=transferred`);
+}
+
+/** Leave a group; the owner must transfer ownership first unless closing an empty group. */
+export async function leaveGroupConversation(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  if (!isUuid(conversationId) || formData.get('confirmLeave') !== 'on') {
+    redirect('/messages?error=invalid-leave');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const outcome = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return 'unavailable' as const;
+    const [membership] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (!membership) return 'unavailable' as const;
+    const others = await tx.select({ userId: conversationMembers.userId })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        isNull(conversationMembers.removedAt),
+      ));
+    if (membership.role === 'owner' && others.some((member) => member.userId !== actor.userId)) {
+      return 'transfer-first' as const;
+    }
+    const now = new Date();
+    await tx.update(conversationMembers).set({ removedAt: now }).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, actor.userId),
+    ));
+    if (membership.role === 'owner') {
+      await tx.update(conversations).set({ removedAt: now }).where(eq(conversations.id, conversationId));
+      return 'closed' as const;
+    }
+    return 'left' as const;
+  });
+  if (outcome === 'transfer-first') redirect(`/messages?c=${conversationId}&error=transfer-first`);
+  if (outcome === 'unavailable') redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect('/messages?left=1');
+}
+
 export async function sendMessage(
   _previous: ActionResult<{ messageId: string }> | null,
   formData: FormData,
