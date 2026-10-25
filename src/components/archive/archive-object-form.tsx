@@ -5,14 +5,13 @@ import { useRef, useState, useTransition } from 'react';
 import { onCreateArchiveObject, onUploadFile } from '~/server/actions/exchange-client';
 import { ARCHIVE_CATEGORIES } from '~/lib/domain';
 import { formatBytes } from '~/lib/format';
-import { CsrfField } from '~/components/shell/csrf-field';
 
 /**
  * Contributing an Archive object. The file is uploaded through the validated
  * pipeline first; the object record is then created referencing that file id,
  * so no bytes are ever handled as form data here.
  */
-export function ArchiveObjectForm() {
+export function ArchiveObjectForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -31,7 +30,7 @@ export function ArchiveObjectForm() {
     setError(null);
     setUploading(true);
     const formData = new FormData();
-    formData.set('__csrf', token());
+    formData.set('__csrf', csrfToken);
     formData.set('file', chosen);
     try {
       const result = await onUploadFile(formData);
@@ -63,7 +62,7 @@ export function ArchiveObjectForm() {
           attribution: attribution.trim(),
           fileId: file?.fileId ?? null,
         },
-        token(),
+        csrfToken,
       );
       setBusy(false);
       if (!result.ok) {
@@ -186,7 +185,6 @@ export function ArchiveObjectForm() {
       )}
 
       <div className="row row-end">
-        <CsrfField />
         <button className="btn btn-primary" type="submit" disabled={busy}>
           {busy ? 'Cataloguing…' : 'Catalogue this object'}
         </button>
@@ -195,8 +193,3 @@ export function ArchiveObjectForm() {
   );
 }
 
-function token(): string {
-  return typeof document === 'undefined'
-    ? ''
-    : document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
-}

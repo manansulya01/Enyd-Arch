@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
 
-export function NetworkForm() {
+export function NetworkForm({ csrfToken }: { csrfToken: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -24,7 +24,7 @@ export function NetworkForm() {
         body: text,
         poll: null,
         attachmentFileIds: [],
-      });
+      }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;

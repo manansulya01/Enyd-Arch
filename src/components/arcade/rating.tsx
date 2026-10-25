@@ -10,8 +10,10 @@ export function RatingWidget({
   myStars,
   rating,
   ratingCount,
+  csrfToken,
 }: {
   gameId: string;
+  csrfToken: string;
   myStars: number | null;
   rating: number;
   ratingCount: number;
@@ -26,7 +28,7 @@ export function RatingWidget({
     setPending(true);
     setError(null);
     try {
-      const result = await onRateGame(gameId, newStars);
+      const result = await onRateGame(gameId, newStars, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That rating could not be saved.');
         return;

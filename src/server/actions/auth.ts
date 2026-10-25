@@ -10,13 +10,14 @@
  */
 'use server';
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from '~db';
 import {
   devices,
+  deviceCredentials,
   deviceTransferRequests,
   innerArchMembers,
   invitationRedemptions,
@@ -25,7 +26,7 @@ import {
   userSettings,
 } from '~db/schema';
 import { fail, issuesToErrors, ok, type ActionResult, type FormState } from '~/lib/action-result';
-import { AGE_BAND_BY_KEY, formatMemberId, titleCase } from '~/lib/domain';
+import { AGE_BAND_BY_KEY, formatMemberId } from '~/lib/domain';
 import {
   browserLabel,
   ipPseudonym,
@@ -100,15 +101,10 @@ export interface UsernameAvailability {
 }
 
 /**
- * Redeems an invitation code.
- *
- * Codes are optional: an open registration path exists so a member can always
- * get in, but a code is how the Inner Arch and the founding cohorts were
- * actually populated. A bad code is not an error at registration — it is simply
- * not redeemed, because refusing to let someone join over a typo would be worse
- * than ignoring it.
+ * Redeems a required invitation code. Invalid, expired, revoked, exhausted, or
+ * concurrently claimed codes fail closed so registration cannot bypass the gate.
  */
-async function redeemInvitation(code: string, userId: string, ip: string): Promise<void> {
+async function redeemInvitation(code: string, userId: string, ip: string): Promise<boolean> {
   const rows = await db
     .select({
       id: invitations.id,
@@ -118,13 +114,18 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
       expiresAt: invitations.expiresAt,
     })
     .from(invitations)
-    .where(and(eq(invitations.code, code.toUpperCase()), isNull(invitations.revokedAt)))
+    .where(
+      and(
+        eq(invitations.code, code.trim().toUpperCase()),
+        isNull(invitations.revokedAt),
+        lt(invitations.uses, invitations.maxUses),
+        or(isNull(invitations.expiresAt), gt(invitations.expiresAt, new Date())),
+      ),
+    )
     .limit(1);
 
   const invitation = rows[0];
-  if (!invitation) return;
-  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) return;
-  if (invitation.uses >= invitation.maxUses) return;
+  if (!invitation) return false;
 
   // Increment first: a concurrent redemption loses the race rather than both
   // succeeding against the same remaining use.
@@ -136,11 +137,13 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
         eq(invitations.id, invitation.id),
         eq(invitations.uses, invitation.uses),
         isNull(invitations.revokedAt),
+        lt(invitations.uses, invitations.maxUses),
+        or(isNull(invitations.expiresAt), gt(invitations.expiresAt, new Date())),
       ),
     )
     .returning({ id: invitations.id });
 
-  if (!claimed[0]) return;
+  if (!claimed[0]) return false;
 
   await db.insert(invitationRedemptions).values({
     invitationId: invitation.id,
@@ -155,6 +158,7 @@ async function redeemInvitation(code: string, userId: string, ip: string): Promi
     { id: userId, label: 'registration', ip },
     { action: 'invitation.redeemed', targetType: 'invitation', targetId: invitation.id },
   );
+  return true;
 }
 
 export async function checkUsername(
@@ -165,7 +169,16 @@ export async function checkUsername(
   if (!parsed.success) {
     return { available: false, reason: parsed.error.issues[0]?.message ?? 'Not a usable username.' };
   }
-  return { available: (await usernameFree(parsed.data)) };
+
+  // Availability checks reveal whether an account name is already registered.
+  // Throttle the unauthenticated lookup by the privacy-preserving IP pseudonym.
+  const traits = await requestTraits();
+  const limiter = await acquire('search', `username-check:${traits.ipHash}`);
+  if (!limiter.allowed) {
+    return { available: false, reason: 'Please wait before checking another username.' };
+  }
+
+  return { available: await usernameFree(parsed.data) };
 }
 
 async function usernameFree(username: string): Promise<boolean> {
@@ -212,6 +225,12 @@ export async function registerAction(
   }
 
   const { username, displayName, password, ageBand, invitationCode } = parsed.data;
+
+  if (!invitationCode) {
+    return fail('Enyd Arch is invite-only.', {
+      invitationCode: ['Enter an invitation code from an existing member.'],
+    });
+  }
 
   const policy = checkPasswordPolicy(password);
   if (!policy.ok) {
@@ -297,10 +316,15 @@ export async function registerAction(
 
   await db.insert(userSettings).values({ userId: created!.id });
 
-  // An invitation code, when supplied, is redeemed here rather than at
-  // registration time. `inner_arch` codes grant the Inner Arch on redemption.
-  if (invitationCode) {
-    await redeemInvitation(invitationCode, created!.id, traits.ip);
+  // The code is mandatory. If another registration consumes the final use
+  // between validation and redemption, roll back this not-yet-active account.
+  const invitationRedeemed = await redeemInvitation(invitationCode, created!.id, traits.ip);
+  if (!invitationRedeemed) {
+    await db.delete(userSettings).where(eq(userSettings.userId, created!.id));
+    await db.delete(users).where(eq(users.id, created!.id));
+    return fail('That invitation is invalid, expired, revoked, or has no uses left.', {
+      invitationCode: ['Check the code with the member who invited you.'],
+    });
   }
 
   await writeAudit(
@@ -350,13 +374,14 @@ export async function beginEnrollmentAction(
       memberId: users.memberId,
       passwordHash: users.passwordHash,
       status: users.status,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${username})`)
     .limit(1);
 
   const account = rows[0];
-  if (!account || !(await verifyPassword(account.passwordHash, password))) {
+  if (!account || account.removedAt || !(await verifyPassword(account.passwordHash, password))) {
     return fail('That username and passphrase do not match.');
   }
 
@@ -367,7 +392,7 @@ export async function beginEnrollmentAction(
       username: account.username,
       displayName: account.displayName,
       deviceFingerprint: traits.fingerprint,
-      userAgent: traits.userAgent,
+      userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
     });
     return ok({ options: begun.options });
   }
@@ -402,13 +427,16 @@ export async function completeEnrollmentAction(
       displayName: users.displayName,
       memberId: users.memberId,
       status: users.status,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${username})`)
     .limit(1);
 
   const account = rows[0];
-  if (!account) return fail('That account no longer exists.');
+  if (!account || account.status !== 'pending_verification' || account.removedAt) {
+    return fail('That account is not eligible for device enrolment.');
+  }
 
   const { finishRegistration } = await import('~/server/auth/webauthn');
   const result = await finishRegistration({
@@ -437,7 +465,7 @@ export async function completeEnrollmentAction(
     deviceId: result.deviceId,
     fingerprint: traits.fingerprint,
     ipHash: traits.ipHash,
-    userAgent: traits.userAgent,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
   });
 
   await writeAudit(
@@ -479,6 +507,14 @@ export async function signInAction(
     );
   }
 
+  // Apply the second bucket before password verification so attempts from many
+  // IPs cannot bypass throttling for one username. The response is generic and
+  // does not reveal whether that username exists.
+  const perIdentifier = await acquire('signIn', `identifier:${parsed.data.identifier.toLowerCase()}`);
+  if (!perIdentifier.allowed) {
+    return fail('Too many sign-in attempts. Try again shortly.');
+  }
+
   const rows = await db
     .select({
       id: users.id,
@@ -489,6 +525,7 @@ export async function signInAction(
       status: users.status,
       onboardedAt: users.onboardedAt,
       suspensionReason: users.suspensionReason,
+      removedAt: users.removedAt,
     })
     .from(users)
     .where(sql`lower(${users.username}) = lower(${parsed.data.identifier})`)
@@ -498,7 +535,7 @@ export async function signInAction(
 
   // Constant work whether or not the account exists.
   const verified = await verifyPassword(account?.passwordHash ?? null, parsed.data.password);
-  if (!account || !verified) {
+  if (!account || account.removedAt || !verified) {
     if (account) {
       await writeAudit(
         { id: account.id, label: `ARCH-${account.memberId}`, ip: traits.ip },
@@ -608,7 +645,7 @@ export async function signInAction(
     deviceId: thisDevice?.id ?? null,
     fingerprint: traits.fingerprint,
     ipHash: ipPseudonym(traits.ip),
-    userAgent: traits.userAgent,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
   });
 
   await db
@@ -621,6 +658,95 @@ export async function signInAction(
     { action: 'auth.succeeded', targetType: 'user', targetId: account.id },
   );
 
+  return ok();
+}
+
+/**
+ * Passkey sign-in. The credential ID identifies the account; the WebAuthn
+ * assertion proves possession of its enrolled authenticator. The existing
+ * installation binding is checked as a separate account policy.
+ */
+export async function signInWithPasskey(input: {
+  credential: unknown;
+  csrf: string;
+}): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', input.csrf);
+  await verifyCsrf(formData);
+
+  const credential = input.credential as { id?: unknown };
+  if (typeof credential?.id !== 'string' || credential.id.length < 8 || credential.id.length > 2048) {
+    return fail('The passkey response could not be read.');
+  }
+
+  const traits = await requestTraits();
+  const perIp = await acquire('signIn', traits.ipHash);
+  if (!perIp.allowed) return fail('Too many sign-in attempts. Try again shortly.');
+
+  const rows = await db
+    .select({
+      userId: deviceCredentials.userId,
+      credentialStatus: deviceCredentials.status,
+      userStatus: users.status,
+      removedAt: users.removedAt,
+      memberId: users.memberId,
+      username: users.username,
+      onboardedAt: users.onboardedAt,
+    })
+    .from(deviceCredentials)
+    .innerJoin(users, eq(users.id, deviceCredentials.userId))
+    .where(and(
+      eq(deviceCredentials.credentialId, credential.id),
+      eq(deviceCredentials.status, 'active'),
+      isNull(deviceCredentials.revokedAt),
+    ))
+    .limit(1);
+
+  const account = rows[0];
+  if (!account || account.userStatus !== 'active' || account.removedAt) {
+    return fail('That passkey could not sign in to an active identity.');
+  }
+
+  const perAccount = await acquire('signIn', `user:${account.userId}`);
+  if (!perAccount.allowed) return fail('Too many attempts for this identity. Try again shortly.');
+
+  const { finishAuthentication } = await import('~/server/auth/webauthn');
+  const verified = await finishAuthentication({
+    userId: account.userId,
+    deviceFingerprint: traits.fingerprint,
+    response: input.credential as never,
+  });
+  if (!verified.ok) {
+    await writeAudit(
+      { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+      { action: 'auth.passkey_failed', targetType: 'user', targetId: account.userId, reason: verified.reason },
+    );
+    return fail('The passkey could not be verified. Try again or use your enrolled device.');
+  }
+
+  if (!verified.deviceId) return fail('This passkey has no active device assignment.');
+
+  const [device] = await db
+    .select({ status: devices.status, fingerprint: devices.fingerprint })
+    .from(devices)
+    .where(eq(devices.id, verified.deviceId))
+    .limit(1);
+  if (!device || device.status !== 'active' || device.fingerprint !== traits.fingerprint) {
+    return fail('This passkey is not associated with the current enrolled installation.');
+  }
+
+  await createSession({
+    userId: account.userId,
+    deviceId: verified.deviceId,
+    fingerprint: traits.fingerprint,
+    ipHash: traits.ipHash,
+    userAgent: `${platformLabel(traits.userAgent)} / ${browserLabel(traits.userAgent)}`,
+  });
+  await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, account.userId));
+  await writeAudit(
+    { id: account.userId, label: `ARCH-${account.memberId}`, ip: traits.ip },
+    { action: 'auth.passkey_succeeded', targetType: 'user', targetId: account.userId },
+  );
   return ok();
 }
 
@@ -650,10 +776,16 @@ export async function requestDeviceTransferAction(
   const actor = await currentActor();
   if (!actor) return fail('You must be signed in to request a transfer.');
 
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before submitting another transfer request.');
+
   const reason = String(formData.get('reason') ?? '');
   const explanation = String(formData.get('explanation') ?? '').trim();
   const newDeviceLabel = String(formData.get('newDeviceLabel') ?? '').trim();
 
+  if (newDeviceLabel.length > 96) {
+    return fail('That device label is too long.', { newDeviceLabel: ['Keep it under 96 characters.'] });
+  }
   if (!TRANSFER_REASONS.includes(reason)) {
     return fail('Choose a reason for the transfer.', { reason: ['Select one.'] });
   }
@@ -687,14 +819,28 @@ export async function requestDeviceTransferAction(
     .where(and(eq(devices.userId, actor.userId), eq(devices.status, 'active')))
     .limit(1);
 
-  await db.insert(deviceTransferRequests).values({
-    userId: actor.userId,
-    reason,
-    explanation,
-    fromDeviceId: deviceRows[0]?.id ?? null,
-    newDeviceLabel: newDeviceLabel || null,
-    state: 'pending',
-  });
+  try {
+    await db.insert(deviceTransferRequests).values({
+      userId: actor.userId,
+      reason,
+      explanation,
+      fromDeviceId: deviceRows[0]?.id ?? null,
+      newDeviceLabel: newDeviceLabel || null,
+      state: 'pending',
+    });
+  } catch (error) {
+    // The partial unique index is the race-safe authority; the earlier lookup
+    // only provides a friendly fast path for an existing pending request.
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === '23505'
+    ) {
+      return fail('You already have a transfer request awaiting review.');
+    }
+    throw error;
+  }
 
   const traits = await requestTraits();
   await writeAudit(
@@ -709,10 +855,4 @@ export async function requestDeviceTransferAction(
 
   return ok();
 }
-
-export { titleCase };
-
-// The enrolment ceremony lives in its own module because it takes structured
-// input rather than form fields; re-exported here so client components have one
-// import site for authentication.
-export { completeEnrolment, beginEnrolment } from './enrolment';
+ 

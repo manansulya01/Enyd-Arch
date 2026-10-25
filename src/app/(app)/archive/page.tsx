@@ -194,4 +194,3 @@ export default async function ArchivePage({
   );
 }
 
-export { Avatar };

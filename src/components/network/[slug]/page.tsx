@@ -8,6 +8,8 @@ import { ReactionBar } from '~/components/commons/reaction-bar';
 import { networkBySlug, networkComments } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
 import { absoluteDate } from '~/lib/format';
+import { sessionCsrfToken } from '~/server/csrf';
+import { PollWidget } from '~/components/commons/poll-widget';
 
 export async function generateMetadata({
   params,
@@ -24,7 +26,10 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
   const post = await networkBySlug(slug, actor.userId);
   if (!post) notFound();
 
-  const comments = await networkComments(post.id, actor.userId);
+  const [comments, csrfToken] = await Promise.all([
+    networkComments(post.id, actor.userId),
+    sessionCsrfToken(),
+  ]);
 
   return (
     <PageShell title={post.title ?? ''} sub={`${post.author.displayName} · ${absoluteDate(post.createdAt)}`}>
@@ -44,7 +49,7 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
                 />
                 <span className="t-small">
                   by{' '}
-                  <Link className="lnk" href={`/network/${post.author.username}`}>
+                  <Link className="lnk" href={`/members/${post.author.username}`}>
                     {post.author.displayName}
                   </Link>{' '}
                   <span className="t-meta">@{post.author.username}</span>
@@ -61,6 +66,8 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
               {post.content}
             </div>
 
+            {post.poll && <PollWidget poll={post.poll} csrfToken={csrfToken} />}
+
             {post.hashtags.length > 0 && (
               <div className="shared-tags mt-6">
                 {post.hashtags.map((tag) => (
@@ -73,6 +80,7 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
 
             <div className="row row-wrap mt-6">
               <ReactionBar
+                csrfToken={csrfToken}
                 targetType="post"
                 targetId={post.id}
                 myReactions={post.myReactions}
@@ -81,7 +89,7 @@ export default async function NetworkPostPage({ params }: { params: Promise<{ sl
             </div>
           </article>
 
-          <NetworkComments postId={post.id} comments={comments} />
+          <NetworkComments postId={post.id} comments={comments} csrfToken={csrfToken} />
         </div>
 
         <aside className="aside">

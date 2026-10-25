@@ -10,6 +10,7 @@
  */
 import { redirect } from 'next/navigation';
 import { currentActor } from '~/server/auth/session';
+import { verifyCsrfValue } from '~/server/csrf';
 import {
   completeOnboarding,
   saveConnections,
@@ -26,30 +27,38 @@ async function requireActor() {
   return actor;
 }
 
-export async function onSaveIdentity(input: Parameters<typeof saveIdentity>[1]): Promise<ActionResult> {
+export async function onSaveIdentity(input: Parameters<typeof saveIdentity>[1], csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   return saveIdentity(await requireActor(), input);
 }
 
-export async function onSaveInterests(keys: string[]): Promise<ActionResult> {
+export async function onSaveInterests(keys: string[], csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   return saveInterests(await requireActor(), keys);
 }
 
 export async function onSaveProfileDetail(
   input: Parameters<typeof saveProfileDetail>[1],
+  csrf: string,
 ): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   return saveProfileDetail(await requireActor(), input);
 }
 
-export async function onSavePrivacy(input: Parameters<typeof savePrivacy>[1]): Promise<ActionResult> {
+export async function onSavePrivacy(input: Parameters<typeof savePrivacy>[1], csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   return savePrivacy(await requireActor(), input);
 }
 
 export async function onSaveConnections(
   input: Parameters<typeof saveConnections>[1],
+  csrf: string,
 ): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   return saveConnections(await requireActor(), input);
 }
 
-export async function onCompleteOnboarding(): Promise<ActionResult<{ username: string }>> {
+export async function onCompleteOnboarding(csrf: string): Promise<ActionResult<{ username: string }>> {
+  await verifyCsrfValue(csrf);
   return completeOnboarding(await requireActor());
 }

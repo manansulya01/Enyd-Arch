@@ -16,7 +16,7 @@ import {
   toggleReaction,
   voteInPoll,
 } from './commons';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrfValue } from '~/server/csrf';
 import type { ActionResult } from '~/lib/action-result';
 
 async function actor() {
@@ -25,33 +25,38 @@ async function actor() {
   return resolved;
 }
 
-export async function onCreatePost(input: Parameters<typeof createPost>[1]) {
+export async function onCreatePost(input: Parameters<typeof createPost>[1], csrf: string) {
+  await verifyCsrfValue(csrf);
   return createPost(await actor(), input);
 }
 
-export async function onCreateComment(input: Parameters<typeof createComment>[1]) {
+export async function onCreateComment(input: Parameters<typeof createComment>[1], csrf: string) {
+  await verifyCsrfValue(csrf);
   return createComment(await actor(), input);
 }
 
-export async function onDeleteComment(commentId: string) {
+export async function onDeleteComment(commentId: string, csrf: string) {
+  await verifyCsrfValue(csrf);
   return deleteComment(await actor(), commentId);
 }
 
-export async function onToggleReaction(input: Parameters<typeof toggleReaction>[1]) {
+export async function onToggleReaction(input: Parameters<typeof toggleReaction>[1], csrf: string) {
+  await verifyCsrfValue(csrf);
   return toggleReaction(await actor(), input);
 }
 
-export async function onVoteInPoll(input: Parameters<typeof voteInPoll>[1]) {
+export async function onVoteInPoll(input: Parameters<typeof voteInPoll>[1], csrf: string) {
+  await verifyCsrfValue(csrf);
   return voteInPoll(await actor(), input);
 }
 
-export async function onToggleBookmark(input: Parameters<typeof toggleBookmark>[1]) {
+export async function onToggleBookmark(input: Parameters<typeof toggleBookmark>[1], csrf: string) {
+  await verifyCsrfValue(csrf);
   return toggleBookmark(await actor(), input);
 }
 
-export async function onRepost(postId: string) {
+export async function onRepost(postId: string, csrf: string) {
+  await verifyCsrfValue(csrf);
   return repostPost(await actor(), postId);
 }
-
-export { verifyCsrf };
 export type { ActionResult };

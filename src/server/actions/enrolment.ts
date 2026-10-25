@@ -7,8 +7,10 @@ import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { browserLabel, platformLabel, requestTraits } from '~/server/crypto';
 import { gate } from '~/server/auth/rate-limit';
 import { createSession } from '~/server/auth/session';
+import { verifyPassword } from '~/server/auth/password';
 import { writeAudit } from '~/server/security/audit';
 import { beginRegistration, finishRegistration } from '~/server/auth/webauthn';
+import { verifyCsrfValue } from '~/server/csrf';
 
 /**
  * Device enrolment
@@ -31,6 +33,7 @@ export async function completeEnrolment(input: {
   credential: unknown;
   csrf: string;
 }): Promise<ActionResult<{ memberId: string }>> {
+  await verifyCsrfValue(input.csrf);
   const traits = await requestTraits();
 
   const limiter = await gate('deviceEnroll', traits.ipHash);
@@ -118,6 +121,7 @@ export async function completeEnrolment(input: {
  */
 export async function beginEnrolment(
   username: string,
+  password: string,
 ): Promise<{ ok: true; options: Record<string, unknown> } | { ok: false; reason: string }> {
   const traits = await requestTraits();
 
@@ -129,6 +133,7 @@ export async function beginEnrolment(
       id: users.id,
       username: users.username,
       displayName: users.displayName,
+      passwordHash: users.passwordHash,
       status: users.status,
     })
     .from(users)
@@ -136,7 +141,9 @@ export async function beginEnrolment(
     .limit(1);
 
   const account = rows[0];
-  if (!account) return { ok: false, reason: 'That identity cannot begin enrolment.' };
+  if (!account || !(await verifyPassword(account.passwordHash, password))) {
+    return { ok: false, reason: 'That identity cannot begin enrolment.' };
+  }
 
   if (!ENROLLABLE.includes(account.status)) {
     return {

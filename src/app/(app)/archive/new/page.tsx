@@ -3,13 +3,14 @@ import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
 import { ArchiveObjectForm } from '~/components/archive/archive-object-form';
 import { requireCapability } from '~/server/guard';
-import { CsrfField } from '~/components/shell/csrf-field';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Contribute to the Archive' };
 
 export default async function NewArchiveObjectPage() {
   const { actor } = await requireCapability('archive_contribute');
   void actor;
+  const csrfToken = await sessionCsrfToken();
 
   return (
     <PageShell title="Contribute an object" sub="The Archive is the collective memory of the Arch.">
@@ -20,8 +21,7 @@ export default async function NewArchiveObjectPage() {
           <Link href="/archive/new">Contribute</Link>
         </nav>
         <div className="stack stack-5">
-          <ArchiveObjectForm />
-          <CsrfField />
+          <ArchiveObjectForm csrfToken={csrfToken} />
         </div>
       </div>
     </PageShell>
