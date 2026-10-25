@@ -101,7 +101,6 @@ export async function startDirectConversation(
   const pairKey = [actor.userId, otherUserId].sort().join(':');
   const conversationId = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${pairKey}, 0))`);
-    if (!(await canStartDirectMessage(actor.userId, otherUserId))) return null;
 
     const mine = await tx
       .select({ id: conversationMembers.conversationId })
