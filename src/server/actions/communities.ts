@@ -257,10 +257,16 @@ export async function voteCommunityPost(input: {
 
   const voted = await db.transaction(async (tx) => {
     // Serialize votes on the post so a rapid double-click cannot leave a stale vote.
-    await tx.select({ id: communityPosts.id })
+    const [livePost] = await tx.select({ id: communityPosts.id })
       .from(communityPosts)
-      .where(eq(communityPosts.id, target.postId))
-      .for('update');
+      .where(and(
+        eq(communityPosts.id, target.postId),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!livePost) return false;
     const [activeMembership] = await tx.select({ userId: communityMembers.userId })
       .from(communityMembers)
       .where(and(
