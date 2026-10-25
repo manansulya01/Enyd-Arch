@@ -101,7 +101,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     <div className="stack stack-4">
       {query.transferred === '1' && <p className="notice notice-success" role="status">Community ownership was transferred successfully.</p>}
       <p className="t-small">{posts.length} discussions · {community.name}</p>
-      {membership[0]?.role === 'owner' && transferCandidates.length > 1 && (
+      {membership[0]?.role === 'owner' && transferCandidates.some(candidate => candidate.userId !== actor.userId) && (
         <section className="panel panel-body stack stack-3">
           <h2>Transfer community ownership</h2>
           <p className="t-small t-subtle">The selected active member becomes the owner. You will remain a moderator after the transfer.</p>
