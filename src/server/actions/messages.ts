@@ -299,6 +299,54 @@ export async function transferGroupOwnership(formData: FormData): Promise<void> 
   redirect(`/messages?c=${conversationId}&ownership=transferred`);
 }
 
+/** Remove a current non-owner member from a group; history is retained for remaining members. */
+export async function removeGroupMember(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  const targetUserId = String(formData.get('targetUserId') ?? '');
+  if (!isUuid(conversationId) || !isUuid(targetUserId) || targetUserId === actor.userId ||
+      formData.get('confirmRemove') !== 'on') redirect('/messages?error=invalid-removal');
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const removed = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return false;
+    const [owner] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (owner?.role !== 'owner') return false;
+    const [target] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, targetUserId),
+        isNull(conversationMembers.removedAt),
+      )).for('update').limit(1);
+    if (!target || target.role === 'owner') return false;
+    await tx.update(conversationMembers).set({ removedAt: new Date() }).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, targetUserId),
+      isNull(conversationMembers.removedAt),
+    ));
+    return true;
+  });
+  if (!removed) redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}&memberRemoved=1`);
+}
+
 /** Leave a group; the owner must transfer ownership first unless closing an empty group. */
 export async function leaveGroupConversation(formData: FormData): Promise<void> {
   await verifyCsrf(formData);
