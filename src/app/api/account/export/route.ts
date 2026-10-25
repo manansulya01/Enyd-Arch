@@ -45,6 +45,7 @@ import {
 } from '~db/schema';
 import { requireOnboarded } from '~/server/guard';
 import { acquire } from '~/server/auth/rate-limit';
+import { auditFromSession } from '~/server/security/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -242,6 +243,13 @@ export async function GET() {
       'Messages authored by other participants are not included in this export.',
     ],
   };
+
+  await auditFromSession({
+    action: 'account.export',
+    targetType: 'account',
+    targetId: userId,
+    metadata: { schemaVersion: 1 },
+  });
 
   const date = new Date().toISOString().slice(0, 10);
   return new NextResponse(JSON.stringify(payload, null, 2), {
