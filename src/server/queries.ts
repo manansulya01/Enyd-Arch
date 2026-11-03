@@ -181,6 +181,14 @@ export async function memberByUsername(
   if (!row) return null;
 
   const isSelf = viewerId === row.id;
+  if (!isSelf && viewerId) {
+    const [blockedViewer] = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(and(eq(blocks.blockerId, row.id), eq(blocks.blockedId, viewerId)))
+      .limit(1);
+    if (blockedViewer) return null;
+  }
   if (!isSelf && row.profileVisibility === 'private') return null;
   if (!isSelf && row.profileVisibility === 'connections') {
     if (!viewerId) return null;
