@@ -37,7 +37,6 @@ export default async function SecuritySettingsPage() {
       .orderBy(desc(sessions.lastSeenAt)),
     sessionCsrfToken(),
   ]);
-  const currentDevice = deviceRows.find((device) => device.id === actor.deviceId);
 
   return (
     <PageShell title="Security" sub="Review enrolled devices and active sessions.">
