@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState, Tabs } from '~/components/ui';
+import { EmptyState } from '~/components/ui';
 import { ConversationList } from '~/components/messages/conversation-list';
 import { MessageComposer } from '~/components/messages/message-composer';
 import { conversationList, conversationMessages } from '~/server/queries';
@@ -117,5 +117,3 @@ export default async function MessagesPage({
     </PageShell>
   );
 }
-
-export { Tabs };
