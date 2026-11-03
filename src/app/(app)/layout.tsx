@@ -1,9 +1,8 @@
-import Link from 'next/link';
 import { BottomNav, MobileBar, Rail } from '~/components/shell/nav';
 import { PRIMARY_NAV, memberLabel, memberNumber, visibleGroups } from '~/lib/nav';
 import { requireOnboarded } from '~/server/guard';
 import { notificationCounts } from '~/server/queries';
-import { formatMemberId, levelLabel } from '~/lib/domain';
+import { levelLabel } from '~/lib/domain';
 import { ThemeScript } from '~/components/shell/theme';
 import { CsrfField } from '~/components/shell/csrf-field';
 
