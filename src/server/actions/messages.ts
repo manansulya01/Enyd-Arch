@@ -28,7 +28,12 @@ import { verifyCsrf } from '~/server/csrf';
 
 export async function startDirectConversation(
   otherUserId: string,
+  csrfToken: string,
 ): Promise<ActionResult<{ conversationId: string }>> {
+  const csrf = new FormData();
+  csrf.set('__csrf', csrfToken);
+  await verifyCsrf(csrf);
+
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
@@ -119,10 +124,14 @@ export async function startDirectConversation(
   return ok({ conversationId: created!.id });
 }
 
-export async function createGroupConversation(input: {
-  title: string;
-  memberUserIds: string[];
-}): Promise<ActionResult<{ conversationId: string }>> {
+export async function createGroupConversation(
+  input: { title: string; memberUserIds: string[] },
+  csrfToken: string,
+): Promise<ActionResult<{ conversationId: string }>> {
+  const csrf = new FormData();
+  csrf.set('__csrf', csrfToken);
+  await verifyCsrf(csrf);
+
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
