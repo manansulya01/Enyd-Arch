@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
 import { requireOnboarded } from '~/server/guard';
 import { loadOnboardingContext } from '~/server/onboarding-context';
@@ -17,7 +18,7 @@ export default async function SettingsPage() {
 
   return (
     <PageShell title="Privacy settings" sub="Choose what other members can discover and how they can contact you.">
-      <div className="row row-end"><a className="lnk" href="/settings/security">Security and devices →</a></div>
+      <div className="row row-end"><Link className="lnk" href="/settings/security">Security and devices →</Link></div>
       <form action={savePrivacySettings} className="card card-pad-lg stack stack-4">
         <input type="hidden" name="__csrf" value={csrf} />
         <label className="field">
