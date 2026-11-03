@@ -79,7 +79,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
               <Avatar displayName={game.creator.displayName} avatarUrl={game.creator.avatarUrl} size="sm" />
               <span className="t-small">
                 Built by{' '}
-                <Link className="lnk" href={`/network/${game.creator.username}`}>
+                <Link className="lnk" href={`/members/${game.creator.username}`}>
                   {game.creator.displayName}
                 </Link>{' '}
                 <span className="t-meta">
