@@ -220,7 +220,7 @@ export async function sendMessage(
       .from(conversationMembers)
       .where(and(
         eq(conversationMembers.conversationId, conversationId),
-        sql\`${conversationMembers.userId} <> ${actor.userId}\`,
+        ne(conversationMembers.userId, actor.userId),
         isNull(conversationMembers.removedAt),
       ))
       .limit(1);
