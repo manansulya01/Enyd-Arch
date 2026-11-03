@@ -9,6 +9,10 @@ import { onToggleReaction } from '~/server/actions/commons-client';
  * Reaction bar. Optimistic in the common case and always reconciled by the
  * server's returned count, so two people reacting at once cannot drift.
  */
+function token(): string {
+  return document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+}
+
 export function ReactionBar({
   targetType,
   targetId,
@@ -36,7 +40,7 @@ export function ReactionBar({
     );
     setTotal((current) => Math.max(0, current + (wasActive ? -1 : 1)));
     startTransition(async () => {
-      const result = await onToggleReaction({ targetType, targetId, kind });
+      const result = await onToggleReaction({ targetType, targetId, kind }, token());
       if (result.ok && result.data) setTotal(result.data.count);
       else router.refresh();
     });
