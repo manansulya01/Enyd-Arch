@@ -7,6 +7,7 @@ on:
       - main
       - work/enyd-arch-completion-2026
       - work/enyd-arch-route-coverage
+      - work/enyd-arch-security-center
 
 permissions:
   contents: read
