@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
-import { CsrfField } from '~/components/shell/csrf-field';
 
 export function NetworkComposer() {
   const router = useRouter();
