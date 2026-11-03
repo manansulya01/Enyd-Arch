@@ -19,6 +19,7 @@ const DEFAULTS = {
   profileVisibility: 'members',
   messagePolicy: 'members',
   discoverable: true,
+  searchableByEmail: false,
   showRegion: false,
   hideAgeBand: false,
   showActivity: true,
@@ -68,6 +69,10 @@ export default async function PrivacySettingsPage({
             <label className="check-row">
               <input type="checkbox" name="discoverable" defaultChecked={settings.discoverable} />
               <span>Allow my profile to appear in member discovery</span>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="searchableByEmail" defaultChecked={settings.searchableByEmail} />
+              <span>Allow members who already know my email address to find my account</span>
             </label>
             <label className="check-row">
               <input type="checkbox" name="showRegion" defaultChecked={settings.showRegion} />
