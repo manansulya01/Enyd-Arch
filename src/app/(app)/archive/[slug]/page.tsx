@@ -136,7 +136,7 @@ export default async function ArchiveObjectPage({ params }: { params: Promise<{ 
                 />
                 <span className="t-small">
                   Contributed by{' '}
-                  <Link className="lnk" href={`/network/${object.contributor.username}`}>
+                  <Link className="lnk" href={`/members/${object.contributor.username}`}>
                     {object.contributor.displayName}
                   </Link>{' '}
                   <span className="t-meta">
