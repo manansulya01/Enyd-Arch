@@ -35,6 +35,7 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
   const values = {
     profileVisibility: profileVisibility as 'public' | 'members' | 'connections' | 'private',
     discoverable: checked(formData, 'discoverable'),
+    searchableByEmail: checked(formData, 'searchableByEmail'),
     showRegion: checked(formData, 'showRegion'),
     hideAgeBand: checked(formData, 'hideAgeBand'),
     showActivity: checked(formData, 'showActivity'),
