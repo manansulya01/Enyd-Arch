@@ -26,7 +26,8 @@ export function RatingWidget({
     setPending(true);
     setError(null);
     try {
-      const result = await onRateGame(gameId, newStars);
+      const csrf = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+      const result = await onRateGame(gameId, newStars, csrf);
       if (!result.ok) {
         setError(result.message ?? 'That rating could not be saved.');
         return;
