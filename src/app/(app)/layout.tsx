@@ -5,6 +5,7 @@ import { requireOnboarded } from '~/server/guard';
 import { notificationCounts } from '~/server/queries';
 import { formatMemberId, levelLabel } from '~/lib/domain';
 import { ThemeScript } from '~/components/shell/theme';
+import { CsrfField } from '~/components/shell/csrf-field';
 
 /**
  * The application shell.
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="main">
+        <CsrfField />
         <MobileBar member={member} />
         <ThemeScript reduceMotion={false} />
         {children}
