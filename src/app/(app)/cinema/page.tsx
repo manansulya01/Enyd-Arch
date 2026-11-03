@@ -11,6 +11,15 @@ import { toggleFilmWatchlist } from '~/server/actions/cinema-client';
 
 export const metadata: Metadata = { title: 'The Cinema' };
 
+function safeWatchUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CinemaPage() {
   const { actor } = await requireOnboarded();
   const [items, csrf] = await Promise.all([
@@ -67,9 +76,9 @@ export default async function CinemaPage() {
                   <input type="hidden" name="filmId" value={film.id} />
                   <button className="btn btn-sm btn-ghost" type="submit">{film.inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}</button>
                 </form>
-                {film.watchLinks.length > 0 && (
-                  <a className="lnk" href={film.watchLinks[0].url} target="_blank" rel="noreferrer noopener">Where to watch</a>
-                )}
+                {film.watchLinks.map((link) => safeWatchUrl(link.url) ? (
+                <a className="lnk" href={safeWatchUrl(link.url)!} target="_blank" rel="noreferrer noopener" key={link.url}>{link.service}</a>
+              ) : null)}
               </div>
             </article>
           ))}
