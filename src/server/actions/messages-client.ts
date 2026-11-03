@@ -11,12 +11,15 @@ import { verifyCsrf } from '~/server/csrf';
 import type { ActionResult } from '~/lib/action-result';
 import { createGroupConversation, sendMessage, startDirectConversation } from './messages';
 
-export async function onStartDirect(otherUserId: string) {
-  return startDirectConversation(otherUserId);
+export async function onStartDirect(otherUserId: string, csrfToken: string) {
+  return startDirectConversation(otherUserId, csrfToken);
 }
 
-export async function onCreateGroup(input: { title: string; memberUserIds: string[] }) {
-  return createGroupConversation(input);
+export async function onCreateGroup(
+  input: { title: string; memberUserIds: string[] },
+  csrfToken: string,
+) {
+  return createGroupConversation(input, csrfToken);
 }
 
 export async function onSendMessage(
