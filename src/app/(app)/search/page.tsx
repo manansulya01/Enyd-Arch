@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { requireOnboarded } from '~/server/guard';
-import { memberByUsername } from '~/server/queries';
+import { discoverableMemberByUsername } from '~/server/queries';
 
 export const metadata: Metadata = { title: 'Search members' };
 
@@ -11,7 +11,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const { actor } = await requireOnboarded();
   const { q = '' } = await searchParams;
   const query = q.trim().replace(/^@/, '').slice(0, 24);
-  const member = query ? await memberByUsername(query, actor.userId) : null;
+  const member = query ? await discoverableMemberByUsername(query, actor.userId) : null;
 
   return (
     <PageShell title="Search" sub="Find members by username.">
