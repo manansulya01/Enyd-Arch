@@ -3,7 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
-import { CsrfField } from '~/components/shell/csrf-field';
+
+function token(): string {
+  return document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+}
 
 export function NetworkComposer() {
   const router = useRouter();
@@ -25,7 +28,7 @@ export function NetworkComposer() {
         body: text,
         poll: null,
         attachmentFileIds: [],
-      });
+      }, token());
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;

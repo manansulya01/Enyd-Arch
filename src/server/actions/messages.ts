@@ -7,14 +7,16 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
 import {
+  blocks,
   conversationMembers,
   conversations,
   files,
+  matches,
   messages,
   userSettings,
   users,
@@ -26,10 +28,31 @@ import { verifyCsrf } from '~/server/csrf';
 
 export async function startDirectConversation(
   otherUserId: string,
+  csrfToken: string,
 ): Promise<ActionResult<{ conversationId: string }>> {
+  const csrf = new FormData();
+  csrf.set('__csrf', csrfToken);
+  await verifyCsrf(csrf);
+
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Slow down a moment before starting another conversation.');
+
+  // A block in either direction is an absolute boundary for new conversations.
+  const blocked = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(
+      or(
+        and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, otherUserId)),
+        and(eq(blocks.blockerId, otherUserId), eq(blocks.blockedId, actor.userId)),
+      ),
+    )
+    .limit(1);
+  if (blocked[0]) return fail('That member is not available.');
 
   // Respect the recipient's messaging policy.
   const [recipient] = await db
@@ -41,6 +64,23 @@ export async function startDirectConversation(
   if (!recipient) return fail('That member is not available.');
   if (recipient.messagePolicy === 'nobody') {
     return fail('That member is not accepting messages right now.');
+  }
+  if (recipient.messagePolicy === 'connections') {
+    const [connection] = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.mode, 'friendship'),
+          eq(matches.status, 'accepted'),
+          or(
+            and(eq(matches.userAId, actor.userId), eq(matches.userBId, otherUserId)),
+            and(eq(matches.userAId, otherUserId), eq(matches.userBId, actor.userId)),
+          ),
+        ),
+      )
+      .limit(1);
+    if (!connection) return fail('That member accepts messages from connections only.');
   }
 
   // Reuse an existing direct thread between the same pair.
@@ -84,10 +124,14 @@ export async function startDirectConversation(
   return ok({ conversationId: created!.id });
 }
 
-export async function createGroupConversation(input: {
-  title: string;
-  memberUserIds: string[];
-}): Promise<ActionResult<{ conversationId: string }>> {
+export async function createGroupConversation(
+  input: { title: string; memberUserIds: string[] },
+  csrfToken: string,
+): Promise<ActionResult<{ conversationId: string }>> {
+  const csrf = new FormData();
+  csrf.set('__csrf', csrfToken);
+  await verifyCsrf(csrf);
+
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
 
@@ -105,6 +149,18 @@ export async function createGroupConversation(input: {
     .from(users)
     .where(and(inArray(users.id, memberIds), eq(users.status, 'active'), isNull(users.removedAt)));
   if (found.length !== memberIds.length) return fail('One of those members is not available.');
+
+  const blockedPair = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(
+      or(
+        and(eq(blocks.blockerId, actor.userId), inArray(blocks.blockedId, memberIds)),
+        and(inArray(blocks.blockerId, memberIds), eq(blocks.blockedId, actor.userId)),
+      ),
+    )
+    .limit(1);
+  if (blockedPair[0]) return fail('A group cannot be created with a member who has blocked you or whom you have blocked.');
 
   const [created] = await db
     .insert(conversations)
@@ -154,7 +210,14 @@ export async function sendMessage(
     const [owned] = await db
       .select({ id: files.id })
       .from(files)
-      .where(and(eq(files.id, attachmentFileId), eq(files.uploaderId, actor.userId)))
+      .where(
+        and(
+          eq(files.id, attachmentFileId),
+          eq(files.uploaderId, actor.userId),
+          eq(files.state, 'clean'),
+          isNull(files.removedAt),
+        ),
+      )
       .limit(1);
     if (!owned) return fail('That file is not available.');
   }

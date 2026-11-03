@@ -36,7 +36,8 @@ export function GamePlayer({
   useEffect(() => {
     if (!launched || recorded.current || elapsed < 3) return;
     recorded.current = true;
-    void onRecordPlay(gameId, elapsed);
+    const csrf = document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+    void onRecordPlay(gameId, elapsed, csrf);
   }, [elapsed, gameId, launched]);
 
   if (!grantUrl) {

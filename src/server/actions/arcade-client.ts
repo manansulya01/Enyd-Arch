@@ -7,13 +7,19 @@ import { verifyCsrf } from '~/server/csrf';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { commentOnGame, rateGame, recordPlay, submitGame } from './arcade';
 
-export async function onRecordPlay(gameId: string, seconds: number): Promise<ActionResult> {
+export async function onRecordPlay(gameId: string, seconds: number, csrfToken: string): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', csrfToken);
+  await verifyCsrf(formData);
   const actor = await currentActor();
   if (!actor) return fail('Sign in to record plays.');
   return recordPlay(gameId, seconds);
 }
 
-export async function onRateGame(gameId: string, stars: number): Promise<ActionResult> {
+export async function onRateGame(gameId: string, stars: number, csrfToken: string): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', csrfToken);
+  await verifyCsrf(formData);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   return rateGame(gameId, stars);

@@ -243,5 +243,3 @@ export default async function HomePage() {
     </PageShell>
   );
 }
-
-export { excerpt };

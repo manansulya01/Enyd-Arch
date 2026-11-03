@@ -193,5 +193,3 @@ export default async function ArchivePage({
     </PageShell>
   );
 }
-
-export { Avatar };
