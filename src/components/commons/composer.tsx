@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
 import { onUploadFile } from '~/server/actions/exchange-client';
-import { CsrfField } from '~/components/shell/csrf-field';
 import { formatBytes } from '~/lib/format';
 
 /**
@@ -187,7 +186,6 @@ export function Composer() {
           }}
         />
 
-        <CsrfField />
 
         <div className="row row-end" style={{ marginLeft: 'auto' }}>
           {error && (
