@@ -9,6 +9,7 @@ import {
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
+  connectionRequests as connectionRequestTable,
   conversationMembers,
   conversations as conversationTable,
   events as eventTable,
@@ -2157,6 +2158,41 @@ export interface MatchView {
   sharedInterestCount: number;
   partner: MemberSummary;
   conversationId: string | null;
+}
+
+export interface IncomingConnectionRequest {
+  id: string;
+  mode: string;
+  note: string;
+  createdAt: Date;
+  sender: MemberSummary;
+}
+
+export async function connectionRequestsFor(userId: string): Promise<IncomingConnectionRequest[]> {
+  const rows = await db
+    .select({
+      id: connectionRequestTable.id,
+      fromUserId: connectionRequestTable.fromUserId,
+      mode: connectionRequestTable.mode,
+      note: connectionRequestTable.note,
+      createdAt: connectionRequestTable.createdAt,
+    })
+    .from(connectionRequestTable)
+    .where(
+      and(
+        eq(connectionRequestTable.toUserId, userId),
+        eq(connectionRequestTable.state, 'pending'),
+      ),
+    )
+    .orderBy(desc(connectionRequestTable.createdAt))
+    .limit(40);
+
+  if (rows.length === 0) return [];
+  const senders = await membersByIds(rows.map((row) => row.fromUserId), userId);
+  return rows.flatMap((row) => {
+    const sender = senders.get(row.fromUserId);
+    return sender ? [{ id: row.id, mode: row.mode, note: row.note, createdAt: row.createdAt, sender }] : [];
+  });
 }
 
 export async function matchesFor(userId: string, status: 'accepted' | 'pending' = 'accepted'): Promise<MatchView[]> {
