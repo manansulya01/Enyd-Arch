@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { verifyCsrf } from '~/server/csrf';
-import { respondToRequest, unmatch } from './connections';
+import { blockUser, respondToRequest, unblockUser, unmatch } from './connections';
 
 export async function respondToConnectionRequest(formData: FormData): Promise<void> {
   await verifyCsrf(formData);
@@ -18,5 +18,21 @@ export async function unmatchConnection(formData: FormData): Promise<void> {
   const matchId = String(formData.get('matchId') ?? '');
   if (!matchId || matchId.length > 64) return;
   await unmatch(matchId);
+  revalidatePath('/connections');
+}
+
+export async function blockMember(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const userId = String(formData.get('userId') ?? '');
+  if (!userId || userId.length > 64) return;
+  await blockUser(userId);
+  revalidatePath('/connections');
+}
+
+export async function unblockMember(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const userId = String(formData.get('userId') ?? '');
+  if (!userId || userId.length > 64) return;
+  await unblockUser(userId);
   revalidatePath('/connections');
 }
