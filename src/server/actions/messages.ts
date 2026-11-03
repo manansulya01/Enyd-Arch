@@ -7,7 +7,7 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
