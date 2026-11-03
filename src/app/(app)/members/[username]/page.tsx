@@ -13,7 +13,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const { username } = await params;
   const member = await memberByUsername(username, actor.userId);
   if (!member) notFound();
-  const activity = await profileActivity(member.userId);
+  const activity = await profileActivity(member.userId, actor.userId);
 
   return (
     <PageShell title={member.displayName} sub={`@${member.username} · ${member.memberId}`}>
