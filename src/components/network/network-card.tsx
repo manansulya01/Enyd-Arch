@@ -9,7 +9,7 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
   return (
     <article className="post card">
       <header className="post-header">
-        <Link href={`/network/${post.author.username}`} className="who">
+        <Link href={`/members/${post.author.username}`} className="who">
           <Avatar
             displayName={post.author.displayName}
             avatarUrl={post.author.avatarUrl}
@@ -72,7 +72,7 @@ export function NetworkCard({ post, detail }: { post: PostView; detail?: boolean
           myReactions={post.myReactions}
           count={post.reactionCount}
         />
-        <Link className="reaction-pill" href={`/network/${post.id}`}>
+        <Link className="reaction-pill" href={`/members/${post.id}`}>
           <span aria-hidden="true">❝</span> Reply
         </Link>
         <span className="t-meta">
