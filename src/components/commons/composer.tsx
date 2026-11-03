@@ -11,6 +11,10 @@ import { formatBytes } from '~/lib/format';
  * which is uploaded through the validated pipeline first, then referenced by id
  * so the browser never dictates where bytes land.
  */
+function token(): string {
+  return document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+}
+
 export function Composer() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -46,7 +50,7 @@ export function Composer() {
         body: body.trim(),
         poll: cleanPoll,
         attachmentFileIds: attachment ? [attachment.fileId] : [],
-      });
+      }, token());
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
