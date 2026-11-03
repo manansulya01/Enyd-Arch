@@ -4,12 +4,17 @@ import { EmptyState } from '~/components/ui';
 import { requireOnboarded } from '~/server/guard';
 import { events } from '~/server/queries';
 import { absoluteDate } from '~/lib/format';
+import { sessionCsrfToken } from '~/server/csrf';
+import { setEventRsvp } from '~/server/actions/events-client';
 
 export const metadata: Metadata = { title: 'Events' };
 
 export default async function EventsPage() {
   const { actor } = await requireOnboarded();
-  const upcoming = await events({ viewerId: actor.userId, limit: 36 });
+  const [upcoming, csrf] = await Promise.all([
+    events({ viewerId: actor.userId, limit: 36 }),
+    sessionCsrfToken(),
+  ]);
 
   return (
     <PageShell title="Events" sub="Gatherings, study sessions, game nights and creative challenges.">
@@ -31,7 +36,7 @@ export default async function EventsPage() {
                 <span>· {event.attendingCount} going</span>
                 <span>· {event.interestedCount} interested</span>
               </div>
-              {event.myRsvp && <span className="badge badge-plain">Your RSVP: {event.myRsvp}</span>}
+<div className="row row-2"><form action={setEventRsvp}><input type="hidden" name="__csrf" value={csrf} /><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="status" value="going" /><button className="btn btn-sm btn-primary" type="submit">{event.myRsvp === 'going' ? 'Going ✓' : 'I’m going'}</button></form><form action={setEventRsvp}><input type="hidden" name="__csrf" value={csrf} /><input type="hidden" name="eventId" value={event.id} /><input type="hidden" name="status" value="interested" /><button className="btn btn-sm btn-ghost" type="submit">{event.myRsvp === 'interested' ? 'Interested ✓' : 'Interested'}</button></form></div>
             </article>
           ))}
         </div>
