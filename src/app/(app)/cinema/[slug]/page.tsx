@@ -22,7 +22,7 @@ function safeWatchUrl(raw: string): string | null {
 }
 
 export default async function FilmPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { actor } = await requireOnboarded();
+  await requireOnboarded();
   const { slug } = await params;
   const [film] = await db.select().from(films).where(eq(films.slug, slug)).limit(1);
   if (!film) notFound();
