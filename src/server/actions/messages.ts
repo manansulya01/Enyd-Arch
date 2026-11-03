@@ -36,6 +36,7 @@ export async function startDirectConversation(
 
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!actor.capabilities.includes('message')) return fail('Messaging is not available for this account.');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
 
   const limiter = await acquire('write', actor.userId);
@@ -134,6 +135,7 @@ export async function createGroupConversation(
 
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!actor.capabilities.includes('message')) return fail('Messaging is not available for this account.');
 
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
