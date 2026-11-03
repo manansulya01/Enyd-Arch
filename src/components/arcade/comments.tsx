@@ -61,7 +61,7 @@ export function GameComments({ gameId, comments }: { gameId: string; comments: C
                     size="xs"
                     level={comment.author.level}
                   />
-                  <Link className="comment-author" href={`/network/${comment.author.username}`}>
+                  <Link className="comment-author" href={`/members/${comment.author.username}`}>
                     {comment.author.displayName}
                   </Link>
                   <span className="t-meta">{relativeTime(comment.createdAt)}</span>
