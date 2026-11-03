@@ -112,8 +112,8 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
-  profileVisibility: string | null;
-  discoverable: boolean | null;
+  profileVisibility?: string | null;
+  discoverable?: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
