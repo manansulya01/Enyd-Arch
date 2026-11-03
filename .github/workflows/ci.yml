@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - work/enyd-arch-completion-2026
+      - work/enyd-arch-route-coverage
 
 permissions:
   contents: read

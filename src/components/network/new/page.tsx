@@ -8,7 +8,7 @@ import { CsrfField } from '~/components/shell/csrf-field';
 export const metadata: Metadata = { title: 'Share on Network' };
 
 export default async function NewNetworkPage() {
-  const { actor } = await requireCapability('network_contribute');
+  const { actor } = await requireCapability('post');
   void actor;
 
   return (

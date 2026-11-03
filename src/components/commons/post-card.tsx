@@ -9,7 +9,7 @@ export function PostCard({ post, detail }: { post: PostView; detail?: boolean })
   return (
     <article className="post card">
       <header className="post-header">
-        <Link href={`/network/${post.author.username}`} className="who">
+        <Link href={`/members/${post.author.username}`} className="who">
           <Avatar
             displayName={post.author.displayName}
             avatarUrl={post.author.avatarUrl}

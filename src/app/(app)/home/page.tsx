@@ -165,7 +165,7 @@ export default async function HomePage() {
               </p>
             ) : (
               connections.slice(0, 4).map((match) => (
-                <Link className="row row-4" href={`/network/${match.partner.username}`} key={match.id}>
+                <Link className="row row-4" href={`/members/${match.partner.username}`} key={match.id}>
                   <Avatar
                     displayName={match.partner.displayName}
                     avatarUrl={match.partner.avatarUrl}
@@ -179,7 +179,7 @@ export default async function HomePage() {
               ))
             )}
             {neighbours && (
-              <Link className="row row-4" href={`/network/${neighbours.username}`}>
+              <Link className="row row-4" href={`/members/${neighbours.username}`}>
                 <Avatar displayName={neighbours.displayName} avatarUrl={neighbours.avatarUrl} size="xs" />
                 <span className="truncate">{neighbours.displayName}</span>
                 <span className="t-meta">{neighbours.headline ?? 'Member'}</span>
