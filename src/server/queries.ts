@@ -112,6 +112,8 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
+  profileVisibility: string | null;
+  discoverable: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
@@ -127,6 +129,8 @@ const MEMBER_COLUMNS = {
   avatarObjectId: profiles.avatarObjectId,
   showRegion: userSettings.showRegion,
   hideAgeBand: userSettings.hideAgeBand,
+  profileVisibility: userSettings.profileVisibility,
+  discoverable: userSettings.discoverable,
 };
 
 const memberJoin = () =>
@@ -174,7 +178,39 @@ export async function memberByUsername(
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
   const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
-  return row ? projectMember(row, viewerId) : null;
+  if (!row) return null;
+
+  const isSelf = viewerId === row.id;
+  if (!isSelf && row.profileVisibility === 'private') return null;
+  if (!isSelf && row.profileVisibility === 'connections') {
+    if (!viewerId) return null;
+    const [connection] = await db
+      .select({ id: matchTable.id })
+      .from(matchTable)
+      .where(
+        and(
+          eq(matchTable.status, 'accepted'),
+          or(
+            and(eq(matchTable.userAId, viewerId), eq(matchTable.userBId, row.id)),
+            and(eq(matchTable.userAId, row.id), eq(matchTable.userBId, viewerId)),
+          ),
+        ),
+      )
+      .limit(1);
+    if (!connection) return null;
+  }
+  return projectMember(row, viewerId);
+}
+
+export async function discoverableMemberByUsername(
+  username: string,
+  viewerId: string,
+): Promise<MemberSummary | null> {
+  const [row] = await memberJoin()
+    .where(sql`lower(${users.username}) = lower(${username}) and coalesce(${userSettings.discoverable}, true) = true`)
+    .limit(1);
+  if (!row) return null;
+  return memberByUsername(row.username, viewerId);
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
@@ -2276,7 +2312,21 @@ export interface ProfileActivity {
   connections: number;
 }
 
-export async function profileActivity(userId: string): Promise<ProfileActivity> {
+export async function profileActivity(userId: string, viewerId?: string | null): Promise<ProfileActivity> {
+  const [settings] = await db
+    .select({
+      showActivity: userSettings.showActivity,
+      showCreations: userSettings.showCreations,
+      showArchiveContributions: userSettings.showArchiveContributions,
+    })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const isSelf = viewerId === userId;
+  if (!isSelf && settings?.showActivity === false) {
+    return { posts: 0, comments: 0, archiveContributions: 0, games: 0, galleryPieces: 0, projects: 0, eventsHosted: 0, connections: 0 };
+  }
+
   const [result] = await db.execute<Record<string, number>>(sql`
     select
       (select count(*)::int from ${postTable} where author_id = ${userId}
@@ -2300,9 +2350,9 @@ export async function profileActivity(userId: string): Promise<ProfileActivity> 
   return {
     posts: Number(row.posts ?? 0),
     comments: Number(row.comments ?? 0),
-    archiveContributions: Number(row.archive ?? 0),
-    games: Number(row.games ?? 0),
-    galleryPieces: Number(row.gallery ?? 0),
+    archiveContributions: isSelf || settings?.showArchiveContributions !== false ? Number(row.archive ?? 0) : 0,
+    games: isSelf || settings?.showCreations !== false ? Number(row.games ?? 0) : 0,
+    galleryPieces: isSelf || settings?.showCreations !== false ? Number(row.gallery ?? 0) : 0,
     projects: Number(row.projects ?? 0),
     eventsHosted: Number(row.hosted ?? 0),
     connections: Number(row.connections ?? 0),
