@@ -17,6 +17,7 @@ export default async function SettingsPage() {
 
   return (
     <PageShell title="Privacy settings" sub="Choose what other members can discover and how they can contact you.">
+      <div className="row row-end"><a className="lnk" href="/settings/security">Security and devices →</a></div>
       <form action={savePrivacySettings} className="card card-pad-lg stack stack-4">
         <input type="hidden" name="__csrf" value={csrf} />
         <label className="field">
