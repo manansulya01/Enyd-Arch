@@ -38,6 +38,7 @@ import { createSession, currentActor, revokeSession } from '~/server/auth/sessio
 import { writeAudit } from '~/server/security/audit';
 import { verifyCsrf } from '~/server/csrf';
 import { grantInnerArch } from '~/server/society';
+import { beginEnrolment as beginEnrolmentImpl, completeEnrolment as completeEnrolmentImpl } from './enrolment';
 import { nextMemberNumber } from '~/server/member-number';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -715,4 +716,10 @@ export { titleCase };
 // The enrolment ceremony lives in its own module because it takes structured
 // input rather than form fields; re-exported here so client components have one
 // import site for authentication.
-export { completeEnrolment, beginEnrolment } from './enrolment';
+export async function beginEnrolment(...args: Parameters<typeof beginEnrolmentImpl>) {
+  return beginEnrolmentImpl(...args);
+}
+
+export async function completeEnrolment(...args: Parameters<typeof completeEnrolmentImpl>) {
+  return completeEnrolmentImpl(...args);
+}
