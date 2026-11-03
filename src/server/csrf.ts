@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 /**
  * Shared helpers for client components that talk to server actions directly.
