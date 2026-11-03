@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { onCreatePost } from '~/server/actions/commons-client';
 
+function token(): string {
+  return document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
+}
+
 export function NetworkForm() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -24,7 +28,7 @@ export function NetworkForm() {
         body: text,
         poll: null,
         attachmentFileIds: [],
-      });
+      }, token());
       if (!result.ok) {
         setError(result.message ?? 'That post could not be saved.');
         return;
