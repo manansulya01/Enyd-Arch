@@ -7,6 +7,7 @@ import { sessionCsrfToken } from '~/server/csrf';
 import { db } from '~db';
 import { userSettings } from '~db/schema';
 import { savePrivacySettings } from '~/server/actions/privacy-settings';
+import { deactivateAccount } from '~/server/actions/account-lifecycle';
 
 export const metadata: Metadata = {
   title: 'Privacy settings',
@@ -123,6 +124,23 @@ export default async function PrivacySettingsPage({
           <div>
             <a className="btn btn-secondary" href="/api/account/export">Export my account data</a>
           </div>
+        </section>
+
+        <section className="panel panel-body stack stack-2" aria-labelledby="account-deactivation">
+          <h2 id="account-deactivation">Deactivate this account</h2>
+          <p className="t-small t-subtle">
+            Deactivation hides your account, prevents sign-in, makes your profile private, stops new messages,
+            and revokes all active sessions. Your records are retained under the service retention policy;
+            this is not a permanent data-erasure request. Contact support for an erasure review.
+          </p>
+          <form action={deactivateAccount} className="stack stack-2">
+            <input type="hidden" name="__csrf" value={csrfToken} />
+            <label className="field">
+              <span className="field-label">Type DEACTIVATE to confirm</span>
+              <input className="input" name="confirmation" autoComplete="off" required pattern="DEACTIVATE" />
+            </label>
+            <div><button className="btn btn-danger" type="submit">Deactivate my account</button></div>
+          </form>
         </section>
       </div>
     </PageShell>
