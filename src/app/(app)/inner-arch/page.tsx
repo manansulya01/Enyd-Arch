@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { desc, isNull, eq } from 'drizzle-orm';
+import { desc, isNull } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { requireCapability } from '~/server/guard';
