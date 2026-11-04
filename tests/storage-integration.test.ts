@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test, { after } from 'node:test';
 import { sql } from '../db/index';
 import { putObject, readObject, removeObject } from '../src/server/storage/driver';
+import { decryptObject } from '../src/server/storage/envelope-core';
 
 const createdIds: string[] = [];
 
@@ -35,4 +36,25 @@ test('storage pipeline persists ciphertext and returns verified plaintext to aut
   assert.deepEqual(restored.data, plaintext);
   assert.equal(restored.byteSize, plaintext.byteLength);
   assert.equal(restored.contentType, 'text/plain');
+});
+
+test('the Arcade sandbox can decrypt and verify encrypted game packages', async () => {
+  process.env.STORAGE_ENCRYPTION_KEY = 'ci-only-storage-encryption-key-0123456789';
+  const plaintext = new TextEncoder().encode('game package integration test');
+  const stored = await putObject({
+    purpose: 'game_package',
+    id: randomUUID(),
+    extension: 'zip',
+    data: plaintext,
+    contentType: 'application/zip',
+  });
+  createdIds.push(stored.id);
+
+  const root = path.resolve(process.cwd(), process.env.STORAGE_ROOT ?? './storage');
+  const raw = new Uint8Array(await readFile(path.join(root, stored.objectKey)));
+  const decoded = decryptObject(raw);
+  assert.equal(decoded.encrypted, true);
+  assert.deepEqual(decoded.data, plaintext);
+  assert.equal(decoded.data.byteLength, stored.byteSize);
+  assert.equal(createHash('sha256').update(decoded.data).digest('hex'), stored.checksum);
 });
