@@ -9,13 +9,13 @@ import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
-import { transferCommunityOwnership } from '~/server/actions/communities';
+import { setCommunityModerator, transferCommunityOwnership } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Community' };
 
-export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string }> }) {
+export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string; role?: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
   const query = await searchParams;
@@ -32,6 +32,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   const transferCandidates = membership[0]?.role === 'owner'
     ? await db.select({
         userId: communityMembers.userId,
+        role: communityMembers.role,
         username: users.username,
         displayName: users.displayName,
       }).from(communityMembers)
@@ -101,6 +102,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   return <PageShell title={community.name} sub={community.description || 'Public community'} actions={<Link className="btn btn-ghost btn-sm" href="/communities">All communities</Link>}>
     <div className="stack stack-4">
       {query.transferred === '1' && <p className="notice notice-success" role="status">Community ownership was transferred successfully.</p>}
+      {query.role === 'updated' && <p className="notice notice-success" role="status">Community member role updated.</p>}
       <p className="t-small">{posts.length} discussions · {community.name}</p>
       {membership[0]?.role === 'owner' && transferCandidates.some(candidate => candidate.userId !== actor.userId) && (
         <section className="panel panel-body stack stack-3">
@@ -124,6 +126,29 @@ export default async function CommunityPage({ params, searchParams }: { params: 
             </label>
             <button className="btn btn-secondary" type="submit">Transfer ownership</button>
           </form>
+        </section>
+      )}
+      {membership[0]?.role === 'owner' && (
+        <section className="panel panel-body stack stack-3" aria-label="Community moderator roles">
+          <h2>Moderators</h2>
+          <p className="t-small t-subtle">Promote trusted members to help moderate discussions. The owner role cannot be changed here.</p>
+          {transferCandidates.filter(candidate => candidate.userId !== actor.userId).map(candidate => (
+            <form action={setCommunityModerator} className="row row-wrap" key={candidate.userId}>
+              <input type="hidden" name="__csrf" value={csrfToken} />
+              <input type="hidden" name="communityId" value={community.id} />
+              <input type="hidden" name="targetUserId" value={candidate.userId} />
+              <span className="t-small">{candidate.displayName} (@{candidate.username})</span>
+              <select className="input" name="role" defaultValue={candidate.role === 'moderator' ? 'moderator' : 'member'} aria-label={`Role for ${candidate.username}`}>
+                <option value="member">Member</option>
+                <option value="moderator">Moderator</option>
+              </select>
+              <label className="check-row">
+                <input type="checkbox" name="confirmRoleChange" required />
+                <span>Confirm role change</span>
+              </label>
+              <button className="btn btn-ghost btn-sm" type="submit">Save role</button>
+            </form>
+          ))}
         </section>
       )}
       {!joined && <p className="t-small t-muted">Join this community from the directory before posting.</p>}
