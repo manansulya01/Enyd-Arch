@@ -53,7 +53,12 @@ export default async function PrivacySettingsPage({
     <PageShell
       title="Privacy settings"
       sub="Choose what other members can discover and how they can contact you."
-      actions={<Link className="btn btn-ghost btn-sm" href="/privacy">Privacy notice</Link>}
+      actions={
+        <>
+          <Link className="btn btn-ghost btn-sm" href="/settings/security">Security and devices</Link>
+          <Link className="btn btn-ghost btn-sm" href="/privacy">Privacy notice</Link>
+        </>
+      }
     >
       <div className="stack stack-4" style={{ maxWidth: 760 }}>
         {params.saved === '1' && <p className="notice notice-success" role="status">Your privacy settings were saved.</p>}
