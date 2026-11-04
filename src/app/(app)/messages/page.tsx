@@ -8,7 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
-import { toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
+import { addGroupMember, toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -19,10 +19,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; error?: string }>;
+  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; memberAdded?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, q, reply, updated, ownership, left, memberRemoved, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, q, reply, updated, ownership, left, memberRemoved, memberAdded, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -43,11 +43,18 @@ export default async function MessagesPage({
       {ownership === 'transferred' && <p className="notice notice-success" role="status">Group ownership was transferred.</p>}
       {left === '1' && <p className="notice notice-success" role="status">You left the group conversation.</p>}
       {memberRemoved === '1' && <p className="notice notice-success" role="status">The member was removed from this group.</p>}
+      {memberAdded === '1' && <p className="notice notice-success" role="status">The member was added to this group.</p>}
       {error && <p className="notice notice-danger" role="alert">
         {error === 'transfer-first'
           ? 'Transfer ownership to another group member before leaving.'
           : error === 'slow-down'
             ? 'Please wait before making another conversation change.'
+            : error === 'group-full'
+              ? 'This group has reached its 12-member limit.'
+              : error === 'already-member'
+                ? 'That member is already in this group.'
+                : error === 'invite-unavailable'
+                  ? 'That member is not available to invite.'
             : 'That conversation change could not be completed.'}
       </p>}
       <div className="messages-layout">
@@ -103,6 +110,22 @@ export default async function MessagesPage({
                       </label>
                       <button className="btn btn-secondary" type="submit">Rename group</button>
                     </form>
+                    {active.members.length < 12 && contacts.some(contact => !active.members.some(member => member.userId === contact.userId)) && (
+                      <form action={addGroupMember} className="row row-wrap">
+                        <input type="hidden" name="__csrf" value={csrfToken} />
+                        <input type="hidden" name="conversationId" value={active.id} />
+                        <label className="field" style={{ flex: 1 }}>
+                          <span className="field-label">Add a connection</span>
+                          <select className="input" name="targetUserId" defaultValue="" required>
+                            <option value="" disabled>Select a member</option>
+                            {contacts.filter(contact => !active.members.some(member => member.userId === contact.userId)).map(contact => (
+                              <option key={contact.userId} value={contact.userId}>{contact.displayName} (@{contact.username})</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button className="btn btn-secondary" type="submit">Add member</button>
+                      </form>
+                    )}
                     {active.members.some(member => member.userId !== actor.userId) && (
                       <form action={transferGroupOwnership} className="stack stack-2">
                         <input type="hidden" name="__csrf" value={csrfToken} />
