@@ -1,10 +1,10 @@
 'use server';
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, users } from '~db/schema';
+import { communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, moderationActions, reports, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -19,6 +19,92 @@ function cleanText(value: string, max: number): string {
 function makeSlug(value: string): string {
   return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+}
+
+export async function resolveCommunityReport(
+  reportId: string,
+  outcome: 'resolved' | 'dismissed',
+  resolution: string,
+  csrf: string,
+): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Moderation is not available for this identity.');
+  if (!isUuid(reportId) || !['resolved', 'dismissed'].includes(outcome)) return fail('That report is not available.');
+  const note = typeof resolution === 'string' ? resolution.trim().slice(0, 2000) : '';
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before updating another report.');
+
+  const resolved = await db.transaction(async (tx) => {
+    const [report] = await tx.select().from(reports).where(and(
+      eq(reports.id, reportId),
+      inArray(reports.state, ['open', 'triaged', 'investigating']),
+    )).for('update').limit(1);
+    if (!report || (report.targetType !== 'community_post' && report.targetType !== 'community_comment')) return null;
+
+    let communityId: string | null = null;
+    let slug: string | null = null;
+    if (report.targetType === 'community_post') {
+      const [target] = await tx.select({
+        communityId: communityPosts.communityId,
+        slug: communities.slug,
+      }).from(communityPosts)
+        .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+        .where(eq(communityPosts.id, report.targetId))
+        .limit(1);
+      communityId = target?.communityId ?? null;
+      slug = target?.slug ?? null;
+    } else {
+      const [target] = await tx.select({
+        communityId: communityPosts.communityId,
+        slug: communities.slug,
+      }).from(communityPostComments)
+        .innerJoin(communityPosts, eq(communityPosts.id, communityPostComments.postId))
+        .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+        .where(eq(communityPostComments.id, report.targetId))
+        .limit(1);
+      communityId = target?.communityId ?? null;
+      slug = target?.slug ?? null;
+    }
+    if (!communityId || !slug) return null;
+    const [membership] = await tx.select({ role: communityMembers.role })
+      .from(communityMembers).where(and(
+        eq(communityMembers.communityId, communityId),
+        eq(communityMembers.userId, actor.userId),
+      )).limit(1);
+    if (membership?.role !== 'owner' && membership?.role !== 'moderator') return null;
+
+    await tx.update(reports).set({
+      state: outcome,
+      resolution: note,
+      resolvedBy: actor.userId,
+      resolvedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(reports.id, reportId));
+    await tx.insert(moderationActions).values({
+      actorId: actor.userId,
+      actorLabel: `ARCH-${actor.memberId}`,
+      targetUserId: report.targetOwnerId,
+      targetType: report.targetType,
+      targetId: report.targetId,
+      action: outcome === 'dismissed' ? 'dismiss_report' : 'note',
+      reason: note,
+      reportId,
+    });
+    return { slug, communityId };
+  });
+  if (!resolved) return fail('That report is not open, or you do not moderate its community.');
+  await auditFromSession({
+    action: 'community.report.resolved',
+    targetType: 'report',
+    targetId: reportId,
+    targetLabel: resolved.slug,
+    metadata: { outcome },
+  });
+  revalidatePath(`/communities/${resolved.slug}`);
+  revalidatePath('/admin');
+  return ok();
 }
 
 export async function createCommunity(input: {
