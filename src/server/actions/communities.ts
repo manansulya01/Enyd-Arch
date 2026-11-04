@@ -10,6 +10,7 @@ import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 import { isUuid } from '~/server/auth/identifiers';
+import { auditFromSession } from '~/server/security/audit';
 
 function cleanText(value: string, max: number): string {
   return value.replace(/\r\n/g, '\n').replace(/[<>]/g, '').trim().slice(0, max);
@@ -82,6 +83,7 @@ export async function updateCommunityRules(formData: FormData): Promise<void> {
     return community.slug;
   });
   if (!slug) redirect('/communities');
+  await auditFromSession({ action: 'community.rules.updated', targetType: 'community', targetId: communityId, targetLabel: slug });
   revalidatePath('/communities');
   revalidatePath(`/communities/${slug}`);
   redirect(`/communities/${slug}?rules=updated`);
@@ -290,6 +292,7 @@ export async function removeCommunityComment(commentId: string, csrf: string): P
     return Boolean(row);
   });
   if (!removed) return fail('Only the author or a current community moderator can remove this comment.');
+  await auditFromSession({ action: 'community.comment.removed', targetType: 'community_comment', targetId: comment.id, targetLabel: comment.slug });
   revalidatePath('/communities');
   revalidatePath(`/communities/${comment.slug}`);
   return ok();
@@ -420,6 +423,7 @@ export async function setCommunityModerator(formData: FormData): Promise<void> {
     return { slug: community.slug };
   });
   if (!result) redirect('/communities?error=role-not-allowed');
+  await auditFromSession({ action: 'community.moderator.role_changed', targetType: 'community', targetId: communityId, targetLabel: result.slug, metadata: { targetUserId, role } });
   revalidatePath('/communities');
   revalidatePath(`/communities/${result.slug}`);
   redirect(`/communities/${result.slug}?role=updated`);
@@ -481,6 +485,7 @@ export async function transferCommunityOwnership(formData: FormData): Promise<vo
   });
 
   if (!result) redirect('/communities?error=transfer-not-allowed');
+  await auditFromSession({ action: 'community.owner.transferred', targetType: 'community', targetId: communityId, targetLabel: result.slug, metadata: { newOwnerId: targetUserId } });
   revalidatePath('/communities');
   revalidatePath(`/communities/${result.slug}`);
   redirect(`/communities/${result.slug}?transferred=1`);
