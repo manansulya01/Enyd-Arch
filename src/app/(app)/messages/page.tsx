@@ -7,9 +7,10 @@ import { MessageComposer } from '~/components/messages/message-composer';
 import { GroupConversationComposer } from '~/components/messages/group-conversation-composer';
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
+import { GroupInviteManager } from '~/components/messages/group-invite-manager';
 import { MessageActions } from '~/components/messages/message-actions';
 import { addGroupMember, toggleConversationMute, toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
-import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
+import { conversationInvitesForOwner, conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
 import { CsrfField } from '~/components/shell/csrf-field';
@@ -19,10 +20,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; memberAdded?: string; mute?: string; error?: string }>;
+  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; memberAdded?: string; mute?: string; joined?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, q, reply, updated, ownership, left, memberRemoved, memberAdded, mute, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, q, reply, updated, ownership, left, memberRemoved, memberAdded, mute, joined, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -35,6 +36,9 @@ export default async function MessagesPage({
   }])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   const active = c ? conversations.find((conversation) => conversation.id === c) : undefined;
   const messages = active ? await conversationMessages(active.id, actor.userId, q) : null;
+  const activeInvites = active?.kind === 'group' && active.myRole === 'owner'
+    ? await conversationInvitesForOwner(active.id, actor.userId)
+    : [];
   const replyTarget = reply && messages ? messages.find((message) => message.id === reply && !message.removed) : undefined;
 
   return (
@@ -45,6 +49,7 @@ export default async function MessagesPage({
       {memberRemoved === '1' && <p className="notice notice-success" role="status">The member was removed from this group.</p>}
       {memberAdded === '1' && <p className="notice notice-success" role="status">The member was added to this group.</p>}
       {mute === 'updated' && <p className="notice notice-success" role="status">Conversation notification mute updated.</p>}
+      {joined === '1' && <p className="notice notice-success" role="status">You joined the group conversation.</p>}
       {error && <p className="notice notice-danger" role="alert">
         {error === 'transfer-first'
           ? 'Transfer ownership to another group member before leaving.'
@@ -180,6 +185,9 @@ export default async function MessagesPage({
                     </label>
                     <button className="btn btn-ghost btn-sm" type="submit">Leave group</button>
                   </form>
+                )}
+                {active.kind === 'group' && active.myRole === 'owner' && (
+                  <GroupInviteManager conversationId={active.id} csrfToken={csrfToken} initialInvites={activeInvites} />
                 )}
                 <form method="get" action="/messages" className="panel-body row row-wrap" role="search" aria-label="Search messages">
                   <input type="hidden" name="c" value={active.id} />
