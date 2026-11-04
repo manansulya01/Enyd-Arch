@@ -91,6 +91,11 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     value: communityPostVotes.value,
   })
     .from(communityPostVotes)
+    .innerJoin(users, and(
+      eq(users.id, communityPostVotes.userId),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ))
     .where(inArray(communityPostVotes.postId, rows.map(post => post.id)));
   const voteSummaryByPost = new Map<string, { upvotes: number; downvotes: number; currentVote: -1 | 0 | 1 }>();
   for (const vote of voteRows) {
