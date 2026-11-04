@@ -1067,6 +1067,8 @@ export const messages = pgTable(
       onDelete: 'set null',
     }),
     editedAt: timestamp('edited_at', { withTimezone: true }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    pinnedById: uuid('pinned_by_id').references(() => users.id, { onDelete: 'set null' }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     /** Set once; powers unread badges */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
