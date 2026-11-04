@@ -138,10 +138,11 @@ class S3Driver implements StorageDriver {
     const dateStamp = amzDate.slice(0, 8);
     const payloadHash = createHash('sha256').update(payload).digest('hex');
     const host = new URL(this.endpoint).host;
+    const canonicalUri = `/${[this.bucket, ...keySegments(key)].map((segment) => encodeURIComponent(segment)).join('/')}`;
 
     const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
     const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
-    const canonicalRequest = [method, `/${keySegments(key).join('/')}`, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+    const canonicalRequest = [method, canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
 
     const scope = `${dateStamp}/${this.region}/s3/aws4_request`;
     const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
@@ -153,7 +154,7 @@ class S3Driver implements StorageDriver {
     );
     const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
 
-    return fetch(`${this.endpoint}/${keySegments(key).join('/')}`, {
+    return fetch(`${this.endpoint}${canonicalUri}`, {
       method,
       headers: {
         Authorization: `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
