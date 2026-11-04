@@ -8,6 +8,7 @@ import { profiles, userSettings } from '~db/schema';
 import { currentActor, can } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrf } from '~/server/csrf';
+import { invalidatePreferences } from '~/server/notify';
 
 const VISIBILITIES = new Set(['public', 'members', 'connections', 'private']);
 const MESSAGE_POLICIES = new Set(['everyone', 'members', 'connections', 'nobody']);
@@ -48,6 +49,7 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
     notifyOnConnection: checked(formData, 'notifyOnConnection'),
     notifyOnProject: checked(formData, 'notifyOnProject'),
     notifyOnEvent: checked(formData, 'notifyOnEvent'),
+    notifyOnFile: checked(formData, 'notifyOnFile'),
     messagePolicy,
     updatedAt: new Date(),
   };
@@ -64,6 +66,7 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
     .set({ profileVisibility: values.profileVisibility, updatedAt: new Date() })
     .where(eq(profiles.userId, actor.userId));
 
+  invalidatePreferences(actor.userId);
   revalidatePath('/settings/privacy');
   revalidatePath('/network');
   revalidatePath('/commons');
