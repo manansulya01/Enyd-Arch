@@ -65,7 +65,7 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 /** Single-use grants, held only long enough to be exchanged. */
 const grants = new Map<string, { gameId: string; checksum: string | null; expiresAt: number }>();
-const sessions = new Map<string, { gameId: string; objectKey: string; expiresAt: number }>();
+const sessions = new Map<string, { gameId: string; objectKey: string; driver: string; checksum: string; byteSize: number; packageChecksum: string | null; expiresAt: number }>();
 
 function sign(value: string) {
   return createHmac('sha256', SHARED_SECRET).update(value).digest('base64url');
@@ -281,6 +281,10 @@ const server = createServer(async (req, res) => {
     sessions.set(session, {
       gameId: game.id,
       objectKey: game.object_key,
+      driver: game.storage_driver,
+      checksum: game.storage_checksum,
+      byteSize: Number(game.storage_byte_size),
+      packageChecksum: game.package_checksum,
       expiresAt: Date.now() + SESSION_TTL_MS,
     });
     res.writeHead(302, { Location: `/s/${session}/${game.entry_file ?? 'index.html'}` });
@@ -308,14 +312,14 @@ const server = createServer(async (req, res) => {
 
   let entries: ReturnType<typeof readZip>;
   try {
-    const storedBytes = await readStoredObject(String(game.storage_driver), String(game.object_key));
+    const storedBytes = await readStoredObject(session.driver, session.objectKey);
     if (!storedBytes) return send(res, 404, 'Package unavailable');
     const decoded = decryptObject(storedBytes);
     const actualChecksum = createHash('sha256').update(decoded.data).digest('hex');
     if (
-      decoded.data.byteLength !== Number(game.storage_byte_size) ||
-      actualChecksum !== String(game.storage_checksum) ||
-      (game.package_checksum && actualChecksum !== String(game.package_checksum))
+      decoded.data.byteLength !== session.byteSize ||
+      actualChecksum !== session.checksum ||
+      (session.packageChecksum && actualChecksum !== session.packageChecksum)
     ) {
       return send(res, 409, 'Package integrity check failed');
     }
