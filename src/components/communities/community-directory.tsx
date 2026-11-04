@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCommunity, joinCommunity, leaveCommunity } from '~/server/actions/communities';
 
-export type CommunitySummary = { id: string; slug: string; name: string; description: string; memberCount: number };
+export type CommunitySummary = { id: string; slug: string; name: string; description: string; isPrivate: boolean; memberCount: number };
 
 export function CommunityDirectory({ communities, joinedIds, csrfToken }: {
   communities: CommunitySummary[];
@@ -14,13 +14,14 @@ export function CommunityDirectory({ communities, joinedIds, csrfToken }: {
   const router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [busyId, setBusyId] = useState('');
   const [message, setMessage] = useState('');
 
   async function create() {
     setBusyId('create'); setMessage('');
     try {
-      const result = await createCommunity({ name, description, csrf: csrfToken });
+      const result = await createCommunity({ name, description, isPrivate, csrf: csrfToken });
       if (!result.ok || !result.data) { setMessage(result.message ?? 'Could not create community.'); return; }
       router.push(`/communities/${result.data.slug}`);
       router.refresh();
@@ -51,8 +52,9 @@ export function CommunityDirectory({ communities, joinedIds, csrfToken }: {
         <span className="field-label">Description</span>
         <textarea className="input" value={description} onChange={event => setDescription(event.target.value)} maxLength={500} rows={3} placeholder="What is this community about?" />
       </label>
+      <label className="row row-wrap"><input type="checkbox" checked={isPrivate} onChange={event => setIsPrivate(event.target.checked)} /><span className="t-small">Private · invite link required to join</span></label>
       <button className="btn btn-primary" type="button" disabled={busyId !== '' || name.trim().length < 3} onClick={() => void create()}>Create community</button>
-      <p className="t-meta">Communities are public for now. The creator becomes the owner.</p>
+      <p className="t-meta">The creator becomes the owner. Private communities are visible only to members and require an owner-issued invite link.</p>
     </section>
     <section className="stack stack-3">
       <h2>Discover communities</h2>
@@ -62,7 +64,7 @@ export function CommunityDirectory({ communities, joinedIds, csrfToken }: {
           <div className="row row-between">
             <div className="stack stack-1">
               <h3><a className="lnk" href={`/communities/${community.slug}`}>{community.name}</a></h3>
-              <p className="t-meta">{community.memberCount} members</p>
+              <p className="t-meta">{community.memberCount} members{community.isPrivate ? ' · Private' : ''}</p>
             </div>
             <button className={joined ? 'btn btn-ghost btn-sm' : 'btn btn-secondary btn-sm'} type="button" disabled={busyId !== ''} onClick={() => void toggle(community, joined)}>
               {busyId === community.id ? '…' : joined ? 'Leave' : 'Join'}
