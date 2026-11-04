@@ -32,6 +32,7 @@ const DEFAULTS = {
   notifyOnConnection: true,
   notifyOnProject: true,
   notifyOnEvent: true,
+  notifyOnFile: true,
 };
 
 export default async function PrivacySettingsPage({
@@ -131,6 +132,7 @@ export default async function PrivacySettingsPage({
             <label className="check-row"><input type="checkbox" name="notifyOnConnection" defaultChecked={settings.notifyOnConnection} /><span>Connection requests and updates</span></label>
             <label className="check-row"><input type="checkbox" name="notifyOnProject" defaultChecked={settings.notifyOnProject} /><span>Project invitations and activity</span></label>
             <label className="check-row"><input type="checkbox" name="notifyOnEvent" defaultChecked={settings.notifyOnEvent} /><span>Event invitations and reminders</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnFile" defaultChecked={settings.notifyOnFile} /><span>File activity</span></label>
           </section>
 
           <div className="panel-body row row-end">
