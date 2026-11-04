@@ -14,6 +14,7 @@ import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
