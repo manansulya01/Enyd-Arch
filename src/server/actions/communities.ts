@@ -1,10 +1,11 @@
 'use server';
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, moderationActions, reports, users } from '~db/schema';
+import { communityInvites, communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, moderationActions, reports, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -110,6 +111,7 @@ export async function resolveCommunityReport(
 export async function createCommunity(input: {
   name: string;
   description: string;
+  isPrivate: boolean;
   csrf: string;
 }): Promise<ActionResult<{ slug: string }>> {
   await verifyCsrfValue(input.csrf);
@@ -127,7 +129,7 @@ export async function createCommunity(input: {
   try {
     const created = await db.transaction(async (tx) => {
       const [community] = await tx.insert(communities).values({
-        name, description, slug, ownerId: actor.userId, isPrivate: false,
+        name, description, slug, ownerId: actor.userId, isPrivate: input.isPrivate === true,
       }).returning({ id: communities.id, slug: communities.slug });
       if (!community) throw new Error('Community creation failed');
       await tx.insert(communityMembers).values({
@@ -173,6 +175,146 @@ export async function updateCommunityRules(formData: FormData): Promise<void> {
   revalidatePath('/communities');
   revalidatePath(`/communities/${slug}`);
   redirect(`/communities/${slug}?rules=updated`);
+}
+
+export interface CommunityInviteView {
+  id: string;
+  expiresAt: Date;
+  maxUses: number;
+  useCount: number;
+  revokedAt: Date | null;
+}
+
+export async function createCommunityInvite(input: {
+  communityId: string;
+  expiresInHours: number;
+  maxUses: number;
+  csrf: string;
+}): Promise<ActionResult<{ inviteId: string; token: string; expiresAt: string }>> {
+  await verifyCsrfValue(input?.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Community invitations are not available for this identity.');
+  if (!isUuid(input.communityId) || !Number.isInteger(input.expiresInHours) ||
+      input.expiresInHours < 1 || input.expiresInHours > 168 ||
+      !Number.isInteger(input.maxUses) || input.maxUses < 1 || input.maxUses > 100) {
+    return fail('Choose a valid invite expiry and use limit.');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before creating another invite.');
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000);
+
+  const invite = await db.transaction(async (tx) => {
+    const [community] = await tx.select({ id: communities.id, slug: communities.slug })
+      .from(communities).where(and(eq(communities.id, input.communityId), eq(communities.isPrivate, true)))
+      .for('update').limit(1);
+    if (!community) return null;
+    const [owner] = await tx.select({ userId: communityMembers.userId })
+      .from(communityMembers).where(and(
+        eq(communityMembers.communityId, input.communityId),
+        eq(communityMembers.userId, actor.userId),
+        eq(communityMembers.role, 'owner'),
+      )).for('update').limit(1);
+    if (!owner) return null;
+    const [created] = await tx.insert(communityInvites).values({
+      communityId: input.communityId,
+      createdById: actor.userId,
+      tokenHash,
+      expiresAt,
+      maxUses: input.maxUses,
+    }).returning({ id: communityInvites.id });
+    return created ?? null;
+  });
+  if (!invite) return fail('Only the owner of a private community can create invite links.');
+  await auditFromSession({ action: 'community.invite.created', targetType: 'community', targetId: input.communityId, targetLabel: 'Private community invite', metadata: { inviteId: invite.id, expiresAt: expiresAt.toISOString(), maxUses: input.maxUses } });
+  revalidatePath('/communities');
+  return ok({ inviteId: invite.id, token, expiresAt: expiresAt.toISOString() });
+}
+
+export async function revokeCommunityInvite(input: { inviteId: string; csrf: string }): Promise<ActionResult> {
+  await verifyCsrfValue(input?.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Community invitations are not available for this identity.');
+  if (!isUuid(input.inviteId)) return fail('That invite is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing invite links.');
+
+  const revoked = await db.transaction(async (tx) => {
+    const [invite] = await tx.select({ id: communityInvites.id, communityId: communityInvites.communityId })
+      .from(communityInvites).where(and(
+        eq(communityInvites.id, input.inviteId),
+        isNull(communityInvites.revokedAt),
+      )).for('update').limit(1);
+    if (!invite) return null;
+    const [owner] = await tx.select({ userId: communityMembers.userId })
+      .from(communityMembers).where(and(
+        eq(communityMembers.communityId, invite.communityId),
+        eq(communityMembers.userId, actor.userId),
+        eq(communityMembers.role, 'owner'),
+      )).for('update').limit(1);
+    if (!owner) return null;
+    await tx.update(communityInvites).set({ revokedAt: new Date() })
+      .where(eq(communityInvites.id, invite.id));
+    return invite.communityId;
+  });
+  if (!revoked) return fail('Only the current community owner can revoke that invite.');
+  await auditFromSession({ action: 'community.invite.revoked', targetType: 'community_invite', targetId: input.inviteId, targetLabel: 'Private community invite' });
+  revalidatePath('/communities');
+  return ok();
+}
+
+export async function acceptCommunityInvite(token: string, csrf: string): Promise<ActionResult<{ slug: string }>> {
+  await verifyCsrfValue(csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Community access is not available for this identity.');
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token)) return fail('That invite link is not valid.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before trying that invite again.');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  const accepted = await db.transaction(async (tx) => {
+    const [invite] = await tx.select({
+      id: communityInvites.id,
+      communityId: communityInvites.communityId,
+      expiresAt: communityInvites.expiresAt,
+      maxUses: communityInvites.maxUses,
+      useCount: communityInvites.useCount,
+    }).from(communityInvites).where(and(
+      eq(communityInvites.tokenHash, tokenHash),
+      isNull(communityInvites.revokedAt),
+    )).for('update').limit(1);
+    if (!invite || invite.expiresAt <= new Date() || invite.useCount >= invite.maxUses) return null;
+    const [community] = await tx.select({ id: communities.id, slug: communities.slug })
+      .from(communities).where(and(
+        eq(communities.id, invite.communityId),
+        eq(communities.isPrivate, true),
+      )).for('update').limit(1);
+    if (!community) return null;
+    const [existing] = await tx.select({ userId: communityMembers.userId })
+      .from(communityMembers).where(and(
+        eq(communityMembers.communityId, community.id),
+        eq(communityMembers.userId, actor.userId),
+      )).limit(1);
+    if (existing) return { slug: community.slug, communityId: community.id, alreadyMember: true };
+    await tx.insert(communityMembers).values({
+      communityId: community.id,
+      userId: actor.userId,
+      role: 'member',
+    });
+    await tx.update(communityInvites).set({
+      useCount: sql`${communityInvites.useCount} + 1`,
+    }).where(eq(communityInvites.id, invite.id));
+    return { slug: community.slug, communityId: community.id, alreadyMember: false };
+  });
+  if (!accepted) return fail('That invite is expired, revoked, used up, or unavailable.');
+  if (!accepted.alreadyMember) await auditFromSession({ action: 'community.invite.accepted', targetType: 'community', targetId: accepted.communityId, targetLabel: accepted.slug });
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${accepted.slug}`);
+  return ok({ slug: accepted.slug });
 }
 
 export async function joinCommunity(communityId: string, csrf: string): Promise<ActionResult> {
