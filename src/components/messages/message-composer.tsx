@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { onSendMessage } from '~/server/actions/messages-client';
 
@@ -22,7 +22,32 @@ export function MessageComposer({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Drafts stay in this browser tab's session storage, never in the server DB.
+  // Scope the key to the conversation and clear it only after a successful send.
+  const draftKey = `enyd:message-draft:${conversationId}`;
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(draftKey);
+      if (saved) setBody(saved.slice(0, 4000));
+    } catch {
+      // Storage may be disabled; the composer remains fully usable in memory.
+    } finally {
+      setDraftReady(true);
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      if (body) window.sessionStorage.setItem(draftKey, body.slice(0, 4000));
+      else window.sessionStorage.removeItem(draftKey);
+    } catch {
+      // Quota/private-mode failures must never block message composition.
+    }
+  }, [body, draftKey, draftReady]);
   const [attachment, setAttachment] = useState<null | { fileId: string; name: string }>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -49,6 +74,7 @@ export function MessageComposer({
         return;
       }
       setBody('');
+      try { window.sessionStorage.removeItem(draftKey); } catch { /* best effort */ }
       setAttachment(null);
       router.refresh();
     });
@@ -90,6 +116,7 @@ export function MessageComposer({
       )}
       <div className="composer-tools">
         {csrf}
+        <span className="t-meta" aria-live="polite">{body ? 'Draft saved in this tab' : ' '}</span>
         <input type="hidden" name="conversationId" value={conversationId} />
         {replyToId && <input type="hidden" name="replyToId" value={replyToId} />}
         <button
