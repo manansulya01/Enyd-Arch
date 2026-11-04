@@ -23,7 +23,7 @@ import { fail, ok, type ActionResult, type FormState } from '~/lib/action-result
 import { adminContextFor, adminCan, writeAudit } from '~/server/security/audit';
 import { currentActor, revokeAllSessionsForUser } from '~/server/auth/session';
 import { invitationCode } from '~/server/crypto';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 
 async function requirePermission(permission: string) {
   const actor = await currentActor();
@@ -138,7 +138,9 @@ export async function resolveReport(
   reportId: string,
   outcome: 'resolved' | 'dismissed',
   resolution: string,
+  csrf: string,
 ): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const { actor } = await requirePermission('reports.resolve');
 
   const [report] = await db
