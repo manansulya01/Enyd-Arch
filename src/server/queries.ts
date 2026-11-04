@@ -27,6 +27,7 @@ import {
   interests,
   matches as matchTable,
   messages as messageTable,
+  messageReactions,
   notifications as notificationTable,
   postAttachments,
   postHashtags,
@@ -2134,6 +2135,7 @@ export interface MessageView {
   } | null;
   removed: boolean;
   replyTo: { id: string; preview: string } | null;
+  reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
 }
 
 /**
@@ -2193,6 +2195,26 @@ export async function conversationMessages(
     .orderBy(desc(messageTable.createdAt))
     .limit(300);
 
+  const reactionRows = rows.length
+    ? await db.select({
+        messageId: messageReactions.messageId,
+        emoji: messageReactions.emoji,
+        userId: messageReactions.userId,
+      }).from(messageReactions).where(inArray(messageReactions.messageId, rows.map((row) => row.id)))
+    : [];
+  const reactionsByMessage = new Map<string, Array<{ emoji: string; count: number; reactedByMe: boolean }>>();
+  for (const reaction of reactionRows) {
+    const grouped = reactionsByMessage.get(reaction.messageId) ?? [];
+    const current = grouped.find((item) => item.emoji === reaction.emoji);
+    if (current) {
+      current.count += 1;
+      if (reaction.userId === viewerId) current.reactedByMe = true;
+    } else {
+      grouped.push({ emoji: reaction.emoji, count: 1, reactedByMe: reaction.userId === viewerId });
+    }
+    reactionsByMessage.set(reaction.messageId, grouped);
+  }
+
   const senderMap = await membersByIds(rows.map((row) => row.senderId), viewerId);
 
   await db
@@ -2214,6 +2236,7 @@ export async function conversationMessages(
     editedAt: row.editedAt,
     removed: Boolean(row.removedAt),
     replyTo: row.replyToId && row.replyPreview !== null ? { id: row.replyToId, preview: row.replyPreview } : null,
+    reactions: reactionsByMessage.get(row.id) ?? [],
     sender: senderMap.get(row.senderId)!,
     isMine: row.senderId === viewerId,
     attachment: row.attachmentId
