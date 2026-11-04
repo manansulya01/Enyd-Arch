@@ -8,7 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
-import { addGroupMember, toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
+import { addGroupMember, toggleConversationMute, toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -19,10 +19,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; memberAdded?: string; error?: string }>;
+  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; memberAdded?: string; mute?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, q, reply, updated, ownership, left, memberRemoved, memberAdded, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, q, reply, updated, ownership, left, memberRemoved, memberAdded, mute, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -44,6 +44,7 @@ export default async function MessagesPage({
       {left === '1' && <p className="notice notice-success" role="status">You left the group conversation.</p>}
       {memberRemoved === '1' && <p className="notice notice-success" role="status">The member was removed from this group.</p>}
       {memberAdded === '1' && <p className="notice notice-success" role="status">The member was added to this group.</p>}
+      {mute === 'updated' && <p className="notice notice-success" role="status">Conversation notification mute updated.</p>}
       {error && <p className="notice notice-danger" role="alert">
         {error === 'transfer-first'
           ? 'Transfer ownership to another group member before leaving.'
@@ -89,6 +90,14 @@ export default async function MessagesPage({
               <span className="t-label">Select a conversation</span>
             )}
           </div>
+          {active && (
+            <form action={toggleConversationMute} className="panel-head row row-between">
+              <input type="hidden" name="__csrf" value={csrfToken} />
+              <input type="hidden" name="conversationId" value={active.id} />
+              <span className="t-meta">{active.mutedUntil && active.mutedUntil > new Date() ? 'Muted for this conversation' : 'Conversation notifications on'}</span>
+              <button className="btn btn-ghost btn-sm" type="submit">{active.mutedUntil && active.mutedUntil > new Date() ? 'Unmute' : 'Mute for 8 hours'}</button>
+            </form>
+          )}
 
           <div className="panel-body panel-body-flush">
             {!active || !messages ? (
