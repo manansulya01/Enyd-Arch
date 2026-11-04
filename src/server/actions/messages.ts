@@ -217,6 +217,45 @@ export async function createGroupConversation(input: {
   return ok({ conversationId: created.id });
 }
 
+/** Toggle an eight-hour mute for the current member of a conversation. */
+export async function toggleConversationMute(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  if (!isUuid(conversationId)) redirect('/messages?error=invalid-conversation');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect(`/messages?c=${conversationId}&error=slow-down`);
+
+  const changed = await db.transaction(async (tx) => {
+    const [membership] = await tx.select({
+      mutedUntil: conversationMembers.mutedUntil,
+    }).from(conversationMembers).innerJoin(conversations, and(
+      eq(conversations.id, conversationMembers.conversationId),
+      isNull(conversations.removedAt),
+    )).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, actor.userId),
+      isNull(conversationMembers.removedAt),
+    )).for('update').limit(1);
+    if (!membership) return false;
+    const currentlyMuted = Boolean(membership.mutedUntil && membership.mutedUntil > new Date());
+    await tx.update(conversationMembers).set({
+      mutedUntil: currentlyMuted ? null : new Date(Date.now() + 8 * 60 * 60 * 1000),
+    }).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, actor.userId),
+      isNull(conversationMembers.removedAt),
+    ));
+    return true;
+  });
+  if (!changed) redirect('/messages?error=unavailable');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}&mute=${changed ? 'updated' : 'unchanged'}`);
+}
+
 /** Rename a small group; only its current owner may change its title. */
 export async function renameGroupConversation(formData: FormData): Promise<void> {
   await verifyCsrf(formData);
