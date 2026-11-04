@@ -72,7 +72,7 @@ export async function resolveCommunityReport(
       .from(communityMembers).where(and(
         eq(communityMembers.communityId, communityId),
         eq(communityMembers.userId, actor.userId),
-      )).limit(1);
+      )).for('update').limit(1);
     if (membership?.role !== 'owner' && membership?.role !== 'moderator') return null;
 
     await tx.update(reports).set({
