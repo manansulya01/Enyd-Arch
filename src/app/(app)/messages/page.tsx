@@ -188,12 +188,35 @@ export default async function MessagesPage({
                           </blockquote>
                         )}
                         {message.attachment && (
-                          <a className="post-attachment" href={`/files/${message.attachment.id}?download=1`}>
-                            <span className="post-attachment-glyph" aria-hidden="true">
-                              ⇄
-                            </span>
-                            {message.attachment.displayName}
-                          </a>
+                          <div className="stack stack-2">
+                            {/^image\/(png|jpeg|gif|webp|avif|bmp)$/i.test(message.attachment.contentType) && (
+                              // File route performs the same membership and block checks as the download.
+                              <a href={`/files/${message.attachment.id}`} aria-label={`Open image: ${message.attachment.displayName}`}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`/files/${message.attachment.id}`}
+                                  alt={message.attachment.displayName}
+                                  loading="lazy"
+                                  style={{ display: 'block', maxWidth: 'min(100%, 480px)', maxHeight: 360, objectFit: 'contain', borderRadius: 'var(--radius-md)' }}
+                                />
+                              </a>
+                            )}
+                            {message.attachment.contentType.startsWith('audio/') && (
+                              <audio controls preload="none" src={`/files/${message.attachment.id}`}>
+                                Your browser cannot play this audio file.
+                              </audio>
+                            )}
+                            {message.attachment.contentType.startsWith('video/') && (
+                              <video controls preload="metadata" playsInline src={`/files/${message.attachment.id}`} style={{ display: 'block', maxWidth: 'min(100%, 560px)', maxHeight: 360, borderRadius: 'var(--radius-md)' }}>
+                                Your browser cannot play this video file.
+                              </video>
+                            )}
+                            <a className="post-attachment" href={`/files/${message.attachment.id}?download=1`}>
+                              <span className="post-attachment-glyph" aria-hidden="true">⇄</span>
+                              {message.attachment.displayName}
+                              <span className="t-meta"> · {Math.max(1, Math.round(message.attachment.byteSize / 1024))} KB</span>
+                            </a>
+                          </div>
                         )}
                         {!message.removed && (
                           <form action={toggleMessagePin} className="row row-wrap">
