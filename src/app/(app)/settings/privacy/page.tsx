@@ -25,6 +25,13 @@ const DEFAULTS = {
   showActivity: true,
   showCreations: true,
   showArchiveContributions: true,
+  notifyOnMessage: true,
+  notifyOnReply: true,
+  notifyOnMention: true,
+  notifyOnReaction: false,
+  notifyOnConnection: true,
+  notifyOnProject: true,
+  notifyOnEvent: true,
 };
 
 export default async function PrivacySettingsPage({
@@ -112,6 +119,18 @@ export default async function PrivacySettingsPage({
               Privacy settings do not make content end-to-end encrypted or prevent authorized service operators
               from processing data needed to run the service.
             </p>
+          </section>
+
+          <section className="panel-body stack stack-3">
+            <h2>Notification preferences</h2>
+            <p className="t-small t-subtle">Choose which activity creates in-app notifications. Security and account notices remain enabled.</p>
+            <label className="check-row"><input type="checkbox" name="notifyOnMessage" defaultChecked={settings.notifyOnMessage} /><span>New private messages</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnReply" defaultChecked={settings.notifyOnReply} /><span>Replies to my posts and comments</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnMention" defaultChecked={settings.notifyOnMention} /><span>Mentions</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnReaction" defaultChecked={settings.notifyOnReaction} /><span>Reactions to my content</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnConnection" defaultChecked={settings.notifyOnConnection} /><span>Connection requests and updates</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnProject" defaultChecked={settings.notifyOnProject} /><span>Project invitations and activity</span></label>
+            <label className="check-row"><input type="checkbox" name="notifyOnEvent" defaultChecked={settings.notifyOnEvent} /><span>Event invitations and reminders</span></label>
           </section>
 
           <div className="panel-body row row-end">
