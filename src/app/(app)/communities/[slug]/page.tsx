@@ -9,13 +9,13 @@ import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
-import { setCommunityModerator, transferCommunityOwnership } from '~/server/actions/communities';
+import { setCommunityModerator, transferCommunityOwnership, updateCommunityRules } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Community' };
 
-export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string; role?: string }> }) {
+export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string; role?: string; rules?: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
   const query = await searchParams;
@@ -103,6 +103,8 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     <div className="stack stack-4">
       {query.transferred === '1' && <p className="notice notice-success" role="status">Community ownership was transferred successfully.</p>}
       {query.role === 'updated' && <p className="notice notice-success" role="status">Community member role updated.</p>}
+      {query.rules === 'updated' && <p className="notice notice-success" role="status">Community rules saved.</p>}
+      {community.rules && <section className="panel panel-body stack stack-2" aria-labelledby="community-rules-title"><h2 id="community-rules-title">Community rules</h2><p className="prose" style={{ whiteSpace: 'pre-wrap' }}>{community.rules}</p></section>}
       <p className="t-small">{posts.length} discussions · {community.name}</p>
       {membership[0]?.role === 'owner' && transferCandidates.some(candidate => candidate.userId !== actor.userId) && (
         <section className="panel panel-body stack stack-3">
@@ -125,6 +127,21 @@ export default async function CommunityPage({ params, searchParams }: { params: 
               <span>I understand this transfers ownership and leaves me as a moderator.</span>
             </label>
             <button className="btn btn-secondary" type="submit">Transfer ownership</button>
+          </form>
+        </section>
+      )}
+      {membership[0]?.role === 'owner' && (
+        <section className="panel panel-body stack stack-3" aria-label="Edit community rules">
+          <h2>Community rules</h2>
+          <p className="t-small t-subtle">Set clear expectations for members. Rules are displayed to everyone who can view this community.</p>
+          <form action={updateCommunityRules} className="stack stack-2">
+            <input type="hidden" name="__csrf" value={csrfToken} />
+            <input type="hidden" name="communityId" value={community.id} />
+            <label className="field">
+              <span className="field-label">Rules</span>
+              <textarea className="textarea-editor" name="rules" rows={5} maxLength={5000} defaultValue={community.rules} placeholder="1. Be respectful…\n2. Stay on topic…" />
+            </label>
+            <button className="btn btn-secondary" type="submit">Save community rules</button>
           </form>
         </section>
       )}
