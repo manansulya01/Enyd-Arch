@@ -23,6 +23,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 ### Discord-like community and communication
 - [x] Basic direct and small group text conversations (server-side foundation).
 - [x] Small-group rename, leave, and ownership transfer with owner-only server checks and explicit confirmation.
+- [x] Per-member conversation mute/unmute for eight hours, backed by active-membership checks and a transaction-locked update.
 - [x] Owner-only group member removal with active-membership checks and soft removal.
 - [x] Owner-controlled adding of eligible existing connections to groups, capped at 12, with serialized membership checks, recipient policy checks, block-pair rejection and active-membership validation.
 - [ ] Expiring/revocable invite links, broader group permissions, and a full conversation UI completeness audit.
