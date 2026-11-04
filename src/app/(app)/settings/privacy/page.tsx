@@ -33,7 +33,7 @@ const DEFAULTS = {
   notifyOnConnection: true,
   notifyOnProject: true,
   notifyOnEvent: true,
-  notifyOnFile: true,
+  notifyOnFile: false,
 };
 
 export default async function PrivacySettingsPage({
