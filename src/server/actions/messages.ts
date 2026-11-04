@@ -34,6 +34,7 @@ import { normalizeMessageBody } from '~/server/auth/message-content';
 import { isUuid } from '~/server/auth/identifiers';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 import { notify } from '~/server/notify';
+import { auditFromSession } from '~/server/security/audit';
 
 /** Blocks are symmetric for contact purposes: either member can close the path. */
 async function pairIsBlocked(a: string, b: string): Promise<boolean> {
@@ -266,6 +267,7 @@ export async function createGroupInvite(input: {
     return created ?? null;
   });
   if (!invite) return fail('Only the current group owner can create an invite link.');
+  await auditFromSession({ action: 'conversation.invite.created', targetType: 'conversation', targetId: input.conversationId, targetLabel: 'Group invite', metadata: { inviteId: invite.id, expiresAt: expiresAt.toISOString(), maxUses: input.maxUses } });
   revalidatePath('/messages');
   return ok({ inviteId: invite.id, token, expiresAt: expiresAt.toISOString() });
 }
@@ -305,6 +307,7 @@ export async function revokeGroupInvite(input: {
     return true;
   });
   if (!revoked) return fail('Only the current group owner can revoke that invite.');
+  await auditFromSession({ action: 'conversation.invite.revoked', targetType: 'conversation_invite', targetId: input.inviteId, targetLabel: 'Group invite' });
   revalidatePath('/messages');
   return ok();
 }
@@ -388,6 +391,7 @@ export async function acceptGroupInvite(token: string, csrf: string): Promise<Ac
   });
 
   if (!accepted) return fail('That invite is expired, revoked, full, or unavailable to this account.');
+  if (!accepted.alreadyMember) await auditFromSession({ action: 'conversation.invite.accepted', targetType: 'conversation', targetId: accepted.conversationId, targetLabel: 'Group conversation' });
   revalidatePath('/messages');
   return ok({ conversationId: accepted.conversationId });
 }
