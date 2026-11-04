@@ -2125,6 +2125,7 @@ export interface MessageView {
   body: string;
   createdAt: Date;
   editedAt: Date | null;
+  pinnedAt: Date | null;
   sender: MemberSummary;
   isMine: boolean;
   attachment: {
@@ -2170,6 +2171,7 @@ export async function conversationMessages(
       body: messageTable.body,
       createdAt: messageTable.createdAt,
       editedAt: messageTable.editedAt,
+      pinnedAt: messageTable.pinnedAt,
       senderId: messageTable.senderId,
       removedAt: messageTable.removedAt,
       replyToId: sql<string | null>`(select r.id::text from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
@@ -2234,6 +2236,7 @@ export async function conversationMessages(
     body: row.removedAt ? '' : row.body,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
+    pinnedAt: row.pinnedAt,
     removed: Boolean(row.removedAt),
     replyTo: row.replyToId && row.replyPreview !== null ? { id: row.replyToId, preview: row.replyPreview } : null,
     reactions: reactionsByMessage.get(row.id) ?? [],
