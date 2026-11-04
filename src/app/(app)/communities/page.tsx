@@ -18,6 +18,7 @@ export default async function CommunitiesPage({ searchParams }: { searchParams: 
       slug: communities.slug,
       name: communities.name,
       description: communities.description,
+      isPrivate: communities.isPrivate,
       memberCount: sql<number>`count(${communityMembers.userId})::int`,
     }).from(communities)
       .leftJoin(communityMembers, eq(communityMembers.communityId, communities.id))
