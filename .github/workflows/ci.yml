@@ -51,5 +51,8 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Type-check Arcade sandbox
+        run: pnpm typecheck:sandbox
+
       - name: Build production application
         run: pnpm build
