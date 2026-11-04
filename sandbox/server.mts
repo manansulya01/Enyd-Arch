@@ -11,11 +11,12 @@
  *   pnpm dev:sandbox
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import postgres from 'postgres';
 import { readZip, entryExtension, GAME_LIMITS } from '../src/server/storage/zip.js';
+import { decryptObject } from '../src/server/storage/envelope-core.js';
 
 const PORT = Number(process.env.SANDBOX_PORT ?? 3101);
 const APP_ORIGIN = process.env.APP_ORIGIN ?? 'http://localhost:3000';
@@ -166,7 +167,7 @@ const server = createServer(async (req, res) => {
 
     const rows = await sql`
       select g.id, g.title, g.entry_file, g.package_checksum,
-             o.object_key
+             o.object_key, o.checksum as storage_checksum, o.byte_size as storage_byte_size
       from games g
       join storage_objects o on o.id = g.package_object_id
       where g.id = ${entry.gameId}
@@ -211,8 +212,17 @@ const server = createServer(async (req, res) => {
 
   let entries: ReturnType<typeof readZip>;
   try {
-    const bytes = await readFile(absolute);
-    entries = readZip(new Uint8Array(bytes), GAME_LIMITS);
+    const storedBytes = new Uint8Array(await readFile(absolute));
+    const decoded = decryptObject(storedBytes);
+    const actualChecksum = createHash('sha256').update(decoded.data).digest('hex');
+    if (
+      decoded.data.byteLength !== Number(game.storage_byte_size) ||
+      actualChecksum !== String(game.storage_checksum) ||
+      (game.package_checksum && actualChecksum !== String(game.package_checksum))
+    ) {
+      return send(res, 409, 'Package integrity check failed');
+    }
+    entries = readZip(decoded.data, GAME_LIMITS);
   } catch {
     return send(res, 404, 'Package unavailable');
   }
