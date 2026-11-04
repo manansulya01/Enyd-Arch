@@ -10,6 +10,10 @@ import {
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
+  communityMembers,
+  communityPostComments,
+  communityPosts,
+  communities,
   conversationInvites,
   conversationMembers,
   conversations as conversationTable,
@@ -36,6 +40,7 @@ import {
   profiles,
   projects as projectTable,
   reactions,
+  reports,
   rsvps,
   userAchievements,
   userInterests,
@@ -2145,6 +2150,69 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       myRole: roleByConversation.get(row.id) ?? 'member',
     };
   });
+}
+
+export interface CommunityModerationReportView {
+  id: string;
+  targetType: 'community_post' | 'community_comment';
+  targetId: string;
+  reason: string;
+  detail: string;
+  priority: string;
+  createdAt: Date;
+  targetPreview: string;
+}
+
+export async function communityReportsForModerator(
+  communityId: string,
+  viewerId: string,
+): Promise<CommunityModerationReportView[]> {
+  const [membership] = await db.select({ role: communityMembers.role })
+    .from(communityMembers).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, viewerId),
+    )).limit(1);
+  if (membership?.role !== 'owner' && membership?.role !== 'moderator') return [];
+
+  const states = ['open', 'triaged', 'investigating'] as const;
+  const [postReports, commentReports] = await Promise.all([
+    db.select({
+      id: reports.id,
+      targetType: reports.targetType,
+      targetId: reports.targetId,
+      reason: reports.reason,
+      detail: reports.detail,
+      priority: reports.priority,
+      createdAt: reports.createdAt,
+      targetPreview: sql<string>`left(coalesce(${communityPosts.title}, '') || E'\\n' || ${communityPosts.body}, 500)`,
+    }).from(reports)
+      .innerJoin(communityPosts, eq(communityPosts.id, reports.targetId))
+      .where(and(
+        eq(reports.targetType, 'community_post'),
+        eq(communityPosts.communityId, communityId),
+        inArray(reports.state, states),
+      )),
+    db.select({
+      id: reports.id,
+      targetType: reports.targetType,
+      targetId: reports.targetId,
+      reason: reports.reason,
+      detail: reports.detail,
+      priority: reports.priority,
+      createdAt: reports.createdAt,
+      targetPreview: sql<string>`left(${communityPostComments.body}, 500)`,
+    }).from(reports)
+      .innerJoin(communityPostComments, eq(communityPostComments.id, reports.targetId))
+      .innerJoin(communityPosts, eq(communityPosts.id, communityPostComments.postId))
+      .where(and(
+        eq(reports.targetType, 'community_comment'),
+        eq(communityPosts.communityId, communityId),
+        inArray(reports.state, states),
+      )),
+  ]);
+  return [...postReports, ...commentReports]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 50) as CommunityModerationReportView[];
 }
 
 export interface ConversationInviteView {
