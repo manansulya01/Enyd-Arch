@@ -10,6 +10,7 @@ import {
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
+  conversationInvites,
   conversationMembers,
   conversations as conversationTable,
   connectionRequests,
@@ -2144,6 +2145,37 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       myRole: roleByConversation.get(row.id) ?? 'member',
     };
   });
+}
+
+export interface ConversationInviteView {
+  id: string;
+  expiresAt: Date;
+  maxUses: number;
+  useCount: number;
+  revokedAt: Date | null;
+}
+
+export async function conversationInvitesForOwner(
+  conversationId: string,
+  viewerId: string,
+): Promise<ConversationInviteView[]> {
+  const [membership] = await db.select({ role: conversationMembers.role })
+    .from(conversationMembers).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, viewerId),
+      isNull(conversationMembers.removedAt),
+    )).limit(1);
+  if (membership?.role !== 'owner') return [];
+  return db.select({
+    id: conversationInvites.id,
+    expiresAt: conversationInvites.expiresAt,
+    maxUses: conversationInvites.maxUses,
+    useCount: conversationInvites.useCount,
+    revokedAt: conversationInvites.revokedAt,
+  }).from(conversationInvites)
+    .where(eq(conversationInvites.conversationId, conversationId))
+    .orderBy(desc(conversationInvites.createdAt))
+    .limit(20);
 }
 
 export interface MessageView {
