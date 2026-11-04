@@ -28,7 +28,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Message edit (15-minute window), sender-owned removal, and edited markers; actions enforce active conversation membership, CSRF, capability, and rate-limit checks.
 - [x] Message reactions: six allow-listed emoji, per-member toggles, unique member/message/emoji keys, membership-checked server writes, rate limits, and per-message counts in the thread UI. Added on the completion branch; CI verification is pending.
 - [x] Message pin/unpin: per-message pin state, pinning member and timestamp, membership-checked transactional toggles, and visible pin state in the thread UI. Added on the completion branch; CI verification is pending.
-- [ ] Read receipts beyond unread markers, message search, drafts, richer attachment previews, retry/offline queue, notification preferences.
+- [x] Search within a private conversation by message text, capped to 80 characters and scoped to the authenticated member's conversation. Added on the completion branch; CI verification is pending.
+- [ ] Read receipts beyond unread markers, drafts, richer attachment previews, retry/offline queue, notification preferences.
 - [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
