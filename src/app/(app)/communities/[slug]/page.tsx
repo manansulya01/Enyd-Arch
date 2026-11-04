@@ -57,6 +57,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   const commentRows = rows.length === 0 ? [] : await db.select({
     id: communityPostComments.id,
     postId: communityPostComments.postId,
+    parentId: communityPostComments.parentId,
     body: communityPostComments.body,
     createdAt: communityPostComments.createdAt,
     authorId: users.id,
@@ -144,6 +145,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
             postId={post.id}
             comments={(commentsByPost.get(post.id) ?? []).map(comment => ({
               id: comment.id,
+              parentId: comment.parentId,
               body: comment.body,
               authorId: comment.authorId,
               username: comment.username,
