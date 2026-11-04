@@ -308,6 +308,57 @@ export async function transferGroupOwnership(formData: FormData): Promise<void> 
   redirect(`/messages?c=${conversationId}&ownership=transferred`);
 }
 
+/** Add one eligible member to an existing small group; only the current owner can invite. */
+export async function addGroupMember(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const conversationId = String(formData.get('conversationId') ?? '');
+  const targetUserId = String(formData.get('targetUserId') ?? '');
+  if (!isUuid(conversationId) || !isUuid(targetUserId) || targetUserId === actor.userId) {
+    redirect('/messages?error=invalid-invite');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+  if (!(await canStartDirectMessage(actor.userId, targetUserId))) {
+    redirect(`/messages?c=${conversationId}&error=invite-unavailable`);
+  }
+
+  const outcome = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return 'unavailable' as const;
+    const [owner] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (owner?.role !== 'owner') return 'unavailable' as const;
+    const members = await tx.select({ userId: conversationMembers.userId })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        isNull(conversationMembers.removedAt),
+      ));
+    if (members.some((member) => member.userId === targetUserId)) return 'already-member' as const;
+    if (members.length >= 12) return 'full' as const;
+    await tx.insert(conversationMembers).values({
+      conversationId,
+      userId: targetUserId,
+      role: 'member',
+    });
+    return 'added' as const;
+  });
+  if (outcome !== 'added') redirect(`/messages?c=${conversationId}&error=${outcome === 'full' ? 'group-full' : outcome === 'already-member' ? 'already-member' : 'not-allowed'}`);
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}&memberAdded=1`);
+}
+
 /** Remove a current non-owner member from a group; history is retained for remaining members. */
 export async function removeGroupMember(formData: FormData): Promise<void> {
   await verifyCsrf(formData);
