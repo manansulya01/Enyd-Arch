@@ -34,7 +34,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Message drafts: automatically saved per conversation in browser session storage (not sent to the server), restored on return, bounded to 4,000 characters, and cleared only after successful send. Drafts are tab-session scoped; cross-device sync is intentionally not provided.
 - [x] Message attachment previews for safe raster images, browser-native audio and video playback, plus download links and file sizes; media bytes still flow through the existing membership/block-authorized file route.
 - [x] Per-category in-app notification preferences for messages, replies, mentions, reactions, connections, projects, events and file activity; notification writes enforce saved preferences with request-scoped preference reads.
-- [ ] Retry/offline queue.
+- [x] Tab-scoped offline outbox for up to 10 text/file-reference messages, explicit retry/discard controls, and client-generated idempotency IDs so retries after a lost response do not duplicate messages. Attachment bytes must already have completed the validated upload; outbox contents remain in session storage and are not cross-device or browser-restart durable. Requires CI and staging verification.
 - [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
