@@ -2147,6 +2147,7 @@ export interface MessageView {
 export async function conversationMessages(
   conversationId: string,
   viewerId: string,
+  searchTerm?: string,
 ): Promise<MessageView[] | null> {
   const membership = await db
     .select({ userId: conversationMembers.userId })
@@ -2193,7 +2194,13 @@ export async function conversationMessages(
           and so.removed_at is null
       )`,
     ))
-    .where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))
+    .where(and(
+      eq(messageTable.conversationId, conversationId),
+      isNull(messageTable.removedAt),
+      ...(searchTerm?.trim()
+        ? [ilike(messageTable.body, `%${searchTerm.trim().slice(0, 80).replace(/[\\%_]/g, '\\.where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))')}%`)]
+        : []),
+    ))
     .orderBy(desc(messageTable.createdAt))
     .limit(300);
 
