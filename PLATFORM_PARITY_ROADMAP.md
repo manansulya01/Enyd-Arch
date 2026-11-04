@@ -26,7 +26,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Owner-only group member removal with active-membership checks and soft removal.
 - [ ] Invite links, broader group permissions, and a full conversation UI completeness audit.
 - [x] Message edit (15-minute window), sender-owned removal, and edited markers; actions enforce active conversation membership, CSRF, capability, and rate-limit checks.
-- [ ] Read receipts beyond unread markers, replies, reactions, pinning, search, drafts, richer attachment previews, retry/offline queue, notification preferences.
+- [x] Message reactions: six allow-listed emoji, per-member toggles, unique member/message/emoji keys, membership-checked server writes, rate limits, and per-message counts in the thread UI. Added on the completion branch; CI verification is pending.
+- [ ] Read receipts beyond unread markers, pinning, search, drafts, richer attachment previews, retry/offline queue, notification preferences.
 - [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
