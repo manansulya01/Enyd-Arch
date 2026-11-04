@@ -340,6 +340,23 @@ export async function addGroupMember(formData: FormData): Promise<void> {
         isNull(conversationMembers.removedAt),
       )).limit(1);
     if (owner?.role !== 'owner') return 'unavailable' as const;
+    const [eligible] = await tx.select({ id: users.id })
+      .from(users)
+      .where(and(
+        eq(users.id, targetUserId),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      )).limit(1);
+    const [connection] = await tx.select({ id: matches.id })
+      .from(matches)
+      .where(and(
+        eq(matches.status, 'accepted'),
+        or(
+          and(eq(matches.userAId, actor.userId), eq(matches.userBId, targetUserId)),
+          and(eq(matches.userAId, targetUserId), eq(matches.userBId, actor.userId)),
+        ),
+      )).limit(1);
+    if (!eligible || !connection) return 'unavailable' as const;
     const members = await tx.select({ userId: conversationMembers.userId })
       .from(conversationMembers).where(and(
         eq(conversationMembers.conversationId, conversationId),
