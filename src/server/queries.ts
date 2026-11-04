@@ -43,6 +43,8 @@ import {
   reactions,
   reports,
   rsvps,
+  stories,
+  storyViews,
   userAchievements,
   userInterests,
   userFollows,
@@ -2173,6 +2175,100 @@ export async function communityInvitesForOwner(
     .where(eq(communityInvites.communityId, communityId))
     .orderBy(desc(communityInvites.createdAt))
     .limit(30);
+}
+
+export interface StoryFeedItem {
+  id: string;
+  authorId: string;
+  username: string;
+  displayName: string;
+  body: string;
+  audience: 'followers' | 'public';
+  createdAt: Date;
+  expiresAt: Date;
+  viewedByMe: boolean;
+  viewers: Array<{ displayName: string; username: string; viewedAt: Date }>;
+}
+
+export async function storyFeed(viewerId: string): Promise<StoryFeedItem[]> {
+  const followRows = await db.select({ followedId: userFollows.followedId })
+    .from(userFollows).where(eq(userFollows.followerId, viewerId));
+  const followedIds = followRows.map((row) => row.followedId);
+  const rows = await db.select({
+    id: stories.id,
+    authorId: users.id,
+    username: users.username,
+    displayName: users.displayName,
+    body: stories.body,
+    audience: stories.audience,
+    createdAt: stories.createdAt,
+    expiresAt: stories.expiresAt,
+  }).from(stories)
+    .innerJoin(users, and(
+      eq(users.id, stories.authorId),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ))
+    .where(and(
+      gt(stories.expiresAt, new Date()),
+      isNull(stories.removedAt),
+      or(
+        eq(stories.authorId, viewerId),
+        eq(stories.audience, 'public'),
+        ...(followedIds.length
+          ? [and(eq(stories.audience, 'followers'), inArray(stories.authorId, followedIds))]
+          : []),
+      ),
+    ))
+    .orderBy(desc(stories.createdAt))
+    .limit(100);
+
+  if (!rows.length) return [];
+  const blockRows = await db.select().from(blocks).where(or(
+    eq(blocks.blockerId, viewerId),
+    eq(blocks.blockedId, viewerId),
+  ));
+  const hidden = new Set(blockRows.map((row) =>
+    row.blockerId === viewerId ? row.blockedId : row.blockerId,
+  ));
+  const visible = rows.filter((row) => !hidden.has(row.authorId));
+  if (!visible.length) return [];
+
+  const visibleIds = visible.map((row) => row.id);
+  const viewedRows = await db.select({ storyId: storyViews.storyId })
+    .from(storyViews).where(and(
+      inArray(storyViews.storyId, visibleIds),
+      eq(storyViews.viewerId, viewerId),
+    ));
+  const viewed = new Set(viewedRows.map((row) => row.storyId));
+  const ownIds = visible.filter((row) => row.authorId === viewerId).map((row) => row.id);
+  const ownViews = ownIds.length ? await db.select({
+    storyId: storyViews.storyId,
+    viewerId: storyViews.viewerId,
+    displayName: users.displayName,
+    username: users.username,
+    viewedAt: storyViews.viewedAt,
+  }).from(storyViews)
+    .innerJoin(users, and(
+      eq(users.id, storyViews.viewerId),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ))
+    .where(inArray(storyViews.storyId, ownIds)) : [];
+  const viewersByStory = new Map<string, StoryFeedItem['viewers']>();
+  for (const view of ownViews) {
+    if (view.viewerId === viewerId) continue;
+    const list = viewersByStory.get(view.storyId) ?? [];
+    list.push({ displayName: view.displayName, username: view.username, viewedAt: view.viewedAt });
+    viewersByStory.set(view.storyId, list);
+  }
+
+  return visible.map((row) => ({
+    ...row,
+    audience: row.audience as 'followers' | 'public',
+    viewedByMe: row.authorId !== viewerId && viewed.has(row.id),
+    viewers: row.authorId === viewerId ? viewersByStory.get(row.id) ?? [] : [],
+  }));
 }
 
 export interface CommunityModerationReportView {
