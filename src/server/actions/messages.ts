@@ -496,7 +496,9 @@ export async function sendMessage(
   const body = normalizeMessageBody(formData.get('body'));
   const attachmentFileId = String(formData.get('attachmentFileId') ?? '') || null;
   const replyToId = String(formData.get('replyToId') ?? '') || null;
+  const clientMessageId = String(formData.get('clientMessageId') ?? '');
 
+  if (!isUuid(clientMessageId)) return fail('That message could not be identified safely.');
   if (!isUuid(conversationId)) return fail('That conversation is not available.');
   if (attachmentFileId && !isUuid(attachmentFileId)) return fail('That file is not available.');
   if (replyToId && !isUuid(replyToId)) return fail('That message is not available to reply to.');
@@ -576,10 +578,27 @@ export async function sendMessage(
   const limiter = await acquire('message', actor.userId);
   if (!limiter.allowed) return fail('You are sending messages very quickly. Take a breath.');
 
-  const [row] = await db
+  const [inserted] = await db
     .insert(messages)
-    .values({ conversationId, senderId: actor.userId, body, attachmentFileId, replyToId })
+    .values({ id: clientMessageId, conversationId, senderId: actor.userId, body, attachmentFileId, replyToId })
+    .onConflictDoNothing({ target: messages.id })
     .returning({ id: messages.id });
+
+  if (!inserted) {
+    // A retry after a lost network response must not create a duplicate. The
+    // client UUID is an idempotency key, but it is never allowed to claim
+    // another member's message or reuse a key across conversations.
+    const [existing] = await db.select({ id: messages.id })
+      .from(messages)
+      .where(and(
+        eq(messages.id, clientMessageId),
+        eq(messages.conversationId, conversationId),
+        eq(messages.senderId, actor.userId),
+      ))
+      .limit(1);
+    if (!existing) return fail('That message could not be sent safely. Please start a new message.');
+    return ok({ messageId: existing.id });
+  }
 
   await db
     .update(conversations)
@@ -588,7 +607,7 @@ export async function sendMessage(
 
   revalidatePath(`/messages/${conversationId}`);
   revalidatePath('/messages');
-  return ok({ messageId: row!.id });
+  return ok({ messageId: inserted.id });
 }
 
 
