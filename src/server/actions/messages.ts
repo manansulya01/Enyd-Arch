@@ -8,11 +8,13 @@
  * invisible to anyone not in `conversation_members`.
  */
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
 import {
   blocks,
+  conversationInvites,
   conversationMembers,
   conversations,
   files,
@@ -216,6 +218,173 @@ export async function createGroupConversation(input: {
 
   revalidatePath('/messages');
   return ok({ conversationId: created.id });
+}
+
+/** Create a one-time-visible, hashed-token invite for a private group conversation. */
+export async function createGroupInvite(input: {
+  conversationId: string;
+  expiresInHours: number;
+  maxUses: number;
+  csrf: string;
+}): Promise<ActionResult<{ inviteId: string; token: string; expiresAt: string }>> {
+  await verifyCsrfValue(input?.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  if (!isUuid(input.conversationId) ||
+      !Number.isInteger(input.expiresInHours) || input.expiresInHours < 1 || input.expiresInHours > 168 ||
+      !Number.isInteger(input.maxUses) || input.maxUses < 1 || input.maxUses > 12) {
+    return fail('Choose a valid invite expiry and use limit.');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before creating another invite.');
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000);
+
+  const invite = await db.transaction(async (tx) => {
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, input.conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return null;
+    const [membership] = await tx.select({ role: conversationMembers.role })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, input.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (membership?.role !== 'owner') return null;
+    const [created] = await tx.insert(conversationInvites).values({
+      conversationId: input.conversationId,
+      createdById: actor.userId,
+      tokenHash,
+      expiresAt,
+      maxUses: input.maxUses,
+    }).returning({ id: conversationInvites.id });
+    return created ?? null;
+  });
+  if (!invite) return fail('Only the current group owner can create an invite link.');
+  revalidatePath('/messages');
+  return ok({ inviteId: invite.id, token, expiresAt: expiresAt.toISOString() });
+}
+
+/** Revoke an invite link; the raw bearer token is never stored in the database. */
+export async function revokeGroupInvite(input: {
+  inviteId: string;
+  csrf: string;
+}): Promise<ActionResult> {
+  await verifyCsrfValue(input?.csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  if (!isUuid(input.inviteId)) return fail('That invite is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing invite links.');
+
+  const revoked = await db.transaction(async (tx) => {
+    const [invite] = await tx.select({
+      id: conversationInvites.id,
+      conversationId: conversationInvites.conversationId,
+    }).from(conversationInvites).where(and(
+      eq(conversationInvites.id, input.inviteId),
+      isNull(conversationInvites.revokedAt),
+    )).for('update').limit(1);
+    if (!invite) return false;
+    const [owner] = await tx.select({ id: conversationMembers.userId })
+      .from(conversationMembers).where(and(
+        eq(conversationMembers.conversationId, invite.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        eq(conversationMembers.role, 'owner'),
+        isNull(conversationMembers.removedAt),
+      )).limit(1);
+    if (!owner) return false;
+    await tx.update(conversationInvites).set({ revokedAt: new Date() })
+      .where(eq(conversationInvites.id, invite.id));
+    return true;
+  });
+  if (!revoked) return fail('Only the current group owner can revoke that invite.');
+  revalidatePath('/messages');
+  return ok();
+}
+
+/** Accept a group invite only after explicit signed-in confirmation. */
+export async function acceptGroupInvite(token: string, csrf: string): Promise<ActionResult<{ conversationId: string }>> {
+  await verifyCsrfValue(csrf);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) return fail('Messaging is not available for this identity.');
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(token)) return fail('That invite link is not valid.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before trying that invite again.');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  const accepted = await db.transaction(async (tx) => {
+    const [invite] = await tx.select({
+      id: conversationInvites.id,
+      conversationId: conversationInvites.conversationId,
+      createdById: conversationInvites.createdById,
+      expiresAt: conversationInvites.expiresAt,
+      maxUses: conversationInvites.maxUses,
+      useCount: conversationInvites.useCount,
+    }).from(conversationInvites).where(and(
+      eq(conversationInvites.tokenHash, tokenHash),
+      isNull(conversationInvites.revokedAt),
+    )).for('update').limit(1);
+    if (!invite || invite.expiresAt <= new Date() || invite.useCount >= invite.maxUses) return null;
+
+    const [conversation] = await tx.select({ id: conversations.id, kind: conversations.kind })
+      .from(conversations).where(and(
+        eq(conversations.id, invite.conversationId),
+        isNull(conversations.removedAt),
+      )).for('update').limit(1);
+    if (!conversation || conversation.kind !== 'group') return null;
+
+    const activeMembers = await tx.select({
+      userId: conversationMembers.userId,
+      role: conversationMembers.role,
+    }).from(conversationMembers)
+      .innerJoin(users, and(
+        eq(users.id, conversationMembers.userId),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      ))
+      .where(and(
+        eq(conversationMembers.conversationId, invite.conversationId),
+        isNull(conversationMembers.removedAt),
+      ));
+    if (activeMembers.some((member) => member.userId === actor.userId)) {
+      return { conversationId: invite.conversationId, alreadyMember: true };
+    }
+    if (activeMembers.length >= 12) return null;
+    const owner = activeMembers.find((member) => member.role === 'owner');
+    if (!owner || !(await canStartDirectMessage(owner.userId, actor.userId))) return null;
+
+    const memberIds = activeMembers.map((member) => member.userId);
+    const blocked = await tx.select({ id: blocks.id }).from(blocks).where(or(
+      and(eq(blocks.blockerId, actor.userId), inArray(blocks.blockedId, memberIds)),
+      and(inArray(blocks.blockerId, memberIds), eq(blocks.blockedId, actor.userId)),
+    )).limit(1);
+    if (blocked.length) return null;
+
+    await tx.insert(conversationMembers).values({
+      conversationId: invite.conversationId,
+      userId: actor.userId,
+      role: 'member',
+    }).onConflictDoUpdate({
+      target: [conversationMembers.conversationId, conversationMembers.userId],
+      set: { role: 'member', joinedAt: new Date(), lastReadAt: null, mutedUntil: null, removedAt: null },
+    });
+    await tx.update(conversationInvites).set({
+      useCount: sql`${conversationInvites.useCount} + 1`,
+    }).where(eq(conversationInvites.id, invite.id));
+    return { conversationId: invite.conversationId, alreadyMember: false };
+  });
+
+  if (!accepted) return fail('That invite is expired, revoked, full, or unavailable to this account.');
+  revalidatePath('/messages');
+  return ok({ conversationId: accepted.conversationId });
 }
 
 /** Toggle an eight-hour mute for the current member of a conversation. */
