@@ -1075,6 +1075,26 @@ export const messages = pgTable(
   ],
 );
 
+/** Per-member emoji reactions on messages; membership is checked by every write/read path. */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.userId, t.emoji] }),
+    index('message_reactions_message_idx').on(t.messageId),
+    index('message_reactions_user_idx').on(t.userId),
+  ],
+);
+
 export const projects = pgTable(
   'projects',
   {
