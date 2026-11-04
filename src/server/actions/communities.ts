@@ -55,6 +55,38 @@ export async function createCommunity(input: {
   }
 }
 
+export async function updateCommunityRules(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) redirect('/communities');
+  const communityId = String(formData.get('communityId') ?? '');
+  const rules = cleanText(String(formData.get('rules') ?? ''), 5000);
+  if (!isUuid(communityId)) redirect('/communities');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/communities?error=slow-down');
+
+  const slug = await db.transaction(async (tx) => {
+    const [community] = await tx.select({ id: communities.id, slug: communities.slug })
+      .from(communities).where(eq(communities.id, communityId))
+      .for('update').limit(1);
+    if (!community) return null;
+    const [membership] = await tx.select({ role: communityMembers.role })
+      .from(communityMembers).where(and(
+        eq(communityMembers.communityId, communityId),
+        eq(communityMembers.userId, actor.userId),
+      )).limit(1);
+    if (membership?.role !== 'owner') return null;
+    await tx.update(communities).set({ rules, updatedAt: new Date() })
+      .where(eq(communities.id, communityId));
+    return community.slug;
+  });
+  if (!slug) redirect('/communities');
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${slug}`);
+  redirect(`/communities/${slug}?rules=updated`);
+}
+
 export async function joinCommunity(communityId: string, csrf: string): Promise<ActionResult> {
   await verifyCsrfValue(csrf);
   const actor = await currentActor();
