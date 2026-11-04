@@ -177,12 +177,15 @@ export async function createCommunityComment(input: {
     if (input.parentId) {
       const [parent] = await tx.select({ id: communityPostComments.id })
         .from(communityPostComments)
+        .innerJoin(users, eq(users.id, communityPostComments.authorId))
         .where(and(
           eq(communityPostComments.id, input.parentId),
           eq(communityPostComments.postId, row.postId),
           eq(communityPostComments.status, 'published'),
           isNull(communityPostComments.removedAt),
           isNull(communityPostComments.parentId),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
         ))
         .for('update')
         .limit(1);
