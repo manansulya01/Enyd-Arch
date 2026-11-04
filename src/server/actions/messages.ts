@@ -763,3 +763,47 @@ export async function toggleMessageReaction(formData: FormData): Promise<void> {
   revalidatePath('/messages');
   redirect(`/messages?c=${conversationId}`);
 }
+
+
+/** Pin or unpin a message for everyone in a conversation. */
+export async function toggleMessagePin(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const messageId = String(formData.get('messageId') ?? '');
+  if (!isUuid(messageId)) redirect('/messages?error=invalid-pin');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const conversationId = await db.transaction(async (tx) => {
+    const [target] = await tx.select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      pinnedAt: messages.pinnedAt,
+    })
+      .from(messages)
+      .innerJoin(conversations, and(
+        eq(conversations.id, messages.conversationId),
+        isNull(conversations.removedAt),
+      ))
+      .innerJoin(conversationMembers, and(
+        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      ))
+      .where(and(eq(messages.id, messageId), isNull(messages.removedAt)))
+      .for('update')
+      .limit(1);
+    if (!target) return null;
+    await tx.update(messages).set(target.pinnedAt
+      ? { pinnedAt: null, pinnedById: null }
+      : { pinnedAt: new Date(), pinnedById: actor.userId })
+      .where(eq(messages.id, messageId));
+    return target.conversationId;
+  });
+  if (!conversationId) redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}`);
+}
