@@ -161,6 +161,8 @@ export const reportTargetEnum = pgEnum('report_target', [
   'gallery_post',
   'event',
   'project',
+  'community_post',
+  'community_comment',
 ]);
 
 export const reportStateEnum = pgEnum('report_state', [
