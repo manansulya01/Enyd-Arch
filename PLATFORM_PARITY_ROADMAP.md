@@ -76,7 +76,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Authors can remove their own comments; community owners/moderators can remove comments in their space.
 - [ ] Community rules, moderator tools, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
-- [ ] Comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
+- [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
+- [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
 - [ ] Community wiki/resources, pinned posts, recurring threads, polls, mod queue, reports, automod rules and appeal history.
 - [ ] Community discovery, search, related communities, spam brigades/rate limits and moderator audit logs.
 - [ ] Export, delete, and retention behavior for user-generated content and mod actions.
