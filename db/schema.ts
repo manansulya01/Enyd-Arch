@@ -317,6 +317,7 @@ export const userSettings = pgTable('user_settings', {
   showRegion: boolean('show_region').notNull().default(false),
   searchableByEmail: boolean('searchable_by_email').notNull().default(false),
   messagePolicy: varchar('message_policy', { length: 16 }).notNull().default('members'),
+  showReadReceipts: boolean('show_read_receipts').notNull().default(true),
   /** Connections master switch — dating always requires this AND per-mode opt-in. */
   connectionsEnabled: boolean('connections_enabled').notNull().default(false),
   datingEnabled: boolean('dating_enabled').notNull().default(false),
