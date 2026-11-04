@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "preserve",
+    "noEmit": true
+  },
+  "include": [
+    "sandbox/server.mts",
+    "src/server/storage/envelope-core.ts",
+    "src/server/storage/zip.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}
