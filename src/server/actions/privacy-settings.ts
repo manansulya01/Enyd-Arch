@@ -50,6 +50,7 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
     notifyOnEvent: checked(formData, 'notifyOnEvent'),
     notifyOnFile: checked(formData, 'notifyOnFile'),
     messagePolicy,
+    showReadReceipts: checked(formData, 'showReadReceipts'),
     updatedAt: new Date(),
   };
 
