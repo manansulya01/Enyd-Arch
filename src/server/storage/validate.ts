@@ -20,12 +20,34 @@ import { fileTypeFromBuffer } from 'file-type';
  * binary is rejected regardless of what the browser claimed.
  */
 
-export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 104_857_600);
-export const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES ?? 12_582_912);
-export const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_UPLOAD_BYTES = 104_857_600;
+const DEFAULT_MAX_IMAGE_BYTES = 12_582_912;
+
+/** Invalid limits fail at startup instead of turning NaN into an unlimited upload. */
+function readByteLimit(name: string, fallback: number, hardMaximum: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer number of bytes.`);
+  }
+  return Math.min(value, hardMaximum);
+}
+
+export const MAX_UPLOAD_BYTES = readByteLimit(
+  'MAX_UPLOAD_BYTES',
+  DEFAULT_MAX_UPLOAD_BYTES,
+  DEFAULT_MAX_UPLOAD_BYTES,
+);
+export const MAX_IMAGE_BYTES = readByteLimit(
+  'MAX_IMAGE_BYTES',
+  Math.min(DEFAULT_MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES),
+  MAX_UPLOAD_BYTES,
+);
+export const MAX_AUDIO_BYTES = Math.min(32 * 1024 * 1024, MAX_UPLOAD_BYTES);
 export const MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
-export const MAX_DOCUMENT_BYTES = 32 * 1024 * 1024;
-export const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = Math.min(32 * 1024 * 1024, MAX_UPLOAD_BYTES);
+export const MAX_ARCHIVE_BYTES = Math.min(100 * 1024 * 1024, MAX_UPLOAD_BYTES);
 
 /** Hard ceiling on an unpacked archive. Ratio check below. */
 export const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
@@ -230,7 +252,12 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
 
   while (offset + 30 <= buffer.byteLength && census.entries < MAX_ARCHIVE_ENTRIES + 1) {
     const signature = view.getUint32(offset, true);
-    if (signature !== 0x04034b50) break;
+    if (signature !== 0x04034b50) {
+      // The central directory/end records are valid stopping points. Unknown
+      // signatures mean we cannot prove that the archive census is complete.
+      if (signature === 0x02014b50 || signature === 0x06054b50 || signature === 0x05054b50) break;
+      return null;
+    }
 
     const compressedSize = view.getUint32(offset + 18, true);
     const uncompressedSize = view.getUint32(offset + 22, true);
@@ -239,7 +266,7 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
     const flags = view.getUint16(offset + 6, true);
 
     const nameStart = offset + 30;
-    if (nameStart + nameLength > buffer.byteLength) break;
+    if (nameStart + nameLength + extraLength > buffer.byteLength) return null;
     const name = decoder.decode(buffer.subarray(nameStart, nameStart + nameLength));
 
     if (name) {
@@ -260,10 +287,13 @@ function censusZip(buffer: Uint8Array): ZipCensus | null {
       }
     }
 
-    // Data descriptors (bit 3) hide the real size; stop rather than guess.
-    if (flags & 0x08) break;
+    // Data descriptors (bit 3) hide the real size in the local header. This
+    // parser does not verify the central directory, so accepting a partial
+    // census here could let an archive bypass expansion and entry-count limits.
+    // Fail closed until central-directory parsing is implemented.
+    if (flags & 0x08) return null;
     const advance = 30 + nameLength + extraLength + compressedSize;
-    if (advance <= 0) break;
+    if (advance <= 0 || offset + advance > buffer.byteLength) return null;
     offset += advance;
   }
 
@@ -339,7 +369,7 @@ export async function validateUpload(input: {
 
   // 1 · Size, declared
   const declaredKind = EXTENSION_KIND.get(extension)?.kind ?? null;
-  const limit = declaredKind ? KIND_LIMIT[declaredKind] : MAX_UPLOAD_BYTES;
+  const limit = Math.min(MAX_UPLOAD_BYTES, declaredKind ? KIND_LIMIT[declaredKind] : MAX_UPLOAD_BYTES);
   if (input.data.byteLength === 0) return fail('empty', 'The file is empty.');
   if (input.data.byteLength > limit) {
     return fail(
@@ -569,6 +599,7 @@ export const ACCEPT_ATTRIBUTE = ALLOWED_TYPES.flatMap((type) =>
 /** Read a declared size from a multipart part before materialising the body. */
 export function withinDeclaredLimit(size: number | undefined, kind?: UploadKind): boolean {
   if (size === undefined) return true;
-  const limit = kind ? KIND_LIMIT[kind] : MAX_UPLOAD_BYTES;
+  if (!Number.isSafeInteger(size) || size < 0) return false;
+  const limit = Math.min(MAX_UPLOAD_BYTES, kind ? KIND_LIMIT[kind] : MAX_UPLOAD_BYTES);
   return size <= limit;
 }

@@ -133,7 +133,7 @@ export default async function ArchivePage({
                       {object.categoryLabel} · {formatBytes(object.file?.byteSize ?? 0)}
                     </span>
                     {object.contributor && (
-                      <Link className="t-meta" href={`/members/${object.contributor.username}`}>
+                      <Link className="t-meta" href={`/network/${object.contributor.username}`}>
                         @{object.contributor.username}
                       </Link>
                     )}
@@ -193,3 +193,4 @@ export default async function ArchivePage({
     </PageShell>
   );
 }
+

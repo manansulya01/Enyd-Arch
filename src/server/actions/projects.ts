@@ -7,11 +7,12 @@
  * so discussion lives next to the task board and the file tray rather than in
  * another app.
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
 import {
+  blocks,
   conversationMembers,
   conversations,
   files,
@@ -19,13 +20,15 @@ import {
   projectResources,
   projects,
   projectTasks,
+  matches,
   users,
 } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { slugify } from '~/lib/format';
-import { currentActor } from '~/server/auth/session';
+import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
+import { isUuid } from '~/server/auth/identifiers';
 
 export async function createProject(
   _previous: ActionResult<{ slug: string }> | null,
@@ -78,16 +81,45 @@ export async function createProject(
   return ok({ slug: created!.slug });
 }
 
-export async function joinProject(projectId: string): Promise<ActionResult> {
+export async function joinProject(projectId: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) return fail('Project membership is not available for this identity.');
+  if (!isUuid(projectId)) return fail('That project is not available.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before joining another project.');
 
   const [project] = await db
     .select({ id: projects.id, ownerId: projects.ownerId })
     .from(projects)
-    .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
+    .innerJoin(users, eq(users.id, projects.ownerId))
+    .where(and(
+      eq(projects.id, projectId),
+      eq(projects.status, 'active'),
+      isNull(projects.removedAt),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+      or(
+        inArray(projects.visibility, ['public', 'members']),
+        and(
+          eq(projects.visibility, 'connections'),
+          sql`exists (
+            select 1 from ${matches} m
+            where m.status = 'accepted'
+              and ((m.user_a_id = ${projects.ownerId} and m.user_b_id = ${actor.userId})
+                or (m.user_b_id = ${projects.ownerId} and m.user_a_id = ${actor.userId}))
+          )`,
+        ),
+      ),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${actor.userId} and b.blocked_id = ${projects.ownerId})
+           or (b.blocker_id = ${projects.ownerId} and b.blocked_id = ${actor.userId})
+      )`,
+    ))
     .limit(1);
-  if (!project) return fail('That project is not available.');
+  if (!project) return fail('That project is not available to join.');
 
   await db
     .insert(projectMembers)
@@ -130,7 +162,8 @@ export async function addProjectTask(
   const projectId = String(formData.get('projectId') ?? '');
   const title = String(formData.get('title') ?? '').trim().slice(0, 200);
   const detail = String(formData.get('detail') ?? '').trim().slice(0, 2000);
-  if (!projectId || title.length < 2) return fail('Add a task title.');
+  if (!isUuid(projectId)) return fail('That project is not available.');
+  if (title.length < 2) return fail('Add a task title.');
 
   const role = await projectRole(projectId, actor.userId);
   if (!role) return fail('You are not a member of that project.');
@@ -165,9 +198,13 @@ async function countRows(_which: string, projectId: string): Promise<number> {
   return _which === 'openTasks' ? rows.filter((row) => row.status !== 'done').length : rows.length;
 }
 
-export async function setTaskStatus(taskId: string, status: string): Promise<ActionResult> {
+export async function setTaskStatus(taskId: string, status: string, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!isUuid(taskId)) return fail('Task not found.');
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) return fail('Please wait before changing task status.');
 
   const allowed = ['todo', 'doing', 'done'];
   if (!allowed.includes(status)) return fail('Unknown status.');
@@ -203,7 +240,7 @@ export async function addProjectResource(
   const projectId = String(formData.get('projectId') ?? '');
   const fileId = String(formData.get('fileId') ?? '');
   const caption = String(formData.get('caption') ?? '').trim().slice(0, 160);
-  if (!projectId || !fileId) return fail('Choose a file.');
+  if (!isUuid(projectId) || !isUuid(fileId)) return fail('Choose an available file and project.');
 
   const role = await projectRole(projectId, actor.userId);
   if (!role) return fail('You are not a member of that project.');
@@ -211,7 +248,13 @@ export async function addProjectResource(
   const [owned] = await db
     .select({ id: files.id })
     .from(files)
-    .where(and(eq(files.id, fileId), eq(files.uploaderId, actor.userId), eq(files.state, 'clean')))
+    .where(and(
+      eq(files.id, fileId),
+      eq(files.uploaderId, actor.userId),
+      eq(files.state, 'clean'),
+      isNull(files.removedAt),
+      sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`,
+    ))
     .limit(1);
   if (!owned) return fail('That file is not available.');
 

@@ -6,6 +6,7 @@ import { Comments } from '~/components/commons/comments';
 import { PageShell } from '~/components/ui/page-shell';
 import { feed, postById, postComments, trendingTopics } from '~/server/queries';
 import { requireOnboarded } from '~/server/guard';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   return { title: 'Conversation' };
@@ -15,10 +16,11 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const { actor } = await requireOnboarded();
   const { id } = await params;
 
-  const [post, comments, topics] = await Promise.all([
+  const [post, comments, topics, csrfToken] = await Promise.all([
     postById(id, actor.userId),
     postComments(id, actor.userId),
     trendingTopics(10),
+    sessionCsrfToken(),
   ]);
 
   if (!post) notFound();
@@ -34,8 +36,8 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
           <Link className="lnk" href="/commons">
             ← Back to the Commons
           </Link>
-          <PostCard post={post} detail />
-          <Comments postId={post.id} comments={comments} />
+          <PostCard post={post} detail csrfToken={csrfToken} />
+          <Comments postId={post.id} comments={comments} csrfToken={csrfToken} />
         </div>
 
         <aside className="aside">

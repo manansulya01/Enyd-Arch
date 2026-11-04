@@ -10,10 +10,11 @@
  *  - Deletable user data is soft-retained (`removedAt`) so moderation history
  *    stays coherent without keeping content publicly reachable.
  */
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -160,6 +161,8 @@ export const reportTargetEnum = pgEnum('report_target', [
   'gallery_post',
   'event',
   'project',
+  'community_post',
+  'community_comment',
 ]);
 
 export const reportStateEnum = pgEnum('report_state', [
@@ -171,6 +174,7 @@ export const reportStateEnum = pgEnum('report_state', [
   'appealed',
 ]);
 
+export const storyAudienceEnum = pgEnum('story_audience', ['followers', 'public']);
 export const reportReasonEnum = pgEnum('report_reason', [
   'harassment',
   'hate_or_discrimination',
@@ -317,6 +321,7 @@ export const userSettings = pgTable('user_settings', {
   showRegion: boolean('show_region').notNull().default(false),
   searchableByEmail: boolean('searchable_by_email').notNull().default(false),
   messagePolicy: varchar('message_policy', { length: 16 }).notNull().default('members'),
+  showReadReceipts: boolean('show_read_receipts').notNull().default(true),
   /** Connections master switch — dating always requires this AND per-mode opt-in. */
   connectionsEnabled: boolean('connections_enabled').notNull().default(false),
   datingEnabled: boolean('dating_enabled').notNull().default(false),
@@ -446,6 +451,8 @@ export const deviceCredentials = pgTable(
   },
   (t) => [
     uniqueIndex('device_credentials_cred_key').on(t.credentialId),
+    // Enforce one live authenticator per account at the database boundary.
+    uniqueIndex('device_credentials_active_user_key').on(t.userId).where(sql`${t.revokedAt} is null`),
     index('device_credentials_user_idx').on(t.userId),
     index('device_credentials_device_idx').on(t.deviceId),
   ],
@@ -519,6 +526,9 @@ export const deviceTransferRequests = pgTable(
   (t) => [
     index('device_transfer_state_idx').on(t.state),
     index('device_transfer_user_idx').on(t.userId),
+    uniqueIndex('device_transfer_one_pending_per_user_key')
+      .on(t.userId)
+      .where(sql`${t.state} = 'pending'`),
   ],
 );
 
@@ -813,6 +823,8 @@ export const posts = pgTable(
     repostCount: integer('repost_count').notNull().default(0),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp('edited_at', { withTimezone: true }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    pinnedById: uuid('pinned_by_id').references(() => users.id, { onDelete: 'set null' }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -927,8 +939,11 @@ export const pollVotes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    primaryKey({ columns: [t.pollId, t.userId] }),
+    // Multi-select polls may store several options per member; a member can
+    // still vote for each option only once.
+    primaryKey({ columns: [t.pollId, t.userId, t.optionId] }),
     index('poll_votes_option_idx').on(t.optionId),
+    index('poll_votes_member_idx').on(t.pollId, t.userId),
   ],
 );
 
@@ -1057,6 +1072,8 @@ export const messages = pgTable(
       onDelete: 'set null',
     }),
     editedAt: timestamp('edited_at', { withTimezone: true }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    pinnedById: uuid('pinned_by_id').references(() => users.id, { onDelete: 'set null' }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     /** Set once; powers unread badges */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1064,6 +1081,47 @@ export const messages = pgTable(
   (t) => [
     index('messages_conversation_idx').on(t.conversationId, t.createdAt),
     index('messages_sender_idx').on(t.senderId),
+  ],
+);
+
+/** Hashed, expiring, revocable bearer invitations for small private group conversations. */
+export const conversationInvites = pgTable(
+  'conversation_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+    createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    maxUses: integer('max_uses').notNull().default(1),
+    useCount: integer('use_count').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('conversation_invites_token_hash_key').on(t.tokenHash),
+    index('conversation_invites_conversation_idx').on(t.conversationId, t.createdAt),
+    index('conversation_invites_expiry_idx').on(t.expiresAt),
+  ],
+);
+
+/** Per-member emoji reactions on messages; membership is checked by every write/read path. */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.userId, t.emoji] }),
+    index('message_reactions_message_idx').on(t.messageId),
+    index('message_reactions_user_idx').on(t.userId),
   ],
 );
 
@@ -2065,6 +2123,171 @@ export const adminSessions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('admin_sessions_user_idx'.concat('')).on(t.userId, t.expiresAt)],
+);
+
+// Personal music library and playlists. Tracks reference clean Exchange uploads;
+// playlists are private to their owner unless a future explicit sharing policy is added.
+export const musicPlaylists = pgTable(
+  'music_playlists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 120 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('music_playlists_user_idx').on(t.userId, t.updatedAt)],
+);
+
+export const musicPlaylistTracks = pgTable(
+  'music_playlist_tracks',
+  {
+    playlistId: uuid('playlist_id').notNull().references(() => musicPlaylists.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id').notNull().references(() => files.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playlistId, t.fileId] }),
+    uniqueIndex('music_playlist_track_position_key').on(t.playlistId, t.position),
+    index('music_playlist_tracks_file_idx').on(t.fileId),
+  ],
+);
+
+export const musicLikedTracks = pgTable(
+  'music_liked_tracks',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id').notNull().references(() => files.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.fileId] }),
+    index('music_liked_tracks_file_idx').on(t.fileId),
+    index('music_liked_tracks_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
+export const communities = pgTable('communities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 64 }).notNull(),
+  name: varchar('name', { length: 80 }).notNull(),
+  description: text('description').notNull().default(''),
+  rules: text('rules').notNull().default(''),
+  ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  isPrivate: boolean('is_private').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('communities_slug_key').on(t.slug),
+  index('communities_created_idx').on(t.createdAt),
+  index('communities_owner_idx').on(t.ownerId),
+]);
+
+export const communityMembers = pgTable('community_members', {
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 16 }).notNull().default('member'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.communityId, t.userId] }),
+  index('community_members_user_idx').on(t.userId, t.joinedAt),
+  index('community_members_role_idx').on(t.communityId, t.role),
+]);
+
+/** Hashed, expiring, revocable invitation links for private communities. */
+export const communityInvites = pgTable('community_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  maxUses: integer('max_uses').notNull().default(1),
+  useCount: integer('use_count').notNull().default(0),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('community_invites_token_hash_key').on(t.tokenHash),
+  index('community_invites_community_idx').on(t.communityId, t.createdAt),
+  index('community_invites_expiry_idx').on(t.expiresAt),
+]);
+
+export const communityPosts = pgTable('community_posts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 160 }),
+  body: text('body').notNull(),
+  status: postStatusEnum('status').notNull().default('published'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (t) => [
+  index('community_posts_feed_idx').on(t.communityId, t.createdAt),
+  index('community_posts_author_idx').on(t.authorId, t.createdAt),
+]);
+
+export const communityPostVotes = pgTable('community_post_votes', {
+  postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  value: integer('value').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.postId, t.userId] }),
+  index('community_post_votes_post_value_idx').on(t.postId, t.value),
+  index('community_post_votes_user_idx').on(t.userId, t.createdAt),
+]);
+
+export const communityPostComments = pgTable('community_post_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  parentId: uuid('parent_id').references((): AnyPgColumn => communityPostComments.id, { onDelete: 'set null' }),
+  body: text('body').notNull(),
+  status: commentStatusEnum('status').notNull().default('published'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (t) => [
+  index('community_post_comments_post_idx').on(t.postId, t.createdAt),
+  index('community_post_comments_author_idx').on(t.authorId, t.createdAt),
+]);
+
+export const stories = pgTable('stories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: varchar('body', { length: 600 }).notNull(),
+  audience: storyAudienceEnum('audience').notNull().default('followers'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (t) => [
+  index('stories_author_created_idx').on(t.authorId, t.createdAt),
+  index('stories_expiry_idx').on(t.expiresAt),
+  index('stories_audience_expiry_idx').on(t.audience, t.expiresAt),
+]);
+
+export const storyViews = pgTable('story_views', {
+  storyId: uuid('story_id').notNull().references(() => stories.id, { onDelete: 'cascade' }),
+  viewerId: uuid('viewer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  viewedAt: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.storyId, t.viewerId] }),
+  index('story_views_viewer_idx').on(t.viewerId, t.viewedAt),
+]);
+
+export const userFollows = pgTable(
+  'user_follows',
+  {
+    followerId: uuid('follower_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    followedId: uuid('followed_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.followerId, t.followedId] }),
+    index('user_follows_followed_idx').on(t.followedId, t.createdAt),
+    index('user_follows_follower_idx').on(t.followerId, t.createdAt),
+  ],
 );
 
 // ════════════════════════════════════════════════════════════════════════════

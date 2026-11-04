@@ -17,6 +17,7 @@ import {
 } from '~/server/queries';
 import { countdown, relativeTime, excerpt } from '~/lib/format';
 import { CONNECTION_MODES } from '~/lib/domain';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Your Arch' };
 
@@ -31,7 +32,7 @@ function greeting(now = new Date()): string {
 export default async function HomePage() {
   const { actor } = await requireOnboarded();
 
-  const [posts, objects, upcoming, art, conversations, projects, connections, notices, neighbours] =
+  const [posts, objects, upcoming, art, conversations, projects, connections, notices, neighbours, csrfToken] =
     await Promise.all([
       feed({ viewerId: actor.userId, sort: 'active', limit: 6 }),
       archiveObjects({ viewerId: actor.userId, sort: 'recent', limit: 4 }),
@@ -43,6 +44,7 @@ export default async function HomePage() {
       notificationList(actor.userId, { limit: 5 }),
       // People with shared interests, resolved from the seed catalogue.
       memberByUsername('mira', actor.userId).catch(() => null),
+      sessionCsrfToken(),
     ]);
 
   const unreadMessages = conversations.reduce((total, conversation) => total + conversation.unread, 0);
@@ -165,7 +167,7 @@ export default async function HomePage() {
               </p>
             ) : (
               connections.slice(0, 4).map((match) => (
-                <Link className="row row-4" href={`/members/${match.partner.username}`} key={match.id}>
+                <Link className="row row-4" href={`/network/${match.partner.username}`} key={match.id}>
                   <Avatar
                     displayName={match.partner.displayName}
                     avatarUrl={match.partner.avatarUrl}
@@ -179,7 +181,7 @@ export default async function HomePage() {
               ))
             )}
             {neighbours && (
-              <Link className="row row-4" href={`/members/${neighbours.username}`}>
+              <Link className="row row-4" href={`/network/${neighbours.username}`}>
                 <Avatar displayName={neighbours.displayName} avatarUrl={neighbours.avatarUrl} size="xs" />
                 <span className="truncate">{neighbours.displayName}</span>
                 <span className="t-meta">{neighbours.headline ?? 'Member'}</span>
@@ -236,10 +238,11 @@ export default async function HomePage() {
               body="The Commons is the first thing most people open. Start it."
             />
           ) : (
-            posts.map((post) => <PostCard key={post.id} post={post} />)
+            posts.map((post) => <PostCard key={post.id} post={post} csrfToken={csrfToken} />)
           )}
         </section>
       </div>
     </PageShell>
   );
 }
+

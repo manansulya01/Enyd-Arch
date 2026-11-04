@@ -70,13 +70,16 @@ export async function createEvent(
   return ok({ slug: created!.slug });
 }
 
-export async function rsvpToEvent(eventId: string, status: 'going' | 'interested' | 'declined'): Promise<ActionResult> {
+export async function rsvpToEvent(eventId: string, status: 'going' | 'interested' | 'declined', csrf: string): Promise<ActionResult> {
+  const formData = new FormData();
+  formData.set('__csrf', csrf);
+  await verifyCsrf(formData);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!['going', 'interested', 'declined'].includes(status)) return fail('Unknown RSVP.');
 
   const [event] = await db
-    .select({ id: events.id, slug: events.slug, hostId: events.hostId, attendingCount: events.attendingCount, interestedCount: events.interestedCount })
+    .select({ id: events.id, slug: events.slug, hostId: events.hostId, attendingCount: events.attendingCount, interestedCount: events.interestedCount, capacity: events.capacity })
     .from(events)
     .where(and(eq(events.id, eventId), isNull(events.removedAt), isNull(events.cancelledAt)))
     .limit(1);
@@ -87,6 +90,10 @@ export async function rsvpToEvent(eventId: string, status: 'going' | 'interested
     .from(rsvps)
     .where(and(eq(rsvps.eventId, eventId), eq(rsvps.userId, actor.userId)))
     .limit(1);
+
+  if (status === 'going' && existing?.status !== 'going' && event.capacity !== null && event.attendingCount >= event.capacity) {
+    return fail('This event has reached capacity.');
+  }
 
   if (existing) {
     await db.update(rsvps).set({ status }).where(and(eq(rsvps.eventId, eventId), eq(rsvps.userId, actor.userId)));

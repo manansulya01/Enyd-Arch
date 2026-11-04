@@ -8,7 +8,7 @@ import { formatBytes } from '~/lib/format';
  * The Exchange upload panel. Validation findings from the server are shown
  * verbatim — a refused file explains why rather than failing silently.
  */
-export function ExchangeUploader() {
+export function ExchangeUploader({ csrfToken }: { csrfToken: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,7 +20,7 @@ export function ExchangeUploader() {
     setBusy(true);
     setResult(null);
     const formData = new FormData();
-    formData.set('__csrf', token());
+    formData.set('__csrf', csrfToken);
     formData.set('file', file);
     try {
       const outcome = await onUploadFile(formData);
@@ -106,13 +106,7 @@ export function ExchangeUploader() {
           <span className="notice-body">{result.message}</span>
         </p>
       )}
-
     </section>
   );
 }
 
-function token(): string {
-  return typeof document === 'undefined'
-    ? ''
-    : document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
-}

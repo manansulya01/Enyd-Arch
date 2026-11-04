@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { cookies, headers } from 'next/headers';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -77,13 +78,12 @@ export function safeEqual(a: string, b: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Device fingerprinting
+// Installation binding
 //
-// Privacy position: the fingerprint is a keyed hash of coarse, already-public
-// browser characteristics (user agent family, screen class, language, timezone
-// bucket). It is never sent to a third party, never shown to other members, and
-// cannot be reversed to recover the inputs. It exists so a session cannot be
-// lifted onto a different browser profile — it is not a tracking identifier.
+// Do not collect screen size, hardware concurrency, timezone, or other browser
+// fingerprinting signals. A random, HttpOnly installation cookie provides a
+// stable browser-profile binding; the WebAuthn credential is the cryptographic
+// authenticator. The cookie is not claimed to be hardware identity.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface DeviceTraits {
@@ -94,37 +94,6 @@ export interface DeviceTraits {
   screenHeight: number;
   hardwareConcurrency: number;
   colorDepth: number;
-}
-
-const screenBucket = (width: number, height: number): string => {
-  const longest = Math.max(width, height);
-  const shortest = Math.min(width, height);
-  if (longest >= 2400) return 'xl';
-  if (longest >= 1800) return 'lg';
-  if (longest >= 1280) return 'md';
-  if (longest >= 900) return 'sm';
-  return 'xs';
-};
-
-const timezoneBucket = (timezone: string): string => {
-  try {
-    const offset = new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return offset.replace(/\s/g, '');
-  } catch {
-    return 'unknown';
-  }
-};
-
-export function deviceFingerprint(traits: DeviceTraits): string {
-  const material = [
-    traits.userAgent.slice(0, 180),
-    (traits.language || 'und').slice(0, 12),
-    timezoneBucket(traits.timezone),
-    screenBucket(traits.screenWidth, traits.screenHeight),
-    String(traits.hardwareConcurrency || 0),
-    String(traits.colorDepth || 0),
-  ].join('|');
-  return hmacHex('device-fingerprint', material);
 }
 
 export function platformLabel(userAgent: string): string {
@@ -145,6 +114,11 @@ export function browserLabel(userAgent: string): string {
   return 'Browser';
 }
 
+/** Persist only coarse device labels, never the full user-agent fingerprint. */
+export function coarseDeviceLabel(userAgent: string): string {
+  return `${browserLabel(userAgent)} on ${platformLabel(userAgent)}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Request identity
 // ═══════════════════════════════════════════════════════════════════════════
@@ -156,14 +130,19 @@ const TRUSTED_HOPS = Number(process.env.TRUST_PROXY_HOPS ?? 0);
  * Proxy headers are only honoured when explicitly configured, otherwise a
  * client could trivially spoof its own address.
  */
+/** Pure resolver; forwarded headers are trusted only when proxy hops are configured. */
+export function resolveClientIp(forwardedFor: string | null | undefined, trustedHops: number): string {
+  if (!forwardedFor || !Number.isSafeInteger(trustedHops) || trustedHops < 1) return 'local';
+  const parts = forwardedFor.split(',').map((part) => part.trim()).filter(Boolean);
+  // X-Forwarded-For is ordered client -> nearest proxy. Skip the configured
+  // trusted proxies from the right and select the last untrusted address.
+  if (parts.length <= trustedHops) return 'local';
+  const chosen = parts[parts.length - 1 - trustedHops];
+  return chosen && isIP(chosen) !== 0 ? chosen : 'local';
+}
+
 export function clientIp(forwardedFor?: string | null): string {
-  if (TRUSTED_HOPS > 0 && forwardedFor) {
-    const parts = forwardedFor.split(',').map((part) => part.trim());
-    const index = Math.max(0, parts.length - TRUSTED_HOPS);
-    const chosen = parts[index];
-    if (chosen) return chosen;
-  }
-  return 'local';
+  return resolveClientIp(forwardedFor, TRUSTED_HOPS);
 }
 
 /**
@@ -191,10 +170,22 @@ export async function requestTraits(): Promise<{
   const protocol = headerList.get('x-forwarded-proto') ?? (isProd ? 'https' : 'http');
   const origin = `${protocol}://${host}`;
 
-  // The browser supplies its coarse traits through a cookie set once at boot.
   const cookieStore = await cookies();
-  const encoded = cookieStore.get('enyd_device_traits')?.value;
-  let traits: DeviceTraits = {
+  let installationToken = cookieStore.get('enyd_device_binding')?.value;
+  if (!installationToken || !/^[A-Za-z0-9_-]{40,}$/.test(installationToken)) {
+    installationToken = randomToken(32);
+    cookieStore.set('enyd_device_binding', installationToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isProd,
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+    });
+  }
+
+  // Keep the legacy return shape for callers, but never populate it with
+  // hardware or screen characteristics.
+  const traits: DeviceTraits = {
     userAgent,
     language: '',
     timezone: '',
@@ -204,32 +195,13 @@ export async function requestTraits(): Promise<{
     colorDepth: 0,
   };
 
-  if (encoded) {
-    try {
-      const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<
-        DeviceTraits
-      >;
-      traits = {
-        userAgent: parsed.userAgent?.slice(0, 180) ?? userAgent,
-        language: String(parsed.language ?? '').slice(0, 12),
-        timezone: String(parsed.timezone ?? '').slice(0, 64),
-        screenWidth: Number(parsed.screenWidth ?? 0) || 0,
-        screenHeight: Number(parsed.screenHeight ?? 0) || 0,
-        hardwareConcurrency: Number(parsed.hardwareConcurrency ?? 0) || 0,
-        colorDepth: Number(parsed.colorDepth ?? 0) || 0,
-      };
-    } catch {
-      /* corrupt cookie: fall back to server-derived traits */
-    }
-  }
-
   return {
     ip,
     ipHash: ipPseudonym(ip),
     userAgent,
     origin,
     traits,
-    fingerprint: deviceFingerprint(traits),
+    fingerprint: hmacHex('device-binding', installationToken),
   };
 }
 

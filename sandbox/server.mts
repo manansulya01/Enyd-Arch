@@ -11,20 +11,50 @@
  *   pnpm dev:sandbox
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import postgres from 'postgres';
 import { readZip, entryExtension, GAME_LIMITS } from '../src/server/storage/zip.js';
+import { decryptObject } from '../src/server/storage/envelope-core.js';
 
 const PORT = Number(process.env.SANDBOX_PORT ?? 3101);
 const APP_ORIGIN = process.env.APP_ORIGIN ?? 'http://localhost:3000';
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
-const SHARED_SECRET = process.env.SANDBOX_SECRET ?? 'enyd-sandbox-development-secret';
+const SHARED_SECRET = process.env.SANDBOX_SECRET ?? '';
 const STORAGE_ROOT = path.resolve(process.cwd(), process.env.STORAGE_ROOT ?? './storage');
+const SANDBOX_ORIGIN = process.env.ARCH_GAME_ORIGIN ?? `http://localhost:${PORT}`;
+try {
+  const app = new URL(APP_ORIGIN);
+  const game = new URL(SANDBOX_ORIGIN);
+  if (app.origin === game.origin) throw new Error('The sandbox must use a separate origin from the application.');
+  if (process.env.NODE_ENV === 'production' && (app.protocol !== 'https:' || game.protocol !== 'https:')) {
+    throw new Error('Production application and sandbox origins must both use HTTPS.');
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : 'Invalid Arcade origin configuration.');
+  process.exit(1);
+}
 
 if (!DATABASE_URL) {
   console.error('DATABASE_URL is required to run the sandbox host.');
+  process.exit(1);
+}
+if (!['local', 's3'].includes(process.env.STORAGE_DRIVER ?? 'local')) {
+  console.error('STORAGE_DRIVER must be local or s3.');
+  process.exit(1);
+}
+if ((process.env.STORAGE_DRIVER ?? 'local') === 's3' &&
+    (!process.env.S3_BUCKET || !process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY)) {
+  console.error('S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required for the Arcade sandbox.');
+  process.exit(1);
+}
+if (SHARED_SECRET.length < 32) {
+  console.error('SANDBOX_SECRET must be configured with at least 32 characters.');
+  process.exit(1);
+}
+if (process.env.NODE_ENV === 'production' && (!process.env.STORAGE_ENCRYPTION_KEY || process.env.STORAGE_ENCRYPTION_KEY.length < 32)) {
+  console.error('STORAGE_ENCRYPTION_KEY must be configured for the sandbox in production.');
   process.exit(1);
 }
 
@@ -35,14 +65,14 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 /** Single-use grants, held only long enough to be exchanged. */
 const grants = new Map<string, { gameId: string; checksum: string | null; expiresAt: number }>();
-const sessions = new Map<string, { gameId: string; objectKey: string; expiresAt: number }>();
+const sessions = new Map<string, { gameId: string; objectKey: string; driver: string; checksum: string; byteSize: number; packageChecksum: string | null; expiresAt: number }>();
 
 function sign(value: string) {
   return createHmac('sha256', SHARED_SECRET).update(value).digest('base64url');
 }
 
 function mint(gameId: string, checksum: string | null) {
-  const grant = sign(`${gameId}:${checksum ?? ''}:${Date.now()}:${Math.random()}`);
+  const grant = sign(`${gameId}:${checksum ?? ''}:${randomBytes(32).toString('base64url')}`);
   grants.set(grant, { gameId, checksum, expiresAt: Date.now() + GRANT_TTL_MS });
   return grant;
 }
@@ -98,6 +128,56 @@ const SECURITY_HEADERS = {
   'Cross-Origin-Resource-Policy': 'same-origin',
 };
 
+async function readStoredObject(driver: string, objectKey: string): Promise<Uint8Array | null> {
+  const segments = objectKey.split('/');
+  if (!objectKey || objectKey.startsWith('/') || segments.some((part) => !part || part === '.' || part === '..' || part.includes('\\'))) {
+    throw new Error('Invalid storage object key');
+  }
+  if (driver === 'local') {
+    const absolute = path.resolve(STORAGE_ROOT, ...segments);
+    if (!absolute.startsWith(STORAGE_ROOT + path.sep)) throw new Error('Invalid storage object key');
+    try {
+      return new Uint8Array(await readFile(absolute));
+    } catch {
+      return null;
+    }
+  }
+  if (driver !== 's3') throw new Error('Unsupported storage driver');
+
+  const bucket = process.env.S3_BUCKET!;
+  const region = process.env.S3_REGION ?? 'us-east-1';
+  const endpoint = process.env.S3_ENDPOINT ?? `https://s3.${region}.amazonaws.com`;
+  const accessKey = process.env.S3_ACCESS_KEY_ID!;
+  const secretKey = process.env.S3_SECRET_ACCESS_KEY!;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const host = new URL(endpoint).host;
+  const canonicalUri = `/${[bucket, ...segments].map((part) => encodeURIComponent(part)).join('/')}`;
+  const payloadHash = createHash('sha256').update(new Uint8Array()).digest('hex');
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = ['GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const scope = `${dateStamp}/${region}/s3/aws4_request`;
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+  const hmac = (key: Buffer | string, data: string) => createHmac('sha256', key).update(data).digest();
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${secretKey}`, dateStamp), region), 's3'), 'aws4_request');
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const response = await fetch(`${endpoint}${canonicalUri}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+      Host: host,
+    },
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`S3 object retrieval failed: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 function send(res: ServerResponse, status: number, body: string | Uint8Array, headers: Record<string, string> = {}) {
   res.writeHead(status, {
     'Content-Type': 'text/plain; charset=utf-8',
@@ -109,16 +189,30 @@ function send(res: ServerResponse, status: number, body: string | Uint8Array, he
   res.end(body);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, maxBytes = 16 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += Buffer.byteLength(chunk);
+      if (total > maxBytes) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(Buffer.from(chunk));
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
 }
 
 const server = createServer(async (req, res) => {
+  // Expired in-memory grants and sessions are discarded on every request.
+  const now = Date.now();
+  for (const [key, value] of grants) if (value.expiresAt < now) grants.delete(key);
+  for (const [key, value] of sessions) if (value.expiresAt < now) sessions.delete(key);
+
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
 
   // Only the application origin may mint grants or embed games.
@@ -149,6 +243,7 @@ const server = createServer(async (req, res) => {
     const game = rows[0];
     if (!game) return send(res, 404, 'Not approved');
 
+    if (grants.size >= 10_000) return send(res, 429, 'Too many outstanding play grants');
     const grant = mint(gameId, game.package_checksum);
     return send(res, 200, JSON.stringify({ grant }), {
       'Content-Type': 'application/json; charset=utf-8',
@@ -166,7 +261,7 @@ const server = createServer(async (req, res) => {
 
     const rows = await sql`
       select g.id, g.title, g.entry_file, g.package_checksum,
-             o.object_key
+             o.object_key, o.driver as storage_driver, o.checksum as storage_checksum, o.byte_size as storage_byte_size
       from games g
       join storage_objects o on o.id = g.package_object_id
       where g.id = ${entry.gameId}
@@ -181,10 +276,15 @@ const server = createServer(async (req, res) => {
       return send(res, 409, 'Package changed');
     }
 
-    const session = randomBytes(18).toString('base64url');
+    if (sessions.size >= 50_000) return send(res, 429, 'Arcade runtime is at capacity');
+    const session = randomBytes(24).toString('base64url');
     sessions.set(session, {
       gameId: game.id,
       objectKey: game.object_key,
+      driver: game.storage_driver,
+      checksum: game.storage_checksum,
+      byteSize: Number(game.storage_byte_size),
+      packageChecksum: game.package_checksum,
       expiresAt: Date.now() + SESSION_TTL_MS,
     });
     res.writeHead(302, { Location: `/s/${session}/${game.entry_file ?? 'index.html'}` });
@@ -202,17 +302,28 @@ const server = createServer(async (req, res) => {
   }
   session.expiresAt = Date.now() + SESSION_TTL_MS;
 
-  const wanted = decodeURIComponent(sessionMatch[2]! || 'index.html');
+  let wanted: string;
+  try {
+    wanted = decodeURIComponent(sessionMatch[2]! || 'index.html');
+  } catch {
+    return send(res, 400, 'Bad path');
+  }
   if (wanted.includes('..')) return send(res, 400, 'Bad path');
-
-  const segments = String(session.objectKey).split('/').filter(Boolean);
-  const absolute = path.resolve(STORAGE_ROOT, ...segments);
-  if (!absolute.startsWith(STORAGE_ROOT + path.sep)) return send(res, 400, 'Bad key');
 
   let entries: ReturnType<typeof readZip>;
   try {
-    const bytes = await readFile(absolute);
-    entries = readZip(new Uint8Array(bytes), GAME_LIMITS);
+    const storedBytes = await readStoredObject(session.driver, session.objectKey);
+    if (!storedBytes) return send(res, 404, 'Package unavailable');
+    const decoded = decryptObject(storedBytes);
+    const actualChecksum = createHash('sha256').update(decoded.data).digest('hex');
+    if (
+      decoded.data.byteLength !== session.byteSize ||
+      actualChecksum !== session.checksum ||
+      (session.packageChecksum && actualChecksum !== session.packageChecksum)
+    ) {
+      return send(res, 409, 'Package integrity check failed');
+    }
+    entries = readZip(decoded.data, GAME_LIMITS);
   } catch {
     return send(res, 404, 'Package unavailable');
   }

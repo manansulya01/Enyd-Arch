@@ -202,9 +202,6 @@ export async function savePrivacy(
   input: {
     profileVisibility: 'public' | 'members' | 'connections' | 'private';
     discoverable: boolean;
-    showActivity: boolean;
-    showCreations: boolean;
-    showArchiveContributions: boolean;
     showRegion: boolean;
     messagePolicy: 'everyone' | 'members' | 'connections' | 'nobody';
   },
@@ -224,9 +221,6 @@ export async function savePrivacy(
       userId: actor.userId,
       profileVisibility: input.profileVisibility,
       discoverable: input.discoverable,
-      showActivity: input.showActivity,
-      showCreations: input.showCreations,
-      showArchiveContributions: input.showArchiveContributions,
       showRegion: input.showRegion && canShowRegion,
       messagePolicy: input.messagePolicy,
     })
@@ -235,9 +229,6 @@ export async function savePrivacy(
       set: {
         profileVisibility: input.profileVisibility,
         discoverable: input.discoverable,
-        showActivity: input.showActivity,
-        showCreations: input.showCreations,
-        showArchiveContributions: input.showArchiveContributions,
         showRegion: input.showRegion && canShowRegion,
         messagePolicy: input.messagePolicy,
         updatedAt: new Date(),

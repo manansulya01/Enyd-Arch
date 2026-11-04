@@ -1,78 +1,153 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { Avatar, EmptyState } from '~/components/ui';
 import { PageShell } from '~/components/ui/page-shell';
+import { absoluteDate } from '~/lib/format';
 import { requireOnboarded } from '~/server/guard';
-import { memberByUsername, profileActivity } from '~/server/queries';
-import { relativeTime } from '~/lib/format';
-import { and, eq } from 'drizzle-orm';
-import { db } from '~db';
-import { blocks } from '~db/schema';
-import { sessionCsrfToken } from '~/server/csrf';
-import { blockMember, unblockMember } from '~/server/actions/connections-client';
+import { feed, memberArchiveContributions, memberByUsername, memberProfileDetails } from '~/server/queries';
 
-export const metadata: Metadata = { title: 'Member profile' };
+export const metadata: Metadata = {
+  title: 'Member profile',
+  description: 'A member profile on Enyd Arch.',
+  robots: { index: false, follow: false, noarchive: true, nosnippet: true },
+};
 
-export default async function MemberProfilePage({ params }: { params: Promise<{ username: string }> }) {
+function safeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export default async function MemberProfilePage({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
   const { actor } = await requireOnboarded();
   const { username } = await params;
   const member = await memberByUsername(username, actor.userId);
   if (!member) notFound();
-  const [activity, csrf, blockRows] = await Promise.all([
-    profileActivity(member.userId, actor.userId),
-    sessionCsrfToken(),
-    member.userId === actor.userId
-      ? Promise.resolve([])
-      : db.select({ id: blocks.id }).from(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, member.userId))).limit(1),
+
+  const details = await memberProfileDetails(member.userId, actor.userId);
+  if (!details) notFound();
+
+  const [recentPosts, archiveContributions] = await Promise.all([
+    details.showActivity
+      ? feed({ viewerId: actor.userId, authorId: member.userId, sort: 'recent', limit: 8 })
+      : Promise.resolve([]),
+    details.showArchiveContributions
+      ? memberArchiveContributions(member.userId, actor.userId)
+      : Promise.resolve([]),
   ]);
-  const blockedByMe = blockRows.length > 0;
+
+  const isSelf = actor.userId === member.userId;
+  const visibleSkills = details.showCreations
+    ? details.skills
+        .filter((item) => item && typeof item.key === 'string' && typeof item.label === 'string')
+        .slice(0, 30)
+    : [];
+  const visibleLinks = details.showCreations
+    ? details.links
+        .filter((item) => item && typeof item.label === 'string' && typeof item.url === 'string')
+        .map((item) => ({ label: item.label.trim().slice(0, 80), url: safeExternalUrl(item.url) }))
+        .filter((item): item is { label: string; url: string } => Boolean(item.label && item.url))
+    : [];
 
   return (
-    <PageShell title={member.displayName} sub={`@${member.username} · ${member.memberId}`}>
-      <div className="stack stack-5">
-        {member.headline && <p className="t-lead">{member.headline}</p>}
-        <div className="card card-pad-lg stack stack-2">
-          <div className="row row-between">
-            <span className="t-label">Member standing</span>
-            <span className="badge badge-plain">{member.levelLabel}</span>
+    <PageShell
+      title={member.displayName}
+      sub={`@${member.username} · ${member.memberId}`}
+      actions={isSelf ? <Link className="btn btn-ghost btn-sm" href="/settings/privacy">Privacy settings</Link> : undefined}
+    >
+      <div className="stack stack-5" style={{ maxWidth: 820 }}>
+        <section className="card card-pad-lg stack stack-4">
+          <div className="row row-start">
+            <Avatar displayName={member.displayName} avatarUrl={member.avatarUrl} size="lg" />
+            <div className="stack stack-1">
+              <h1>{member.displayName}</h1>
+              {member.headline && <p className="t-subtle">{member.headline}</p>}
+              <p className="t-small t-meta">{member.levelLabel} · Member since {absoluteDate(member.joinedAt)}</p>
+              {member.region && <p className="t-small t-subtle">{member.region}</p>}
+            </div>
           </div>
-          <p className="t-small t-subtle">Joined {relativeTime(member.joinedAt)}</p>
-          {member.ageBandLabel && <p className="t-small t-subtle">{member.ageBandLabel}</p>}
-          {member.region && <p className="t-small t-subtle">{member.region}</p>}
-        </div>
-        <section className="stack stack-3">
-          <h2 className="t-section">Activity</h2>
-          <div className="grid gap-3 sm:grid-cols-4">
-            {[
-              ['Posts', activity.posts],
-              ['Replies', activity.comments],
-              ['Archive', activity.archiveContributions],
-              ['Games', activity.games],
-              ['Gallery', activity.galleryPieces],
-              ['Projects', activity.projects],
-              ['Events hosted', activity.eventsHosted],
-              ['Connections', activity.connections],
-            ].map(([label, value]) => (
-              <div className="card card-pad-md stack stack-1" key={String(label)}>
-                <strong className="t-section">{value}</strong>
-                <span className="t-meta">{label}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-        <div className="row row-wrap row-2">
-          <Link className="btn btn-ghost btn-sm" href="/connections">Connections</Link>
-          <Link className="btn btn-ghost btn-sm" href="/commons">The Commons</Link>
-          <Link className="btn btn-ghost btn-sm" href="/gallery">Gallery</Link>
-          {member.userId !== actor.userId && (
-            <form action={blockedByMe ? unblockMember : blockMember}>
-              <input type="hidden" name="__csrf" value={csrf} />
-              <input type="hidden" name="userId" value={member.userId} />
-              <button className="btn btn-ghost btn-sm" type="submit">{blockedByMe ? 'Unblock member' : 'Block member'}</button>
-            </form>
+
+          {details.bio && <p className="prose t-base">{details.bio}</p>}
+          {details.pronouns && <p className="t-small t-subtle">Pronouns: {details.pronouns}</p>}
+
+          {details.showCreations && (
+            <section className="stack stack-2">
+              <h2>About and creations</h2>
+              {details.institution && <p className="t-small">Institution: {details.institution}</p>}
+              {details.fieldOfStudy && <p className="t-small">Field of study: {details.fieldOfStudy}</p>}
+              {visibleSkills.length > 0 && (
+                <div className="row row-wrap">
+                  {visibleSkills.map((skill) => (
+                    <span className="tag" key={skill.key}>{skill.label}</span>
+                  ))}
+                </div>
+              )}
+              {visibleLinks.length > 0 && (
+                <ul className="stack stack-1">
+                  {visibleLinks.slice(0, 12).map((item, index) => (
+                    <li key={`${item.url}-${index}`}>
+                      <a className="lnk" href={item.url} target="_blank" rel="noopener noreferrer nofollow">
+                        {item.label || item.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           )}
-          {member.userId === actor.userId && <Link className="btn btn-primary btn-sm" href="/settings">Account settings</Link>}
-        </div>
+
+          {details.showArchiveContributions && (
+            <section className="stack stack-2">
+              <h2>Archive contributions</h2>
+              {archiveContributions.length === 0 ? (
+                <p className="t-small t-subtle">No visible Archive contributions yet.</p>
+              ) : (
+                <ul className="stack stack-1">
+                  {archiveContributions.map((item) => (
+                    <li key={item.slug}>
+                      <Link className="lnk" href={`/archive/${item.slug}`}>{item.title}</Link>
+                      <span className="t-small t-meta"> · {item.category}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </section>
+
+        {!isSelf && (
+          <p><Link className="btn btn-secondary" href={`/registry/${member.username}`}>Contact and connection options</Link></p>
+        )}
+
+        <section className="stack stack-3">
+          <h2>Recent activity</h2>
+          {!details.showActivity ? (
+            <p className="t-small t-subtle">This member has chosen to hide recent activity.</p>
+          ) : recentPosts.length === 0 ? (
+            <EmptyState title="No recent public posts" body="Posts shared with you will appear here when available." />
+          ) : (
+            recentPosts.map((post) => (
+              <article className="card card-pad stack stack-2" key={post.id}>
+                <div className="row row-between">
+                  <span className="t-small t-meta">{absoluteDate(post.createdAt)}</span>
+                  <Link className="lnk t-small" href={`/commons/${post.id}`}>Open post</Link>
+                </div>
+                {post.body && <p className="t-base">{post.body}</p>}
+                {post.attachments.length > 0 && (
+                  <p className="t-small t-subtle">{post.attachments.length} attachment(s)</p>
+                )}
+              </article>
+            ))
+          )}
+        </section>
       </div>
     </PageShell>
   );

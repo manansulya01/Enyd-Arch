@@ -1,37 +1,57 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState } from '~/components/ui';
-import { requireAdmin } from '~/server/guard';
-import { openReportsForReview } from '~/server/actions/admin';
-import { relativeTime } from '~/lib/format';
+import { InvitationManager } from '~/components/admin/invitation-manager';
+import { ModerationQueue } from '~/components/admin/moderation-queue';
+import { adminCan, adminContextFor } from '~/server/security/audit';
+import { currentActor } from '~/server/auth/session';
+import { sessionCsrfToken } from '~/server/csrf';
+import { listInvitations, openReportsForReview } from '~/server/actions/admin';
 
-export const metadata: Metadata = { title: 'Administration' };
+export const metadata = {
+  title: 'Administration — Enyd Arch',
+  description: 'Manage invitations and access to Enyd Arch.',
+};
 
 export default async function AdminPage() {
-  await requireAdmin('reports.read');
-  const reports = await openReportsForReview();
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  const admin = await adminContextFor(actor.userId);
+  if (!admin) redirect('/home');
+  const canManageInvitations = adminCan(admin, 'invitations.manage');
+  const canReadReports = adminCan(admin, 'reports.read');
+  if (!canManageInvitations && !canReadReports) redirect('/home');
 
+  const [invitations, reports, csrfToken] = await Promise.all([
+    canManageInvitations ? listInvitations() : Promise.resolve([]),
+    canReadReports ? openReportsForReview() : Promise.resolve([]),
+    sessionCsrfToken(),
+  ]);
   return (
-    <PageShell title="Administration" sub="Safety queue and community operations.">
-      {reports.length === 0 ? (
-        <EmptyState glyph="⚿" title="The queue is clear." body="New reports requiring review will appear here." />
-      ) : (
-        <div className="stack stack-3">
-          {reports.map((report) => (
-            <article className="card card-pad-md stack stack-2" key={report.id}>
-              <div className="row row-between">
-                <span className="t-label">{report.reason.replaceAll('_', ' ')}</span>
-                <span className="badge badge-plain">{report.priority} · {report.state}</span>
-              </div>
-              <p className="t-small">{report.detail || 'No additional details supplied.'}</p>
-              <div className="row row-between t-meta">
-                <span>{report.targetType} · {report.targetId}</span>
-                <time dateTime={report.createdAt.toISOString()}>{relativeTime(report.createdAt)}</time>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+    <PageShell title="Administration" sub="Administrative tools are shown only when your assigned role grants the corresponding permission.">
+      <div className="stack stack-4">
+        {canManageInvitations && (
+          <InvitationManager
+            csrfToken={csrfToken}
+            initialInvitations={invitations.map((invite) => ({
+              ...invite,
+              createdAt: invite.createdAt.toISOString(),
+              expiresAt: invite.expiresAt?.toISOString() ?? null,
+              revokedAt: invite.revokedAt?.toISOString() ?? null,
+            }))}
+          />
+        )}
+        {canReadReports && (
+          <ModerationQueue
+            csrfToken={csrfToken}
+            canResolve={adminCan(admin, 'reports.resolve')}
+            initialReports={reports.map((report) => ({
+              ...report,
+              detail: report.detail ?? '',
+              createdAt: report.createdAt.toISOString(),
+            }))}
+          />
+        )}
+      </div>
     </PageShell>
   );
 }

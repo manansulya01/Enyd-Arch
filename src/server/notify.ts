@@ -1,7 +1,8 @@
 import 'server-only';
+import { cache } from 'react';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '~db';
-import { notifications, userSettings } from '~db/schema';
+import { conversationMembers, notifications, userSettings } from '~db/schema';
 
 /**
  * Notifications
@@ -68,14 +69,11 @@ export interface NotifyInput {
   actorId?: string | null;
   targetType?: string;
   targetId?: string;
+  /** Conversation context allows per-thread notification mutes to be enforced centrally. */
+  conversationId?: string;
 }
 
-const preferenceCache = new Map<string, Set<NotificationKind>>();
-
-async function suppressedKinds(userId: string): Promise<Set<NotificationKind>> {
-  const cached = preferenceCache.get(userId);
-  if (cached) return cached;
-
+const suppressedKinds = cache(async (userId: string): Promise<Set<NotificationKind>> => {
   const rows = await db
     .select()
     .from(userSettings)
@@ -93,15 +91,8 @@ async function suppressedKinds(userId: string): Promise<Set<NotificationKind>> {
     }
   }
 
-  preferenceCache.set(userId, suppressed);
   return suppressed;
-}
-
-/** Clears the memo after a settings change so the next write re-reads them. */
-export function invalidatePreferences(userId?: string): void {
-  if (userId) preferenceCache.delete(userId);
-  else preferenceCache.clear();
-}
+});
 
 export async function notify(input: NotifyInput): Promise<boolean> {
   // Never notify someone about their own action.
@@ -110,6 +101,18 @@ export async function notify(input: NotifyInput): Promise<boolean> {
   if (!ALWAYS_DELIVER.includes(input.kind)) {
     const suppressed = await suppressedKinds(input.userId);
     if (suppressed.has(input.kind)) return false;
+  }
+
+  if (input.kind === 'message' && input.conversationId) {
+    const [membership] = await db.select({ mutedUntil: conversationMembers.mutedUntil })
+      .from(conversationMembers)
+      .where(and(
+        eq(conversationMembers.conversationId, input.conversationId),
+        eq(conversationMembers.userId, input.userId),
+        sql`${conversationMembers.removedAt} is null`,
+      ))
+      .limit(1);
+    if (membership?.mutedUntil && membership.mutedUntil > new Date()) return false;
   }
 
   await db.insert(notifications).values({

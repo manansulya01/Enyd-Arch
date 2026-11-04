@@ -19,9 +19,21 @@ export interface PlayGrant {
 const GAME_ORIGIN = process.env.ARCH_GAME_ORIGIN ?? 'http://localhost:3101';
 const SANDBOX_SECRET = process.env.SANDBOX_SECRET ?? '';
 
+function runtimeConfigurationValid(): boolean {
+  try {
+    const app = new URL(process.env.APP_ORIGIN ?? 'http://localhost:3000');
+    const game = new URL(GAME_ORIGIN);
+    if (app.origin === game.origin) return false;
+    if (process.env.NODE_ENV === 'production' && (app.protocol !== 'https:' || game.protocol !== 'https:')) return false;
+    return SANDBOX_SECRET.length >= 32;
+  } catch {
+    return false;
+  }
+}
+
 export async function mintPlayGrant(gameId: string): Promise<PlayGrant> {
-  if (!SANDBOX_SECRET) {
-    return { ok: false, reason: 'The Arcade runtime is not configured on this installation.' };
+  if (!runtimeConfigurationValid()) {
+    return { ok: false, reason: 'The Arcade runtime requires a separate origin and a strong shared secret (HTTPS in production).' };
   }
 
   const [row] = await db

@@ -10,11 +10,7 @@ import { ReactionBar } from './reaction-bar';
 import { onCreateComment } from '~/server/actions/commons-client';
 
 /** The reply thread beneath a post. Replies are one level deep by design. */
-function token(): string {
-  return document.querySelector<HTMLInputElement>('input[name="__csrf"]')?.value ?? '';
-}
-
-export function Comments({ postId, comments }: { postId: string; comments: CommentView[] }) {
+export function Comments({ postId, comments, csrfToken }: { postId: string; comments: CommentView[]; csrfToken: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [body, setBody] = useState('');
@@ -29,7 +25,7 @@ export function Comments({ postId, comments }: { postId: string; comments: Comme
     const text = body.trim();
     if (!text) return;
     startTransition(async () => {
-      const result = await onCreateComment({ postId, body: text, parentId: replyTo }, token());
+      const result = await onCreateComment({ postId, body: text, parentId: replyTo }, csrfToken);
       if (!result.ok) {
         setError(result.message ?? 'That reply could not be saved.');
         return;
@@ -66,7 +62,7 @@ export function Comments({ postId, comments }: { postId: string; comments: Comme
                     size="xs"
                     level={comment.author.level}
                   />
-                  <Link className="comment-author" href={`/members/${comment.author.username}`}>
+                  <Link className="comment-author" href={`/network/${comment.author.username}`}>
                     {comment.author.displayName}
                   </Link>
                   <span className="t-meta">{relativeTime(comment.createdAt)}</span>
@@ -84,6 +80,7 @@ export function Comments({ postId, comments }: { postId: string; comments: Comme
                     Reply
                   </button>
                   <ReactionBar
+                    csrfToken={csrfToken}
                     targetType="comment"
                     targetId={comment.id}
                     myReactions={comment.myReactions}

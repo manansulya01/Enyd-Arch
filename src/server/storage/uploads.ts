@@ -4,16 +4,35 @@ import { randomUUID } from 'node:crypto';
 import { db } from '~db';
 import {
   archiveObjects,
+  blocks,
   conversationMembers,
+  conversations,
   files,
   galleryAttachments,
   galleryPosts,
+  matches,
   messages,
   postAttachments,
   posts,
   storageObjects,
   userRestrictions,
 } from '~db/schema';
+const visibleToViewer = (visibility: unknown, owner: unknown, viewerId: string) => sql`(
+  ${owner as never} = ${viewerId}
+  or ${visibility as never} in ('public', 'members')
+  or (
+    ${visibility as never} = 'connections'
+    and exists (
+      select 1 from ${matches} m
+      where m.status = 'accepted'
+        and (
+          (m.user_a_id = ${owner as never} and m.user_b_id = ${viewerId})
+          or (m.user_b_id = ${owner as never} and m.user_a_id = ${viewerId})
+        )
+    )
+  )
+)`;
+
 import { putObject } from './driver';
 import { scanBytes } from './scanner';
 import {
@@ -169,6 +188,10 @@ export async function resolveFileAccess(
       isPublic: files.isPublic,
     })
     .from(files)
+    .innerJoin(storageObjects, and(
+      eq(storageObjects.id, files.storageObjectId),
+      isNull(storageObjects.removedAt),
+    ))
     .where(eq(files.id, fileId))
     .limit(1);
 
@@ -214,6 +237,12 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(postAttachments.fileId, fileId),
         eq(posts.status, 'published'),
         isNull(posts.removedAt),
+        viewerId ? visibleToViewer(posts.visibility, posts.authorId, viewerId) : eq(posts.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${posts.authorId})
+             or (b.blocker_id = ${posts.authorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -228,6 +257,12 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
         eq(galleryAttachments.fileId, fileId),
         eq(galleryPosts.status, 'published'),
         isNull(galleryPosts.removedAt),
+        viewerId ? visibleToViewer(galleryPosts.visibility, galleryPosts.authorId, viewerId) : eq(galleryPosts.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${galleryPosts.authorId})
+             or (b.blocker_id = ${galleryPosts.authorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -240,7 +275,12 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
       and(
         eq(archiveObjects.fileId, fileId),
         isNull(archiveObjects.removedAt),
-        inArray(archiveObjects.visibility, ['members', 'public']),
+        viewerId ? visibleToViewer(archiveObjects.visibility, archiveObjects.contributorId, viewerId) : eq(archiveObjects.visibility, 'public'),
+        viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${archiveObjects.contributorId})
+             or (b.blocker_id = ${archiveObjects.contributorId} and b.blocked_id = ${viewerId})
+        )` : sql`true`,
       ),
     )
     .limit(1);
@@ -250,16 +290,27 @@ async function isAttachedToVisibleContent(viewerId: string | null, fileId: strin
     const inConversation = await db
       .select({ id: messages.id })
       .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
       .innerJoin(
         conversationMembers,
-        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.conversationId, conversations.id),
       )
       .where(
         and(
           eq(messages.attachmentFileId, fileId),
           eq(conversationMembers.userId, viewerId),
           isNull(conversationMembers.removedAt),
+          isNull(conversations.removedAt),
           isNull(messages.removedAt),
+          sql`not exists (
+            select 1 from ${conversationMembers} cm
+            inner join ${blocks} b on
+              (b.blocker_id = ${viewerId} and b.blocked_id = cm.user_id)
+              or (b.blocker_id = cm.user_id and b.blocked_id = ${viewerId})
+            where cm.conversation_id = ${messages.conversationId}
+              and cm.user_id <> ${viewerId}
+              and cm.removed_at is null
+          )`,
         ),
       )
       .limit(1);
@@ -291,7 +342,7 @@ export async function recentFilesForUser(userId: string, limit = 30) {
   return db
     .select()
     .from(files)
-    .where(and(eq(files.uploaderId, userId), eq(files.state, 'clean')))
+    .where(and(eq(files.uploaderId, userId), eq(files.state, 'clean'), isNull(files.removedAt)))
     .orderBy(desc(files.createdAt))
     .limit(limit);
 }

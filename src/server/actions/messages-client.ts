@@ -11,22 +11,21 @@ import { verifyCsrf } from '~/server/csrf';
 import type { ActionResult } from '~/lib/action-result';
 import { createGroupConversation, sendMessage, startDirectConversation } from './messages';
 
-export async function onStartDirect(otherUserId: string, csrfToken: string) {
-  return startDirectConversation(otherUserId, csrfToken);
+export async function onStartDirect(otherUserId: string, csrf: string) {
+  return startDirectConversation(otherUserId, csrf);
 }
 
-export async function onCreateGroup(
-  input: { title: string; memberUserIds: string[] },
-  csrfToken: string,
-) {
-  return createGroupConversation(input, csrfToken);
+export async function onCreateGroup(input: { title: string; memberUserIds: string[]; csrf: string }) {
+  return createGroupConversation(input);
 }
 
 export async function onSendMessage(
   input: {
     conversationId: string;
+    clientMessageId: string;
     body: string;
     attachmentFileId: string | null;
+    replyToId?: string | null;
   },
   csrfToken: string,
 ): Promise<ActionResult<{ messageId: string }>> {
@@ -36,8 +35,10 @@ export async function onSendMessage(
   const formData = new FormData();
   formData.set('__csrf', csrfToken);
   formData.set('conversationId', input.conversationId);
+  formData.set('clientMessageId', input.clientMessageId);
   formData.set('body', input.body);
   if (input.attachmentFileId) formData.set('attachmentFileId', input.attachmentFileId);
+  if (input.replyToId) formData.set('replyToId', input.replyToId);
 
   // `sendMessage` verifies the CSRF token from the FormData it is handed, so
   // the structured call goes through the identical check.

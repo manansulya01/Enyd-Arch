@@ -1,16 +1,19 @@
 import 'server-only';
-import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { db } from '~db';
 import { devices, sessions as sessionsTable, userRestrictions, users } from '~db/schema';
 import { formatMemberId } from '~/lib/domain';
-import { browserLabel, platformLabel, randomToken, sha256 } from '../crypto';
+import { deriveCapabilities } from './capabilities';
+export { deriveCapabilities } from './capabilities';
+import { browserLabel, coarseDeviceLabel, platformLabel, randomToken, sha256 } from '../crypto';
 
 export const SESSION_COOKIE = 'enyd_session';
-export const TRAIT_COOKIE = 'enyd_device_traits';
+export const TRAIT_COOKIE = 'enyd_device_binding';
 
 /** Rolling window. Created for 30 days and refreshed as it is used. */
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface SessionActor {
   userId: string;
@@ -39,75 +42,6 @@ function cookieOptions(maxAge: number) {
     path: '/',
     maxAge,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Capability derivation
-//
-// One place decides what a member may do. Route handlers and server actions all
-// call `can()` rather than inspecting roles ad hoc, so a policy change lands in
-// exactly one place.
-// ---------------------------------------------------------------------------
-
-const BASE_CAPABILITIES = [
-  'post',
-  'comment',
-  'react',
-  'bookmark',
-  'message',
-  'upload',
-  'search',
-  'join_project',
-  'rsvp',
-  'submit_game',
-  'gallery_create',
-  'review',
-  'archive_contribute',
-  'collect',
-  'create_project',
-  'connections',
-  'connect_friendship',
-  'connect_collaboration',
-  'request_device_transfer',
-];
-
-export function deriveCapabilities(input: {
-  status: string;
-  level: string;
-  isMinor: boolean;
-  onboarded: boolean;
-  restricted: string[];
-}): string[] {
-  const capabilities = new Set<string>();
-  if (input.status !== 'active') return [];
-
-  capabilities.add('read');
-  if (input.onboarded) for (const capability of BASE_CAPABILITIES) capabilities.add(capability);
-
-  // Dating is gated on an adult age band here, and again on explicit per-mode
-  // opt-in in the member's own settings. Both must be true.
-  if (!input.isMinor) capabilities.add('connections_dating');
-
-  if (['contributor', 'creator', 'archivist', 'curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('curate');
-    capabilities.add('create_collection');
-  }
-  if (['archivist', 'curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('archive_feature');
-  }
-  if (['curator', 'inner_arch'].includes(input.level)) {
-    capabilities.add('invite');
-    capabilities.add('propose');
-  }
-  if (input.level === 'inner_arch') {
-    capabilities.add('inner_arch');
-    capabilities.add('moderate_assist');
-  }
-
-  // A moderation restriction removes the capability and nothing else.
-  for (const restricted of input.restricted) capabilities.delete(restricted);
-
-  return [...capabilities];
 }
 
 export function can(actor: SessionActor | null, capability: string): boolean {
@@ -160,7 +94,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     deviceId: input.deviceId,
     csrfSecret,
     ipHash: input.ipHash,
-    userAgent: input.userAgent.slice(0, 400),
+    userAgent: coarseDeviceLabel(input.userAgent),
     fingerprint: input.fingerprint,
     expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
   });
@@ -245,6 +179,7 @@ export async function currentActor(): Promise<SessionActor | null> {
     .where(
       and(
         eq(sessionsTable.tokenHash, sha256(token)),
+        isNull(users.removedAt),
         isNull(sessionsTable.revokedAt),
         gt(sessionsTable.expiresAt, new Date()),
       ),
@@ -258,6 +193,10 @@ export async function currentActor(): Promise<SessionActor | null> {
   if (row.deviceFingerprint && row.deviceFingerprint !== row.fingerprint) return null;
   if (row.deviceStatus && row.deviceStatus !== 'active') return null;
   if (row.status !== 'active') return null;
+
+  // Refresh the rolling expiry at most once per five minutes. This keeps active
+  // sessions alive without turning every server-component read into a DB write.
+  await touchSession(row.sessionId);
 
   const restricted = await loadRestrictions(row.userId);
 
@@ -286,13 +225,19 @@ export async function currentActor(): Promise<SessionActor | null> {
 
 /** Slide the session expiry forward. Cheap enough to run once per request. */
 export async function touchSession(sessionId: string): Promise<void> {
+  const now = new Date();
   await db
     .update(sessionsTable)
     .set({
-      lastSeenAt: new Date(),
-      expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + SESSION_TTL_SECONDS * 1000),
     })
-    .where(and(eq(sessionsTable.id, sessionId), isNull(sessionsTable.revokedAt)));
+    .where(and(
+      eq(sessionsTable.id, sessionId),
+      isNull(sessionsTable.revokedAt),
+      gt(sessionsTable.expiresAt, now),
+      lt(sessionsTable.lastSeenAt, new Date(now.getTime() - SESSION_TOUCH_INTERVAL_MS)),
+    ));
 }
 
 export async function sessionCsrfSecret(): Promise<string | null> {
@@ -348,10 +293,14 @@ export async function revokeSessionById(sessionId: string, userId: string): Prom
 
 export function describeDevice(userAgent: string | null, platform: string | null) {
   const agent = userAgent ?? '';
-  const os = platform ?? (agent ? platformLabel(agent) : 'Unknown device');
+  // New records store a coarse "Browser on Platform" label. Older records may
+  // still contain a raw user-agent string, so keep a backwards-compatible path.
+  const coarse = /^([A-Za-z]+) on (.+)$/.exec(agent);
+  const browser = coarse?.[1] ?? (agent ? browserLabel(agent) : 'Unknown');
+  const os = platform ?? coarse?.[2] ?? (agent ? platformLabel(agent) : 'Unknown device');
   return {
-    label: agent ? `${browserLabel(agent)} on ${os}` : os,
-    browser: agent ? browserLabel(agent) : 'Unknown',
+    label: agent ? `${browser} on ${os}` : os,
+    browser,
     os,
   };
 }

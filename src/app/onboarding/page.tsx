@@ -4,6 +4,7 @@ import { MARK } from '~/lib/domain';
 import { currentActor } from '~/server/auth/session';
 import { OnboardingWizard } from '~/components/onboarding/wizard';
 import { loadOnboardingContext } from '~/server/onboarding-context';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = {
   title: 'Introduce yourself',
@@ -15,7 +16,10 @@ export default async function OnboardingPage() {
   if (!actor) redirect('/sign-in');
   if (actor.onboarded) redirect('/home');
 
-  const context = await loadOnboardingContext(actor.userId);
+  const [context, csrfToken] = await Promise.all([
+    loadOnboardingContext(actor.userId),
+    sessionCsrfToken(),
+  ]);
 
   return (
     <div className="onboard">
@@ -34,6 +38,7 @@ export default async function OnboardingPage() {
 
       <main className="onboard-main" id="main">
         <OnboardingWizard
+          csrfToken={csrfToken}
           identity={{
             username: actor.username,
             displayName: actor.displayName,

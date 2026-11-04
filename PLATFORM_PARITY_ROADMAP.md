@@ -1,0 +1,133 @@
+# Enyd Arch platform-parity roadmap
+
+This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitter-, Reddit-, Spotify-, Arcade-, and FTP-like capabilities into a staged engineering plan. It is a planning and verification document, **not a claim that all listed capabilities are already implemented**.
+
+## Existing foundations (confirmed in the current repository)
+
+- **Community/social:** member profiles and registry, Connections, requests/blocks, Commons posts, comments, reactions, reposts, hashtags, mentions, polls, bookmarks, notifications, search, gallery, events, projects, and private messages/group conversations.
+- **Video/film:** Cinema catalogue, reviews, comments, watchlists, official availability links. This is not yet a general-purpose creator video hosting/transcoding platform.
+- **Games:** The Arcade already exists at `/arcade`, with game submission, isolated sandbox playback, genres, ratings, comments, tags, and play counts. Do not build a duplicate Arcade.
+- **Files:** The Exchange accepts scanned uploads including audio, video, documents and archives. It is not an FTP/SFTP server, and uploads are not automatically a music catalogue.
+- **Security foundation:** passkeys, private-by-default uploads, object access checks, rate limits, moderation and storage encryption at rest. Private messages are not end-to-end encrypted.
+
+## Product principles
+
+1. Implement a coherent Enyd experience, not a pixel-perfect or trademark-copying clone of another service.
+2. Prefer open standards and interoperable formats; do not scrape private APIs, bypass DRM, or re-host copyrighted media without permission.
+3. Each feature requires a database model, server-side authorization, abuse/reporting controls, accessibility, retention/deletion behavior, tests, and an explicit rollout gate.
+4. Keep private content private by default. Public sharing must be an explicit action and all media delivery must enforce the same policy.
+5. Do not deploy an unauthenticated FTP daemon. If remote file transfer is enabled, use **SFTP over SSH** or a managed object-storage transfer endpoint with per-user credentials, scoped directories, quotas, audit logs, and revocation. Plain FTP sends credentials in cleartext.
+
+## Feature-parity inventory
+
+### Discord-like community and communication
+- [x] Basic direct and small group text conversations (server-side foundation).
+- [x] Small-group rename, leave, and ownership transfer with owner-only server checks and explicit confirmation.
+- [x] Per-member conversation mute/unmute for eight hours, backed by active-membership checks and a transaction-locked update; message notification fan-out now centrally suppresses muted-thread notifications while retaining the global per-category preference.
+- [x] Owner-only group member removal with active-membership checks and soft removal.
+- [x] Owner-controlled adding of eligible existing connections to groups, capped at 12, with serialized membership checks, recipient policy checks, block-pair rejection and active-membership validation.
+- [x] Expiring/revocable group invite links with SHA-256 token hashes, one-time secret display, fragment-only secret transport, explicit signed-in acceptance, 1-hour-to-7-day expiry, use limits, active-owner revocation, capacity/policy/block checks, and transaction-locked use counting.
+- [ ] Broader group permissions and a full conversation UI completeness audit.
+- [x] Message edit (15-minute window), sender-owned removal, and edited markers; actions enforce active conversation membership, CSRF, capability, and rate-limit checks.
+- [x] Message reactions: six allow-listed emoji, per-member toggles, unique member/message/emoji keys, membership-checked server writes, rate limits, and per-message counts in the thread UI. Implemented on the completion branch; full CI passed at `40f4d6b`.
+- [x] Message pin/unpin: per-message pin state, pinning member and timestamp, membership-checked transactional toggles, and visible pin state in the thread UI. Implemented on the completion branch; full CI passed at `40f4d6b`.
+- [x] Search within a private conversation by message text, capped to 80 characters and scoped to the authenticated member's conversation. Added on the completion branch; CI verification is pending.
+- [x] Per-member read receipts: sender-visible “Seen by” names are derived from active conversation members’ read timestamps; membership-scoped query and private thread UI. Each recipient can disable read-receipt visibility in privacy settings.
+- [x] Message drafts: automatically saved per conversation in browser session storage (not sent to the server), restored on return, bounded to 4,000 characters, and cleared only after successful send. Drafts are tab-session scoped; cross-device sync is intentionally not provided.
+- [x] Message attachment previews for safe raster images, browser-native audio and video playback, plus download links and file sizes; media bytes still flow through the existing membership/block-authorized file route.
+- [x] Per-category in-app notification preferences for messages, replies, mentions, reactions, connections, projects, events and file activity; notification writes enforce saved preferences with request-scoped preference reads.
+- [x] Tab-scoped offline outbox for up to 10 text/file-reference messages, explicit retry/discard controls, and client-generated idempotency IDs so retries after a lost response do not duplicate messages. Attachment bytes must already have completed the validated upload; outbox contents remain in session storage and are not cross-device or browser-restart durable. Full CI passed at `40f4d6b`; staging verification remains.
+- [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
+- [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
+- [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
+- [ ] Community onboarding, custom emoji/stickers, events, polls, scheduled messages, bot/app integrations and scoped API tokens.
+- [ ] Spam/raid protection, invite throttling, block/report flows, age safety, rate limits and moderator tooling for every new surface.
+
+### Instagram-like visual social
+- [x] Follow/unfollow graph distinct from mutual Connections, discoverable-member controls, and a Following feed.
+- [x] Follower/following lists with discoverability, profile visibility and mutual-block filtering; bounded to 100 visible members per list.
+- [ ] Additional per-audience privacy controls.
+- [ ] Photo/carousel posts, captions, alt text, crop/thumbnail generation, drafts, archive and creator profile grid.
+- [ ] Stories with explicit expiry, viewer list privacy, replies and optional close-friends audience.
+- [ ] Short-form video/reels, transcoding, adaptive bitrate, captions, audio rights checks and upload resumability.
+- [ ] Likes/comments/shares/saves, mentions, tagged media, collaborative posts and creator insights with privacy-conscious analytics.
+- [ ] Recommendation/discovery controls, hidden words, comment filters, restrict/mute/block, reporting and copyright takedown workflow.
+- [ ] Optional live broadcasts only after media infrastructure and moderation coverage exist.
+
+### YouTube-like video platform
+- [ ] Creator channel pages, upload pipeline, resumable uploads and processing states.
+- [ ] Transcoding jobs, HLS/DASH adaptive streaming, thumbnails, subtitles/captions, chapters, playback quality and accessibility.
+- [ ] Public/unlisted/private visibility, playlists, watch history controls, watch later, subscriptions, notifications and queue.
+- [ ] Comments/replies, moderation, pinned comments, clips, timestamps, likes/dislikes or equivalent feedback, community posts.
+- [ ] Search/filter/sort, creator dashboard, retention metrics with clear definitions, copyright claims and dispute workflow.
+- [ ] Live streaming, chat replay, premieres and memberships only when reliable media/abuse infrastructure exists.
+- [ ] No DRM bypass, unauthorized downloads, or unlicensed music/video re-hosting.
+
+### X/Twitter-like public conversation
+- [x] Commons text posts, hashtags, mentions, reactions, reposts, polls, bookmarks, comments and active/recent/discussed feeds exist in some form.
+- [x] Follow graph and chronological following feed; active/recent/discussed sorting remains user-selectable.
+- [ ] Lists, saved searches, trends and additional conversation controls.
+- [ ] Quote-posts, threaded long posts, edit window/history, drafts, scheduled posts, post-level audiences and link cards.
+- [ ] Lists, saved searches, trends with anti-manipulation protections, advanced search filters and conversation controls.
+- [ ] Mute words/accounts, reply permissions, block/report, community notes/context, account verification policy and impersonation reports.
+- [ ] Optional audio/video posts with transcoding, alt text and caption requirements.
+- [ ] No dark-pattern engagement optimization; document ranking and give users control over recommendation inputs.
+
+### Reddit-like communities
+- [x] Public topic-based communities with owners, membership, join/leave, text discussion posts, flat comments, and per-member upvotes/downvotes.
+- [x] Authors can remove their own comments; community owners/moderators can remove comments in their space.
+- [x] Owner-controlled moderator promotion/demotion with current active membership checks and transactional community locks.
+- [x] Owner-managed community rules, rendered as plain text to viewers and editable only through a CSRF-protected, rate-limited, owner-checked transaction.
+- [x] Member reporting for community posts/comments with visibility/membership checks, target-owner attribution, reporter-private admin moderation queue, CSRF-protected state-checked resolution/dismissal, and moderation/audit records.
+- [x] Per-community `New`, `Hot`, and `Top` feed sorting using vote score and recency, with stable newest-first tie-breaking; vote totals exclude blocked, removed, and inactive accounts. Full CI passed at `8aef095`.
+- [x] Community-scoped report queues for owners/moderators, content previews, CSRF-protected transactional resolution/dismissal, moderation-action records, and audit events for rule changes, moderator role changes, ownership transfers, and report decisions.
+- [x] Private community creation and invite-only membership with one-time-visible SHA-256-hashed bearer links, explicit signed-in acceptance, 1-hour-to-7-day expiry, use limits, owner revocation, active-owner checks, block checks against all active members, and private-route/directory visibility enforcement. Full CI passed at `4fdcd42`.
+- [ ] Richer moderator role hierarchy and permission overwrites.
+- [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
+- [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
+- [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
+- [ ] Community wiki/resources, pinned posts, recurring threads, polls, mod queue, reports, automod rules and appeal history.
+- [ ] Community discovery, search, related communities, spam brigades/rate limits and moderator audit logs.
+- [ ] Export, delete, and retention behavior for user-generated content and mod actions.
+
+### Spotify-like music experience
+- [x] Private music library for clean audio files a member has uploaded and owns.
+- [x] Search by filename, browser audio playback, next/previous, shuffle and repeat controls.
+- [x] Private playlists with creation, adding/removing tracks, deletion, persisted PostgreSQL membership, server-side ownership checks, write rate limits, and transaction-locked position allocation.
+- [x] Select a saved playlist for playback, search within it, and use next/previous/shuffle/repeat against its available tracks.
+- [ ] Track metadata beyond filenames, cover art, artist/album pages, genres, persistent playback across navigation and a durable playback queue.
+- [x] Private playlist track reordering with ownership checks, transaction locking, and unique-position-safe swaps.
+- [ ] Public/collaborative playlists, share links and explicit audience controls.
+- [x] Private liked-songs collection with server-validated toggles and a dedicated playback filter.
+- [ ] Listening history controls, recently played and personal mixes.
+- [ ] Audio normalization, range-capable streaming, background playback, metadata/cover extraction and mobile playback behavior.
+- [ ] Artist upload rights declaration, copyright reporting, takedown and repeat-infringer process.
+- [ ] Recommendations only after transparent opt-in and privacy review.
+- [ ] No ripping Spotify, circumventing DRM, or distributing copyrighted tracks without licenses. Commercial catalogue streaming requires licensing and royalty accounting; user uploads alone do not create those rights.
+
+### Arcade
+- [x] Existing Arcade at `/arcade`: submissions, package validation/scanning, isolated playback, genre filters, ratings, comments, tags and play counts.
+- [x] Harden per-game sandbox boundaries: separate-origin and HTTPS production checks, `connect-src 'none'`, no ambient app credentials, single-use grants, bounded session/grant maps, bounded mint request bodies, encrypted-package decryption and checksum verification; persistent browser storage APIs are blocked to prevent cross-game data leakage. Runtime supports the configured local or S3 storage driver.
+- [ ] Add runtime CPU/memory/process quotas, runtime S3 retrieval, anti-cheat expectations and expanded moderation/reporting.
+- [ ] Add save-state/high scores/leaderboards/achievements, game collections, favorites and controller/mobile accessibility where the game API supports them.
+- [ ] Add multiplayer only via an isolated, rate-limited game-session service; do not give games direct database or app-session access.
+
+### FTP/SFTP-style personal file access
+- [ ] Define the use case and retention/quota model before exposing remote transfer.
+- [ ] Preferred design: SFTP service or scoped object-storage multipart transfer; separate credentials from web sessions, support key rotation/revocation, per-user roots, quotas, malware scanning, audit logs and backup/restore.
+- [ ] Never expose raw server filesystem paths, shell access, arbitrary directory traversal, or shared FTP passwords.
+- [ ] Use TLS-protected transfers, encrypted storage, quarantine, checksum verification, and explicit public-link expiry/revocation.
+- [ ] Add abuse response, per-account transfer limits, disk exhaustion protections and incident logging that avoids file contents and secrets.
+
+## Suggested delivery order
+
+1. **Core quality/security:** verify existing social/chat/Arcade behavior, fix authorization gaps, add integration tests, and complete messaging UX.
+2. **Music MVP:** private audio library, permissioned track publishing, playlists, search and safe playback for authorized files.
+3. **Community spaces:** Reddit/Discord-inspired communities, channel roles, moderator queues and reporting.
+4. **Creator media:** video processing pipeline, captions, playlists, follows/subscriptions and upload-resume.
+5. **Visual social:** stories, reels/carousels and creator grids using the same media pipeline.
+6. **Advanced realtime:** voice/video, live streaming and multiplayer after separate infrastructure/security reviews.
+7. **Remote file transfer:** SFTP/object-storage gateway with strict isolation, quotas and key revocation.
+8. **Recommendation and analytics:** opt-in, documented, privacy-preserving, and never required for the core product.
+
+Every phase ends with database migrations, type-check, regression/integration tests, production build, accessibility checks, abuse tests, and a staging rollout. A green unit-test run is not proof of full platform parity or production security.

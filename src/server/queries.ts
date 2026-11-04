@@ -1,18 +1,29 @@
 import 'server-only';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db } from '~db';
 import {
   achievements,
   archiveObjectTags,
   archiveObjects as archiveObjectTable,
   blocks,
+  bookmarks as bookmarkTable,
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
-  connectionRequests as connectionRequestTable,
+  communityInvites,
+  communityMembers,
+  communityPostComments,
+  communityPosts,
+  communities,
+  conversationInvites,
   conversationMembers,
   conversations as conversationTable,
+  connectionRequests,
   events as eventTable,
+  films as filmTable,
+  filmReviews,
+  watchlists,
+  watchlistItems,
   files,
   galleryAttachments,
   galleryPosts as galleryPostTable,
@@ -22,6 +33,7 @@ import {
   interests,
   matches as matchTable,
   messages as messageTable,
+  messageReactions,
   notifications as notificationTable,
   postAttachments,
   postHashtags,
@@ -29,9 +41,13 @@ import {
   profiles,
   projects as projectTable,
   reactions,
+  reports,
   rsvps,
+  stories,
+  storyViews,
   userAchievements,
   userInterests,
+  userFollows,
   userSettings,
   users,
 } from '~db/schema';
@@ -112,8 +128,6 @@ export interface MemberRow {
   avatarObjectId: string | null;
   showRegion: boolean | null;
   hideAgeBand: boolean | null;
-  profileVisibility?: string | null;
-  discoverable?: boolean | null;
 }
 
 const MEMBER_COLUMNS = {
@@ -129,8 +143,6 @@ const MEMBER_COLUMNS = {
   avatarObjectId: profiles.avatarObjectId,
   showRegion: userSettings.showRegion,
   hideAgeBand: userSettings.hideAgeBand,
-  profileVisibility: userSettings.profileVisibility,
-  discoverable: userSettings.discoverable,
 };
 
 const memberJoin = () =>
@@ -168,8 +180,50 @@ export function projectMember(row: MemberRow, viewerId?: string | null): MemberS
   };
 }
 
+const resourceVisibleToViewer = (visibility: unknown, owner: unknown, viewerId: string) => sql`(
+  ${owner as never} = ${viewerId}
+  or ${visibility as never} in ('public', 'members')
+  or (
+    ${visibility as never} = 'connections'
+    and exists (
+      select 1 from ${matchTable} m
+      where m.status = 'accepted'
+        and (
+          (m.user_a_id = ${owner as never} and m.user_b_id = ${viewerId})
+          or (m.user_b_id = ${owner as never} and m.user_a_id = ${viewerId})
+        )
+    )
+  )
+)`;
+
+const visibleMemberConditions = (viewerId?: string | null) =>
+  and(
+    eq(users.status, 'active'),
+    isNull(users.removedAt),
+    viewerId ? or(
+      eq(users.id, viewerId),
+      and(
+        eq(userSettings.discoverable, true),
+        resourceVisibleToViewer(profiles.profileVisibility, profiles.userId, viewerId),
+        resourceVisibleToViewer(userSettings.profileVisibility, users.id, viewerId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${users.id})
+             or (b.blocker_id = ${users.id} and b.blocked_id = ${viewerId})
+        )`,
+      ),
+    ) : and(
+      eq(userSettings.discoverable, true),
+      eq(profiles.profileVisibility, 'public'),
+      eq(userSettings.profileVisibility, 'public'),
+    ),
+  );
+
 export async function memberById(userId: string, viewerId?: string | null): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(eq(users.id, userId)).limit(1);
+  const privacy = viewerId === userId
+    ? eq(users.id, userId)
+    : and(eq(users.id, userId), visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
   return row ? projectMember(row, viewerId) : null;
 }
 
@@ -177,48 +231,139 @@ export async function memberByUsername(
   username: string,
   viewerId?: string | null,
 ): Promise<MemberSummary | null> {
-  const [row] = await memberJoin().where(sql`lower(${users.username}) = lower(${username})`).limit(1);
-  if (!row) return null;
-
-  const isSelf = viewerId === row.id;
-  if (!isSelf && viewerId) {
-    const [blockedViewer] = await db
-      .select({ id: blocks.id })
-      .from(blocks)
-      .where(and(eq(blocks.blockerId, row.id), eq(blocks.blockedId, viewerId)))
-      .limit(1);
-    if (blockedViewer) return null;
-  }
-  if (!isSelf && row.profileVisibility === 'private') return null;
-  if (!isSelf && row.profileVisibility === 'connections') {
-    if (!viewerId) return null;
-    const [connection] = await db
-      .select({ id: matchTable.id })
-      .from(matchTable)
-      .where(
-        and(
-          eq(matchTable.status, 'accepted'),
-          or(
-            and(eq(matchTable.userAId, viewerId), eq(matchTable.userBId, row.id)),
-            and(eq(matchTable.userAId, row.id), eq(matchTable.userBId, viewerId)),
-          ),
-        ),
-      )
-      .limit(1);
-    if (!connection) return null;
-  }
-  return projectMember(row, viewerId);
+  const identity = sql`lower(${users.username}) = lower(${username})`;
+  const privacy = and(identity, visibleMemberConditions(viewerId));
+  const [row] = await memberJoin().where(privacy).limit(1);
+  return row ? projectMember(row, viewerId) : null;
 }
 
-export async function discoverableMemberByUsername(
-  username: string,
+export interface MemberProfileDetails {
+  bio: string | null;
+  pronouns: string | null;
+  institution: string | null;
+  fieldOfStudy: string | null;
+  skills: Array<{ key: string; label: string }>;
+  links: Array<{ label: string; url: string }>;
+  showActivity: boolean;
+  showCreations: boolean;
+  showArchiveContributions: boolean;
+}
+
+export async function memberProfileDetails(
+  userId: string,
   viewerId: string,
-): Promise<MemberSummary | null> {
-  const [row] = await memberJoin()
-    .where(sql`lower(${users.username}) = lower(${username}) and coalesce(${userSettings.discoverable}, true) = true`)
+): Promise<MemberProfileDetails | null> {
+  const [row] = await db
+    .select({
+      bio: profiles.bio,
+      pronouns: profiles.pronouns,
+      institution: profiles.institution,
+      fieldOfStudy: profiles.fieldOfStudy,
+      skills: profiles.skills,
+      links: profiles.links,
+      showActivity: userSettings.showActivity,
+      showCreations: userSettings.showCreations,
+      showArchiveContributions: userSettings.showArchiveContributions,
+    })
+    .from(users)
+    .leftJoin(profiles, eq(profiles.userId, users.id))
+    .leftJoin(userSettings, eq(userSettings.userId, users.id))
+    .where(and(eq(users.id, userId), visibleMemberConditions(viewerId)))
     .limit(1);
+
   if (!row) return null;
-  return memberByUsername(row.username, viewerId);
+  return {
+    bio: row.bio ?? null,
+    pronouns: row.pronouns ?? null,
+    institution: row.institution ?? null,
+    fieldOfStudy: row.fieldOfStudy ?? null,
+    skills: Array.isArray(row.skills) ? row.skills : [],
+    links: Array.isArray(row.links) ? row.links : [],
+    showActivity: row.showActivity ?? true,
+    showCreations: row.showCreations ?? true,
+    showArchiveContributions: row.showArchiveContributions ?? true,
+  };
+}
+
+export interface MemberArchiveContribution {
+  slug: string;
+  title: string;
+  category: string;
+  createdAt: Date;
+}
+
+export async function memberArchiveContributions(
+  userId: string,
+  viewerId: string,
+): Promise<MemberArchiveContribution[]> {
+  return db
+    .select({
+      slug: archiveObjectTable.slug,
+      title: archiveObjectTable.title,
+      category: archiveObjectTable.category,
+      createdAt: archiveObjectTable.createdAt,
+    })
+    .from(archiveObjectTable)
+    .innerJoin(users, eq(users.id, archiveObjectTable.contributorId))
+    .innerJoin(userSettings, eq(userSettings.userId, users.id))
+    .where(and(
+      eq(archiveObjectTable.contributorId, userId),
+      eq(userSettings.showArchiveContributions, true),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+      isNull(archiveObjectTable.removedAt),
+      resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, viewerId),
+      sql`not exists (
+        select 1 from ${blocks} b
+        where (b.blocker_id = ${viewerId} and b.blocked_id = ${userId})
+           or (b.blocker_id = ${userId} and b.blocked_id = ${viewerId})
+      )`,
+    ))
+    .orderBy(desc(archiveObjectTable.createdAt))
+    .limit(8);
+}
+
+export async function memberDirectory(
+  viewerId: string,
+  options: { query?: string | null; level?: string | null; limit?: number } = {},
+): Promise<MemberSummary[]> {
+  const term = (options.query ?? '').trim().slice(0, 60);
+  const where = and(
+    visibleMemberConditions(viewerId),
+    sql`${users.id} <> ${viewerId}`,
+    options.level ? eq(users.level, options.level as never) : sql`true`,
+    term
+      ? sql`(${users.username} ilike ${'%' + term + '%'} or ${users.displayName} ilike ${'%' + term + '%'})`
+      : sql`true`,
+  );
+  const rows = await memberJoin().where(where).orderBy(desc(users.createdAt)).limit(Math.min(options.limit ?? 60, 100));
+  return rows.map((row) => projectMember(row, viewerId));
+}
+
+export async function memberFollowLists(viewerId: string): Promise<{
+  following: MemberSummary[];
+  followers: MemberSummary[];
+}> {
+  const followingRows = await memberJoin()
+    .innerJoin(userFollows, eq(userFollows.followedId, users.id))
+    .where(and(
+      eq(userFollows.followerId, viewerId),
+      visibleMemberConditions(viewerId),
+    ))
+    .orderBy(asc(users.displayName))
+    .limit(100);
+  const followerRows = await memberJoin()
+    .innerJoin(userFollows, eq(userFollows.followerId, users.id))
+    .where(and(
+      eq(userFollows.followedId, viewerId),
+      visibleMemberConditions(viewerId),
+    ))
+    .orderBy(asc(users.displayName))
+    .limit(100);
+  return {
+    following: followingRows.map((row) => projectMember(row, viewerId)),
+    followers: followerRows.map((row) => projectMember(row, viewerId)),
+  };
 }
 
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
@@ -245,6 +390,7 @@ export interface PostAttachmentView {
 }
 
 export interface PollView {
+  id: string;
   question: string;
   multiSelect: boolean;
   closesAt: Date | null;
@@ -271,6 +417,7 @@ export interface PostView {
   poll: PollView | null;
   hashtags: string[];
   myReactions: string[];
+  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
@@ -292,6 +439,7 @@ export interface NetworkPostView {
   poll: PollView | null;
   hashtags: string[];
   myReactions: string[];
+  bookmarked: boolean;
   repostOf: { id: string; authorName: string; preview: string | null } | null;
 }
 
@@ -304,6 +452,10 @@ export async function feed(options: {
   authorId?: string | null;
   limit?: number;
   cursor?: Date | null;
+  followingOnly?: boolean;
+  postId?: string;
+  bookmarkedOnly?: boolean;
+  query?: string | null;
 }): Promise<PostView[]> {
   const limit = Math.min(options.limit ?? 20, 40);
   const sort = options.sort ?? 'active';
@@ -337,10 +489,34 @@ export async function feed(options: {
       and(
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, options.viewerId),
         isNull(users.removedAt),
         eq(users.status, 'active'),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
+        )`,
+        options.postId ? eq(postTable.id, options.postId) : sql`true`,
+        options.bookmarkedOnly
+          ? sql`exists (
+              select 1 from ${bookmarkTable} bm
+              where bm.user_id = ${options.viewerId}
+                and bm.target_type = 'post'
+                and bm.target_id = ${postTable.id}
+            )`
+          : sql`true`,
         options.authorId ? eq(postTable.authorId, options.authorId) : sql`true`,
+        options.query?.trim()
+          ? ilike(postTable.body, `%${options.query.trim().slice(0, 100)}%`)
+          : sql`true`,
+        options.followingOnly
+          ? sql`exists (
+              select 1 from ${userFollows} uf
+              where uf.follower_id = ${options.viewerId}
+                and uf.followed_id = ${postTable.authorId}
+            )`
+          : sql`true`,
         options.topic
           ? sql`exists (
               select 1 from ${postHashtags} h
@@ -358,7 +534,7 @@ export async function feed(options: {
   const postIds = rows.map((row) => row.id);
   const authorMap = await membersByIds(rows.map((row) => row.authorId), options.viewerId);
 
-  const [attachmentRows, tagRows, reactionRows, pollRows] = await Promise.all([
+  const [attachmentRows, tagRows, reactionRows, pollRows, bookmarkRows] = await Promise.all([
     db
       .select({
         postId: postAttachments.postId,
@@ -373,8 +549,10 @@ export async function feed(options: {
       .where(
         and(
           inArray(postAttachments.postId, postIds),
-          // Never expose a file that has not cleared the scanner.
+          // Never expose quarantined, removed, or orphaned file metadata.
           eq(files.state, 'clean'),
+          isNull(files.removedAt),
+          sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`,
         ),
       )
       .orderBy(asc(postAttachments.position)),
@@ -399,6 +577,7 @@ export async function feed(options: {
     db
       .select({
         postId: sql<string>`${postTable.id}`,
+        pollId: sql<string>`pl.id`,
         question: sql<string>`pl.question`,
         multiSelect: sql<boolean>`pl.multi_select`,
         closesAt: sql<Date | null>`pl.closes_at`,
@@ -409,14 +588,28 @@ export async function feed(options: {
           select 1 from poll_votes pv
           where pv.poll_id = pl.id and pv.user_id = ${options.viewerId}
         )`,
+        optionSelected: sql<boolean>`exists (
+          select 1 from poll_votes pv
+          where pv.poll_id = pl.id and pv.option_id = po.id and pv.user_id = ${options.viewerId}
+        )`,
       })
       .from(postTable)
       .innerJoin(sql`polls pl on pl.post_id = ${postTable.id}`, sql`true`)
       .leftJoin(sql`poll_options po on po.poll_id = pl.id`, sql`true`)
       .where(inArray(postTable.id, postIds)),
+
+    db
+      .select({ targetId: bookmarkTable.targetId })
+      .from(bookmarkTable)
+      .where(and(
+        eq(bookmarkTable.userId, options.viewerId),
+        eq(bookmarkTable.targetType, 'post'),
+        inArray(bookmarkTable.targetId, postIds),
+      )),
   ]);
 
   const myReactions = groupStrings(reactionRows, 'targetId', 'kind');
+  const bookmarkedIds = new Set(bookmarkRows.map((row) => row.targetId));
   const tagsByPost = groupStrings(tagRows, 'postId', 'tag');
 
   const attachmentsByPost = new Map<string, PostAttachmentView[]>();
@@ -437,6 +630,7 @@ export async function feed(options: {
     const existing = pollsByPost.get(row.postId);
     const poll: PollView =
       existing ?? {
+        id: row.pollId,
         question: row.question,
         multiSelect: row.multiSelect,
         closesAt: row.closesAt,
@@ -448,7 +642,7 @@ export async function feed(options: {
 
     if (row.optionId && row.optionLabel) {
       const votes = Number(row.optionVotes ?? 0);
-      poll.options.push({ id: row.optionId, label: row.optionLabel, votes, selected: false });
+      poll.options.push({ id: row.optionId, label: row.optionLabel, votes, selected: row.optionSelected });
       poll.totalVotes += votes;
     }
     pollsByPost.set(row.postId, poll);
@@ -464,7 +658,19 @@ export async function feed(options: {
         })
         .from(postTable)
         .innerJoin(users, eq(users.id, postTable.authorId))
-        .where(inArray(postTable.id, repostIds))
+        .where(and(
+          inArray(postTable.id, repostIds),
+          eq(postTable.status, 'published'),
+          isNull(postTable.removedAt),
+          resourceVisibleToViewer(postTable.visibility, postTable.authorId, options.viewerId),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${postTable.authorId})
+               or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${options.viewerId})
+          )`,
+        ))
     : [];
   const originalMap = new Map(originals.map((row) => [row.id, row]));
 
@@ -484,6 +690,7 @@ export async function feed(options: {
     poll: pollsByPost.get(row.id) ?? null,
     hashtags: tagsByPost.get(row.id) ?? [],
     myReactions: myReactions.get(row.id) ?? [],
+    bookmarked: bookmarkedIds.has(row.id),
     repostOf: row.repostOfId
       ? (() => {
           const original = originalMap.get(row.repostOfId);
@@ -497,91 +704,135 @@ export async function feed(options: {
   }));
 }
 
-export async function postById(postId: string, viewerId: string): Promise<PostView | null> {
-  const rows = await feed({ viewerId, limit: 1, ...{} }).catch(() => []);
-  void rows;
+export type SavedNonPostView = {
+  targetType: 'archive_object' | 'game' | 'gallery_post';
+  targetId: string;
+  title: string;
+  href: string;
+  createdAt: Date;
+};
 
-  const [row] = await db
-    .select({
-      id: postTable.id,
-      body: postTable.body,
-      createdAt: postTable.createdAt,
-      lastActivityAt: postTable.lastActivityAt,
-      editedAt: postTable.editedAt,
-      pinned: postTable.pinned,
-      reactionCount: postTable.reactionCount,
-      commentCount: postTable.commentCount,
-      repostCount: postTable.repostCount,
-      visibility: postTable.visibility,
-      repostOfId: postTable.repostOfId,
-      authorId: postTable.authorId,
+/** Return only saved items that the member can still legitimately view. */
+export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostView[]> {
+  const [archives, arcadeGames, galleryPieces] = await Promise.all([
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: archiveObjectTable.title,
+      slug: archiveObjectTable.slug,
+      createdAt: bookmarkTable.createdAt,
     })
-    .from(postTable)
-    .innerJoin(users, eq(users.id, postTable.authorId))
-    .where(
-      and(
-        eq(postTable.id, postId),
-        eq(postTable.status, 'published'),
-        isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
-        eq(users.status, 'active'),
-      ),
-    )
+      .from(bookmarkTable)
+      .innerJoin(archiveObjectTable, eq(archiveObjectTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'archive_object'),
+        resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, viewerId),
+        isNull(archiveObjectTable.removedAt),
+        sql`(${archiveObjectTable.contributorId} is null or exists (
+          select 1 from users u
+          where u.id = ${archiveObjectTable.contributorId}
+            and u.status = 'active' and u.removed_at is null
+        ))`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${archiveObjectTable.contributorId})
+             or (b.blocker_id = ${archiveObjectTable.contributorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: gameTable.title,
+      slug: gameTable.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(gameTable, eq(gameTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'game'),
+        eq(gameTable.status, 'approved'),
+        isNull(gameTable.removedAt),
+        sql`exists (
+          select 1 from users u where u.id = ${gameTable.creatorId}
+            and u.status = 'active' and u.removed_at is null
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${gameTable.creatorId})
+             or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: galleryPostTable.title,
+      slug: galleryPostTable.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(galleryPostTable, eq(galleryPostTable.id, bookmarkTable.targetId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'gallery_post'),
+        resourceVisibleToViewer(galleryPostTable.visibility, galleryPostTable.authorId, viewerId),
+        isNull(galleryPostTable.removedAt),
+        sql`exists (
+          select 1 from users u where u.id = ${galleryPostTable.authorId}
+            and u.status = 'active' and u.removed_at is null
+        )`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${galleryPostTable.authorId})
+             or (b.blocker_id = ${galleryPostTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
+  ]);
+
+  return [
+    ...archives.map((item) => ({ ...item, targetType: 'archive_object' as const, href: `/archive/${item.slug}` })),
+    ...arcadeGames.map((item) => ({ ...item, targetType: 'game' as const, href: `/arcade/${item.slug}` })),
+    ...galleryPieces.map((item) => ({ ...item, targetType: 'gallery_post' as const, href: `/gallery/${item.slug}` })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80);
+}
+
+export async function isBookmarked(
+  viewerId: string,
+  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post',
+  targetId: string,
+): Promise<boolean> {
+  const [row] = await db.select({ targetId: bookmarkTable.targetId })
+    .from(bookmarkTable)
+    .where(and(
+      eq(bookmarkTable.userId, viewerId),
+      eq(bookmarkTable.targetType, targetType),
+      eq(bookmarkTable.targetId, targetId),
+    ))
     .limit(1);
+  return Boolean(row);
+}
 
-  if (!row) return null;
-
-  // Reuse the projection by asking the feed for exactly this post.
-  const projected = await projectPosts([row], viewerId);
-  return projected[0] ?? null;
+export async function postById(postId: string, viewerId: string): Promise<PostView | null> {
+  // Use the feed's viewer-aware projection so detail pages preserve poll state
+  // and the same visibility, block, and attachment rules as the main feed.
+  const rows = await feed({ viewerId, postId, limit: 1 });
+  return rows[0] ?? null;
 }
 
 export async function networkBySlug(slug: string, viewerId: string): Promise<NetworkPostView | null> {
-  const rows = await feed({ viewerId, limit: 1, ...{} }).catch(() => []);
-  void rows;
-
-  const [row] = await db
-    .select({
-      id: postTable.id,
-      body: postTable.body,
-      createdAt: postTable.createdAt,
-      lastActivityAt: postTable.lastActivityAt,
-      editedAt: postTable.editedAt,
-      pinned: postTable.pinned,
-      reactionCount: postTable.reactionCount,
-      commentCount: postTable.commentCount,
-      repostCount: postTable.repostCount,
-      visibility: postTable.visibility,
-      repostOfId: postTable.repostOfId,
-      authorId: postTable.authorId,
-    })
-    .from(postTable)
-    .innerJoin(users, eq(users.id, postTable.authorId))
-    .where(
-      and(
-        eq(postTable.id, slug),
-        eq(postTable.status, 'published'),
-        isNull(postTable.removedAt),
-        inArray(postTable.visibility, ['members', 'public']),
-        eq(users.status, 'active'),
-      ),
-    )
-    .limit(1);
-
-  if (!row) return null;
-
-  // Reuse the projection by asking the feed for exactly this post.
-  const base = await projectPosts([row], viewerId);
-  const post = base[0];
-  if (post == null) return null;
+  const post = await postById(slug, viewerId);
+  if (!post) return null;
   const body = post.body ?? '';
   const title = (body.split('\n')[0] ?? '').trim();
-  const content = post.body;
   return {
     ...post,
     title,
-    content,
-  } as NetworkPostView;
+    content: post.body,
+  };
 }
 
 export { postComments as networkComments };
@@ -609,7 +860,7 @@ export async function projectPosts(
   const postIds = rows.map((row) => row.id);
   const authorMap = await membersByIds(rows.map((row) => row.authorId), viewerId);
 
-  const [attachmentRows, tagRows, reactionRows] = await Promise.all([
+  const [attachmentRows, tagRows, reactionRows, bookmarkRows] = await Promise.all([
     db
       .select({
         postId: postAttachments.postId,
@@ -620,7 +871,7 @@ export async function projectPosts(
       })
       .from(postAttachments)
       .innerJoin(files, eq(files.id, postAttachments.fileId))
-      .where(and(inArray(postAttachments.postId, postIds), eq(files.state, 'clean'))),
+      .where(and(inArray(postAttachments.postId, postIds), eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`)),
     db
       .select({ postId: postHashtags.postId, tag: postHashtags.tag })
       .from(postHashtags)
@@ -635,9 +886,18 @@ export async function projectPosts(
           inArray(reactions.targetId, postIds),
         ),
       ),
+    db
+      .select({ targetId: bookmarkTable.targetId })
+      .from(bookmarkTable)
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'post'),
+        inArray(bookmarkTable.targetId, postIds),
+      )),
   ]);
 
   const myReactions = groupStrings(reactionRows, 'targetId', 'kind');
+  const bookmarkedIds = new Set(bookmarkRows.map((row) => row.targetId));
   const tagsByPost = groupStrings(tagRows, 'postId', 'tag');
 
   const attachmentsByPost = new Map<string, PostAttachmentView[]>();
@@ -663,7 +923,19 @@ export async function projectPosts(
         })
         .from(postTable)
         .innerJoin(users, eq(users.id, postTable.authorId))
-        .where(inArray(postTable.id, repostIds))
+        .where(and(
+          inArray(postTable.id, repostIds),
+          eq(postTable.status, 'published'),
+          isNull(postTable.removedAt),
+          resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
+          eq(users.status, 'active'),
+          isNull(users.removedAt),
+          sql`not exists (
+            select 1 from ${blocks} b
+            where (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+               or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+          )`,
+        ))
     : [];
   const originalMap = new Map(originals.map((row) => [row.id, row]));
 
@@ -683,6 +955,7 @@ export async function projectPosts(
     poll: null,
     hashtags: tagsByPost.get(row.id) ?? [],
     myReactions: myReactions.get(row.id) ?? [],
+    bookmarked: bookmarkedIds.has(row.id),
     repostOf: row.repostOfId
       ? {
           id: row.repostOfId,
@@ -729,6 +1002,11 @@ export async function postComments(postId: string, viewerId: string): Promise<Co
         eq(commentTable.postId, postId),
         inArray(commentTable.status, ['published', 'hidden']),
         isNull(commentTable.removedAt),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${commentTable.authorId})
+             or (b.blocker_id = ${commentTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .orderBy(asc(commentTable.createdAt))
@@ -802,6 +1080,14 @@ export async function commentsByUser(userId: string, viewerId: string, limit = 4
         isNull(commentTable.removedAt),
         eq(postTable.status, 'published'),
         isNull(postTable.removedAt),
+        resourceVisibleToViewer(postTable.visibility, postTable.authorId, viewerId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${commentTable.authorId})
+             or (b.blocker_id = ${commentTable.authorId} and b.blocked_id = ${viewerId})
+             or (b.blocker_id = ${viewerId} and b.blocked_id = ${postTable.authorId})
+             or (b.blocker_id = ${postTable.authorId} and b.blocked_id = ${viewerId})
+        )`,
       ),
     )
     .orderBy(desc(commentTable.createdAt))
@@ -940,7 +1226,12 @@ export async function archiveObjects(options: {
     .where(
       and(
         isNull(archiveObjectTable.removedAt),
-        inArray(archiveObjectTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(archiveObjectTable.visibility, archiveObjectTable.contributorId, options.viewerId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${archiveObjectTable.contributorId})
+             or (b.blocker_id = ${archiveObjectTable.contributorId} and b.blocked_id = ${options.viewerId})
+        )`,
         // An object whose file failed scanning is not listed.
         sql`${archiveObjectTable.fileId} is null or ${files.state} = 'clean'`,
         options.category ? eq(archiveObjectTable.category, options.category as never) : sql`true`,
@@ -1189,6 +1480,7 @@ export async function arcadeGames(options: {
   limit?: number;
   includeUnapproved?: boolean;
   creatorId?: string | null;
+  slug?: string | null;
 }): Promise<GameView[]> {
   const limit = Math.min(options.limit ?? 24, 60);
 
@@ -1228,9 +1520,17 @@ export async function arcadeGames(options: {
     .where(
       and(
         isNull(gameTable.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+        options.viewerId ? sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
+             or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${options.viewerId})
+        )` : sql`true`,
         options.includeUnapproved ? sql`true` : eq(gameTable.status, 'approved'),
         options.genre ? eq(gameTable.genre, options.genre) : sql`true`,
         options.creatorId ? eq(gameTable.creatorId, options.creatorId) : sql`true`,
+        options.slug ? eq(gameTable.slug, options.slug) : sql`true`,
         options.query
           ? sql`(${gameTable.title} ilike ${`%${options.query}%`}
                    or ${gameTable.tagline} ilike ${`%${options.query}%`})`
@@ -1287,25 +1587,12 @@ export async function arcadeGames(options: {
 }
 
 export async function gameBySlug(slug: string, viewerId: string | null): Promise<GameView | null> {
-  const [row] = await db
-    .select({ id: gameTable.id })
-    .from(gameTable)
-    .where(
-      and(
-        eq(gameTable.slug, slug),
-        isNull(gameTable.removedAt),
-        or(eq(gameTable.status, 'approved'), sql`true`),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-
-  const batch = await arcadeGames({
+  const [game] = await arcadeGames({
     viewerId,
     includeUnapproved: true,
-    limit: 60,
+    limit: 1,
+    slug,
   });
-  const game = batch.find((entry) => entry.id === row.id);
   if (!game) return null;
 
   // Unapproved games are only visible to their creator.
@@ -1419,6 +1706,7 @@ export interface GalleryView {
   coverUrl: string | null;
   mediaCount: number;
   showInPortfolio: boolean;
+  visibility: 'public' | 'members' | 'connections' | 'private';
   myReactions: string[];
 }
 
@@ -1426,6 +1714,7 @@ export async function galleryPosts(options: {
   viewerId: string;
   kind?: string | null;
   authorId?: string | null;
+  query?: string | null;
   limit?: number;
   offset?: number;
 }): Promise<GalleryView[]> {
@@ -1444,6 +1733,7 @@ export async function galleryPosts(options: {
       commentCount: galleryPostTable.commentCount,
       viewCount: galleryPostTable.viewCount,
       showInPortfolio: galleryPostTable.showInPortfolio,
+      visibility: galleryPostTable.visibility,
       authorId: galleryPostTable.authorId,
       coverObjectId: galleryPostTable.coverObjectId,
       mediaCount: sql<number>`(
@@ -1456,9 +1746,21 @@ export async function galleryPosts(options: {
       and(
         eq(galleryPostTable.status, 'published'),
         isNull(galleryPostTable.removedAt),
-        inArray(galleryPostTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(galleryPostTable.visibility, galleryPostTable.authorId, options.viewerId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${galleryPostTable.authorId})
+             or (b.blocker_id = ${galleryPostTable.authorId} and b.blocked_id = ${options.viewerId})
+        )`,
         options.kind ? eq(galleryPostTable.kind, options.kind as never) : sql`true`,
         options.authorId ? eq(galleryPostTable.authorId, options.authorId) : sql`true`,
+        options.query?.trim()
+          ? or(
+              ilike(galleryPostTable.title, `%${options.query.trim().slice(0, 100)}%`),
+              ilike(galleryPostTable.caption, `%${options.query.trim().slice(0, 100)}%`),
+              ilike(galleryPostTable.body, `%${options.query.trim().slice(0, 100)}%`),
+            )
+          : sql`true`,
       ),
     )
     .orderBy(desc(galleryPostTable.createdAt))
@@ -1493,6 +1795,7 @@ export async function galleryPosts(options: {
     commentCount: row.commentCount,
     viewCount: row.viewCount,
     showInPortfolio: row.showInPortfolio,
+    visibility: row.visibility,
     mediaCount: row.mediaCount,
     coverUrl: row.coverObjectId ? `/objects/${row.coverObjectId}` : null,
     author: authorMap.get(row.authorId)!,
@@ -1537,8 +1840,79 @@ export async function galleryMedia(slug: string) {
     })
     .from(galleryAttachments)
     .innerJoin(files, eq(files.id, galleryAttachments.fileId))
-    .where(and(eq(galleryAttachments.postId, post.id), eq(files.state, 'clean')))
+    .where(and(eq(galleryAttachments.postId, post.id), eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`))
     .orderBy(asc(galleryAttachments.position));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Cinema
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CinemaFilmView {
+  id: string;
+  slug: string;
+  title: string;
+  year: number | null;
+  director: string | null;
+  synopsis: string;
+  cineStatus: string;
+  runtimeMinutes: number | null;
+  coverUrl: string | null;
+  watchLinks: Array<{ service: string; url: string; note?: string }>;
+  reviewCount: number;
+  averageRating: number | null;
+  inWatchlist: boolean;
+}
+
+export async function cinemaFilms(
+  viewerId: string,
+  options: { query?: string | null; slug?: string | null; limit?: number } = {},
+): Promise<CinemaFilmView[]> {
+  const term = (options.query ?? '').trim().slice(0, 80);
+  const rows = await db
+    .select({
+      id: filmTable.id,
+      slug: filmTable.slug,
+      title: filmTable.title,
+      year: filmTable.year,
+      director: filmTable.director,
+      synopsis: filmTable.synopsis,
+      cineStatus: filmTable.cineStatus,
+      runtimeMinutes: filmTable.runtimeMinutes,
+      coverObjectId: filmTable.coverObjectId,
+      watchLinks: filmTable.watchLinks,
+      reviewCount: sql<number>`(select count(*)::int from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      averageRating: sql<number | null>`(select avg(r.rating)::float from ${filmReviews} r where r.film_id = ${filmTable.id} and r.removed_at is null)`,
+      inWatchlist: sql<boolean>`exists (
+        select 1 from ${watchlists} w
+        join ${watchlistItems} wi on wi.watchlist_id = w.id
+        where w.user_id = ${viewerId} and wi.film_id = ${filmTable.id}
+      )`,
+    })
+    .from(filmTable)
+    .where(options.slug
+      ? eq(filmTable.slug, options.slug)
+      : term
+        ? sql`(${filmTable.title} ilike ${'%' + term + '%'} or coalesce(${filmTable.director}, '') ilike ${'%' + term + '%'})`
+        : sql`true`)
+    .orderBy(desc(filmTable.createdAt))
+    .limit(Math.min(options.limit ?? 60, 100));
+
+  return rows.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    year: row.year,
+    director: row.director,
+    synopsis: row.synopsis,
+    cineStatus: row.cineStatus,
+    runtimeMinutes: row.runtimeMinutes,
+    coverUrl: row.coverObjectId ? `/objects/${row.coverObjectId}` : null,
+    watchLinks: row.watchLinks,
+    reviewCount: row.reviewCount,
+    averageRating: row.averageRating === null ? null : Number(row.averageRating),
+    inWatchlist: row.inWatchlist,
+  }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1600,7 +1974,12 @@ export async function events(options: {
       and(
         isNull(eventTable.removedAt),
         isNull(eventTable.cancelledAt),
-        inArray(eventTable.visibility, ['members', 'public']),
+        resourceVisibleToViewer(eventTable.visibility, eventTable.hostId, options.viewerId),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${eventTable.hostId})
+             or (b.blocker_id = ${eventTable.hostId} and b.blocked_id = ${options.viewerId})
+        )`,
         // Soon-started events stay visible for six hours of grace.
         options.past
           ? lt(eventTable.startsAt, now)
@@ -1681,7 +2060,10 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       lastMessagePreview: conversationTable.lastMessagePreview,
     })
     .from(conversationTable)
-    .where(inArray(conversationTable.id, conversationIds))
+    .where(and(
+      inArray(conversationTable.id, conversationIds),
+      isNull(conversationTable.removedAt),
+    ))
     .orderBy(desc(sql`coalesce(${conversationTable.lastMessageAt}, ${conversationTable.createdAt})`));
 
   if (rows.length === 0) return [];
@@ -1710,6 +2092,8 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       and(
         inArray(conversationMembers.conversationId, conversationIds),
         isNull(conversationMembers.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
       ),
     );
 
@@ -1736,6 +2120,7 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
     .where(
       and(
         inArray(messageTable.conversationId, conversationIds),
+        isNull(conversationMembers.removedAt),
         sql`${messageTable.senderId} <> ${viewerId}`,
         isNull(messageTable.removedAt),
         sql`${messageTable.createdAt} > coalesce(${conversationMembers.lastReadAt}, to_timestamp(0))`,
@@ -1770,11 +2155,222 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
   });
 }
 
+export async function communityInvitesForOwner(
+  communityId: string,
+  viewerId: string,
+): Promise<import('~/server/actions/communities').CommunityInviteView[]> {
+  const [membership] = await db.select({ role: communityMembers.role })
+    .from(communityMembers).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, viewerId),
+    )).limit(1);
+  if (membership?.role !== 'owner') return [];
+  return db.select({
+    id: communityInvites.id,
+    expiresAt: communityInvites.expiresAt,
+    maxUses: communityInvites.maxUses,
+    useCount: communityInvites.useCount,
+    revokedAt: communityInvites.revokedAt,
+  }).from(communityInvites)
+    .where(eq(communityInvites.communityId, communityId))
+    .orderBy(desc(communityInvites.createdAt))
+    .limit(30);
+}
+
+export interface StoryFeedItem {
+  id: string;
+  authorId: string;
+  username: string;
+  displayName: string;
+  body: string;
+  audience: 'followers' | 'public';
+  createdAt: Date;
+  expiresAt: Date;
+  viewedByMe: boolean;
+  viewers: Array<{ displayName: string; username: string; viewedAt: Date }>;
+}
+
+export async function storyFeed(viewerId: string): Promise<StoryFeedItem[]> {
+  const followRows = await db.select({ followedId: userFollows.followedId })
+    .from(userFollows).where(eq(userFollows.followerId, viewerId));
+  const followedIds = followRows.map((row) => row.followedId);
+  const rows = await db.select({
+    id: stories.id,
+    authorId: users.id,
+    username: users.username,
+    displayName: users.displayName,
+    body: stories.body,
+    audience: stories.audience,
+    createdAt: stories.createdAt,
+    expiresAt: stories.expiresAt,
+  }).from(stories)
+    .innerJoin(users, and(
+      eq(users.id, stories.authorId),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ))
+    .where(and(
+      gt(stories.expiresAt, new Date()),
+      isNull(stories.removedAt),
+      or(
+        eq(stories.authorId, viewerId),
+        eq(stories.audience, 'public'),
+        ...(followedIds.length
+          ? [and(eq(stories.audience, 'followers'), inArray(stories.authorId, followedIds))]
+          : []),
+      ),
+    ))
+    .orderBy(desc(stories.createdAt))
+    .limit(100);
+
+  if (!rows.length) return [];
+  const blockRows = await db.select().from(blocks).where(or(
+    eq(blocks.blockerId, viewerId),
+    eq(blocks.blockedId, viewerId),
+  ));
+  const hidden = new Set(blockRows.map((row) =>
+    row.blockerId === viewerId ? row.blockedId : row.blockerId,
+  ));
+  const visible = rows.filter((row) => !hidden.has(row.authorId));
+  if (!visible.length) return [];
+
+  const visibleIds = visible.map((row) => row.id);
+  const viewedRows = await db.select({ storyId: storyViews.storyId })
+    .from(storyViews).where(and(
+      inArray(storyViews.storyId, visibleIds),
+      eq(storyViews.viewerId, viewerId),
+    ));
+  const viewed = new Set(viewedRows.map((row) => row.storyId));
+  const ownIds = visible.filter((row) => row.authorId === viewerId).map((row) => row.id);
+  const ownViews = ownIds.length ? await db.select({
+    storyId: storyViews.storyId,
+    viewerId: storyViews.viewerId,
+    displayName: users.displayName,
+    username: users.username,
+    viewedAt: storyViews.viewedAt,
+  }).from(storyViews)
+    .innerJoin(users, and(
+      eq(users.id, storyViews.viewerId),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ))
+    .where(inArray(storyViews.storyId, ownIds)) : [];
+  const viewersByStory = new Map<string, StoryFeedItem['viewers']>();
+  for (const view of ownViews) {
+    if (view.viewerId === viewerId) continue;
+    const list = viewersByStory.get(view.storyId) ?? [];
+    list.push({ displayName: view.displayName, username: view.username, viewedAt: view.viewedAt });
+    viewersByStory.set(view.storyId, list);
+  }
+
+  return visible.map((row) => ({
+    ...row,
+    audience: row.audience as 'followers' | 'public',
+    viewedByMe: row.authorId !== viewerId && viewed.has(row.id),
+    viewers: row.authorId === viewerId ? viewersByStory.get(row.id) ?? [] : [],
+  }));
+}
+
+export interface CommunityModerationReportView {
+  id: string;
+  targetType: 'community_post' | 'community_comment';
+  targetId: string;
+  reason: string;
+  detail: string;
+  priority: string;
+  createdAt: Date;
+  targetPreview: string;
+}
+
+export async function communityReportsForModerator(
+  communityId: string,
+  viewerId: string,
+): Promise<CommunityModerationReportView[]> {
+  const [membership] = await db.select({ role: communityMembers.role })
+    .from(communityMembers).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, viewerId),
+    )).limit(1);
+  if (membership?.role !== 'owner' && membership?.role !== 'moderator') return [];
+
+  const states = ['open', 'triaged', 'investigating'] as const;
+  const [postReports, commentReports] = await Promise.all([
+    db.select({
+      id: reports.id,
+      targetType: reports.targetType,
+      targetId: reports.targetId,
+      reason: reports.reason,
+      detail: reports.detail,
+      priority: reports.priority,
+      createdAt: reports.createdAt,
+      targetPreview: sql<string>`left(coalesce(${communityPosts.title}, '') || E'\\n' || ${communityPosts.body}, 500)`,
+    }).from(reports)
+      .innerJoin(communityPosts, eq(communityPosts.id, reports.targetId))
+      .where(and(
+        eq(reports.targetType, 'community_post'),
+        eq(communityPosts.communityId, communityId),
+        inArray(reports.state, states),
+      )),
+    db.select({
+      id: reports.id,
+      targetType: reports.targetType,
+      targetId: reports.targetId,
+      reason: reports.reason,
+      detail: reports.detail,
+      priority: reports.priority,
+      createdAt: reports.createdAt,
+      targetPreview: sql<string>`left(${communityPostComments.body}, 500)`,
+    }).from(reports)
+      .innerJoin(communityPostComments, eq(communityPostComments.id, reports.targetId))
+      .innerJoin(communityPosts, eq(communityPosts.id, communityPostComments.postId))
+      .where(and(
+        eq(reports.targetType, 'community_comment'),
+        eq(communityPosts.communityId, communityId),
+        inArray(reports.state, states),
+      )),
+  ]);
+  return [...postReports, ...commentReports]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 50) as CommunityModerationReportView[];
+}
+
+export interface ConversationInviteView {
+  id: string;
+  expiresAt: Date;
+  maxUses: number;
+  useCount: number;
+  revokedAt: Date | null;
+}
+
+export async function conversationInvitesForOwner(
+  conversationId: string,
+  viewerId: string,
+): Promise<ConversationInviteView[]> {
+  const [membership] = await db.select({ role: conversationMembers.role })
+    .from(conversationMembers).where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, viewerId),
+      isNull(conversationMembers.removedAt),
+    )).limit(1);
+  if (membership?.role !== 'owner') return [];
+  return db.select({
+    id: conversationInvites.id,
+    expiresAt: conversationInvites.expiresAt,
+    maxUses: conversationInvites.maxUses,
+    useCount: conversationInvites.useCount,
+    revokedAt: conversationInvites.revokedAt,
+  }).from(conversationInvites)
+    .where(eq(conversationInvites.conversationId, conversationId))
+    .orderBy(desc(conversationInvites.createdAt))
+    .limit(20);
+}
+
 export interface MessageView {
   id: string;
   body: string;
   createdAt: Date;
   editedAt: Date | null;
+  pinnedAt: Date | null;
   sender: MemberSummary;
   isMine: boolean;
   attachment: {
@@ -1784,6 +2380,9 @@ export interface MessageView {
     byteSize: number;
   } | null;
   removed: boolean;
+  replyTo: { id: string; preview: string } | null;
+  reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+  seenBy: string[];
 }
 
 /**
@@ -1794,10 +2393,15 @@ export interface MessageView {
 export async function conversationMessages(
   conversationId: string,
   viewerId: string,
+  searchTerm?: string,
 ): Promise<MessageView[] | null> {
   const membership = await db
     .select({ userId: conversationMembers.userId })
     .from(conversationMembers)
+    .innerJoin(conversationTable, and(
+      eq(conversationTable.id, conversationMembers.conversationId),
+      isNull(conversationTable.removedAt),
+    ))
     .where(
       and(
         eq(conversationMembers.conversationId, conversationId),
@@ -1814,8 +2418,11 @@ export async function conversationMessages(
       body: messageTable.body,
       createdAt: messageTable.createdAt,
       editedAt: messageTable.editedAt,
+      pinnedAt: messageTable.pinnedAt,
       senderId: messageTable.senderId,
       removedAt: messageTable.removedAt,
+      replyToId: sql<string | null>`(select r.id::text from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
+      replyPreview: sql<string | null>`(select left(coalesce(nullif(r.body, ''), case when r.attachment_file_id is not null then 'Attachment' else 'Message' end), 160) from messages r where r.id = ${messageTable.replyToId} and r.conversation_id = ${conversationId} and r.removed_at is null limit 1)`,
       attachmentId: files.id,
       attachmentName: files.displayName,
       attachmentMime: files.detectedMime,
@@ -1823,12 +2430,63 @@ export async function conversationMessages(
     })
     .from(messageTable)
     .innerJoin(users, eq(users.id, messageTable.senderId))
-    .leftJoin(files, eq(files.id, messageTable.attachmentFileId))
-    .where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))
-    .orderBy(asc(messageTable.createdAt))
+    .leftJoin(files, and(
+      eq(files.id, messageTable.attachmentFileId),
+      eq(files.state, 'clean'),
+      isNull(files.removedAt),
+      sql`exists (
+        select 1 from storage_objects so
+        where so.id = ${files.storageObjectId}
+          and so.removed_at is null
+      )`,
+    ))
+    .where(and(
+      eq(messageTable.conversationId, conversationId),
+      isNull(messageTable.removedAt),
+      ...(searchTerm?.trim()
+        ? [ilike(messageTable.body, '%' + searchTerm.trim().slice(0, 80) + '%')]
+        : []),
+    ))
+    .orderBy(desc(messageTable.createdAt))
     .limit(300);
 
+  const reactionRows = rows.length
+    ? await db.select({
+        messageId: messageReactions.messageId,
+        emoji: messageReactions.emoji,
+        userId: messageReactions.userId,
+      }).from(messageReactions).where(inArray(messageReactions.messageId, rows.map((row) => row.id)))
+    : [];
+  const reactionsByMessage = new Map<string, Array<{ emoji: string; count: number; reactedByMe: boolean }>>();
+  for (const reaction of reactionRows) {
+    const grouped = reactionsByMessage.get(reaction.messageId) ?? [];
+    const current = grouped.find((item) => item.emoji === reaction.emoji);
+    if (current) {
+      current.count += 1;
+      if (reaction.userId === viewerId) current.reactedByMe = true;
+    } else {
+      grouped.push({ emoji: reaction.emoji, count: 1, reactedByMe: reaction.userId === viewerId });
+    }
+    reactionsByMessage.set(reaction.messageId, grouped);
+  }
+
   const senderMap = await membersByIds(rows.map((row) => row.senderId), viewerId);
+  const readRows = await db.select({
+    userId: conversationMembers.userId,
+    displayName: users.displayName,
+    lastReadAt: conversationMembers.lastReadAt,
+  })
+    .from(conversationMembers)
+    .innerJoin(users, eq(users.id, conversationMembers.userId))
+    .leftJoin(userSettings, eq(userSettings.userId, conversationMembers.userId))
+    .where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      ne(conversationMembers.userId, viewerId),
+      isNull(conversationMembers.removedAt),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+      or(eq(userSettings.showReadReceipts, true), isNull(userSettings.userId)),
+    ));
 
   await db
     .update(conversationMembers)
@@ -1837,15 +2495,23 @@ export async function conversationMessages(
       and(
         eq(conversationMembers.conversationId, conversationId),
         eq(conversationMembers.userId, viewerId),
+        isNull(conversationMembers.removedAt),
       ),
     );
 
-  return rows.map((row) => ({
+  // Fetch the newest page first, then render it chronologically.
+  return [...rows].reverse().map((row) => ({
     id: row.id,
     body: row.removedAt ? '' : row.body,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
+    pinnedAt: row.pinnedAt,
     removed: Boolean(row.removedAt),
+    replyTo: row.replyToId && row.replyPreview !== null ? { id: row.replyToId, preview: row.replyPreview } : null,
+    reactions: reactionsByMessage.get(row.id) ?? [],
+    seenBy: row.senderId === viewerId
+      ? readRows.filter((member) => member.lastReadAt && member.lastReadAt >= row.createdAt).map((member) => member.displayName)
+      : [],
     sender: senderMap.get(row.senderId)!,
     isMine: row.senderId === viewerId,
     attachment: row.attachmentId
@@ -1863,6 +2529,10 @@ export async function conversationMembersOf(conversationId: string, viewerId: st
   const membership = await db
     .select({ role: conversationMembers.role })
     .from(conversationMembers)
+    .innerJoin(conversationTable, and(
+      eq(conversationTable.id, conversationMembers.conversationId),
+      isNull(conversationTable.removedAt),
+    ))
     .where(
       and(
         eq(conversationMembers.conversationId, conversationId),
@@ -1898,6 +2568,8 @@ export async function conversationMembersOf(conversationId: string, viewerId: st
       and(
         eq(conversationMembers.conversationId, conversationId),
         isNull(conversationMembers.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
       ),
     );
 
@@ -1963,12 +2635,20 @@ export async function projectList(viewerId: string, limit = 24): Promise<Project
     .where(
       and(
         isNull(projectTable.removedAt),
-        inArray(projectTable.visibility, ['members', 'public']),
-        // A member sees the projects they belong to, plus their own.
-        sql`exists (
-          select 1 from project_members pm
-          where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
-        ) or ${projectTable.ownerId} = ${viewerId}`,
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${projectTable.ownerId})
+             or (b.blocker_id = ${projectTable.ownerId} and b.blocked_id = ${viewerId})
+        )`,
+        // A connection-visible project is visible to accepted connections;
+        // private projects remain visible to their owner and current members.
+        or(
+          resourceVisibleToViewer(projectTable.visibility, projectTable.ownerId, viewerId),
+          sql`exists (
+            select 1 from project_members pm
+            where pm.project_id = ${projectTable.id} and pm.user_id = ${viewerId}
+          )`,
+        ),
       ),
     )
     .orderBy(desc(projectTable.createdAt))
@@ -2076,7 +2756,7 @@ export async function projectBySlug(slug: string, viewerId: string): Promise<Pro
       })
       .from(sql`project_resources pr`)
       .innerJoin(files, eq(files.id, sql`pr.file_id`))
-      .where(and(sql`pr.project_id = ${project.id}`, eq(files.state, 'clean')))
+      .where(and(sql`pr.project_id = ${project.id}`, eq(files.state, 'clean'), isNull(files.removedAt), sql`exists (select 1 from storage_objects so where so.id = ${files.storageObjectId} and so.removed_at is null)`))
       .orderBy(desc(sql`pr.created_at`)),
   ]);
 
@@ -2204,38 +2884,32 @@ export interface MatchView {
   conversationId: string | null;
 }
 
-export interface IncomingConnectionRequest {
+export interface ConnectionRequestView {
   id: string;
   mode: string;
   note: string;
   createdAt: Date;
-  sender: MemberSummary;
+  from: MemberSummary;
 }
 
-export async function connectionRequestsFor(userId: string): Promise<IncomingConnectionRequest[]> {
+export async function connectionRequestInbox(userId: string): Promise<ConnectionRequestView[]> {
   const rows = await db
     .select({
-      id: connectionRequestTable.id,
-      fromUserId: connectionRequestTable.fromUserId,
-      mode: connectionRequestTable.mode,
-      note: connectionRequestTable.note,
-      createdAt: connectionRequestTable.createdAt,
+      id: connectionRequests.id,
+      fromUserId: connectionRequests.fromUserId,
+      mode: connectionRequests.mode,
+      note: connectionRequests.note,
+      createdAt: connectionRequests.createdAt,
     })
-    .from(connectionRequestTable)
-    .where(
-      and(
-        eq(connectionRequestTable.toUserId, userId),
-        eq(connectionRequestTable.state, 'pending'),
-      ),
-    )
-    .orderBy(desc(connectionRequestTable.createdAt))
-    .limit(40);
+    .from(connectionRequests)
+    .where(and(eq(connectionRequests.toUserId, userId), eq(connectionRequests.state, 'pending')))
+    .orderBy(desc(connectionRequests.createdAt))
+    .limit(60);
 
-  if (rows.length === 0) return [];
-  const senders = await membersByIds(rows.map((row) => row.fromUserId), userId);
-  return rows.flatMap((row) => {
-    const sender = senders.get(row.fromUserId);
-    return sender ? [{ id: row.id, mode: row.mode, note: row.note, createdAt: row.createdAt, sender }] : [];
+  const senders = await Promise.all(rows.map((row) => memberById(row.fromUserId, userId)));
+  return rows.flatMap((row, index) => {
+    const from = senders[index];
+    return from ? [{ id: row.id, mode: row.mode, note: row.note, createdAt: row.createdAt, from }] : [];
   });
 }
 
@@ -2264,20 +2938,23 @@ export async function matchesFor(userId: string, status: 'accepted' | 'pending' 
   if (rows.length === 0) return [];
 
   const partnerIds = rows.map((row) => (row.userAId === userId ? row.userBId : row.userAId));
-  const partnerMap = await membersByIds(partnerIds, userId);
+  const partnerEntries = await Promise.all(partnerIds.map(async (partnerId) => [partnerId, await memberById(partnerId, userId)] as const));
+  const partnerMap = new Map(partnerEntries.filter((entry): entry is readonly [string, MemberSummary] => entry[1] !== null));
 
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
     const partnerId = partnerIds[index]!;
-    return {
+    const partner = partnerMap.get(partnerId);
+    if (!partner) return [];
+    return [{
       id: row.id,
       mode: row.mode,
       status: row.status,
       createdAt: row.createdAt,
       ageBandAtMatch: row.ageBandAtMatch,
       sharedInterestCount: row.sharedInterestCount,
-      partner: partnerMap.get(partnerId)!,
+      partner,
       conversationId: null,
-    };
+    }];
   });
 }
 
@@ -2320,21 +2997,7 @@ export interface ProfileActivity {
   connections: number;
 }
 
-export async function profileActivity(userId: string, viewerId?: string | null): Promise<ProfileActivity> {
-  const [settings] = await db
-    .select({
-      showActivity: userSettings.showActivity,
-      showCreations: userSettings.showCreations,
-      showArchiveContributions: userSettings.showArchiveContributions,
-    })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
-  const isSelf = viewerId === userId;
-  if (!isSelf && settings?.showActivity === false) {
-    return { posts: 0, comments: 0, archiveContributions: 0, games: 0, galleryPieces: 0, projects: 0, eventsHosted: 0, connections: 0 };
-  }
-
+export async function profileActivity(userId: string): Promise<ProfileActivity> {
   const [result] = await db.execute<Record<string, number>>(sql`
     select
       (select count(*)::int from ${postTable} where author_id = ${userId}
@@ -2358,9 +3021,9 @@ export async function profileActivity(userId: string, viewerId?: string | null):
   return {
     posts: Number(row.posts ?? 0),
     comments: Number(row.comments ?? 0),
-    archiveContributions: isSelf || settings?.showArchiveContributions !== false ? Number(row.archive ?? 0) : 0,
-    games: isSelf || settings?.showCreations !== false ? Number(row.games ?? 0) : 0,
-    galleryPieces: isSelf || settings?.showCreations !== false ? Number(row.gallery ?? 0) : 0,
+    archiveContributions: Number(row.archive ?? 0),
+    games: Number(row.games ?? 0),
+    galleryPieces: Number(row.gallery ?? 0),
     projects: Number(row.projects ?? 0),
     eventsHosted: Number(row.hosted ?? 0),
     connections: Number(row.connections ?? 0),

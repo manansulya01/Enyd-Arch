@@ -1,50 +1,48 @@
 import type { Metadata } from 'next';
-import { desc, eq, sql } from 'drizzle-orm';
+import Link from 'next/link';
+import { desc, eq } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState } from '~/components/ui';
-import { requireOnboarded } from '~/server/guard';
 import { db } from '~db';
-import { achievements, userAchievements, users, userSettings } from '~db/schema';
-import { relativeTime } from '~/lib/format';
+import { chronicleEntries } from '~db/schema';
+import { requireOnboarded } from '~/server/guard';
 
 export const metadata: Metadata = { title: 'The Chronicle' };
 
 export default async function ChroniclePage() {
   await requireOnboarded();
   const entries = await db.select({
-    label: achievements.label,
-    glyph: achievements.glyph,
-    username: users.username,
-    displayName: users.displayName,
-    unlockedAt: userAchievements.unlockedAt,
-  })
-    .from(userAchievements)
-    .innerJoin(achievements, eq(achievements.id, userAchievements.achievementId))
-    .innerJoin(users, eq(users.id, userAchievements.userId))
-    .leftJoin(userSettings, eq(userSettings.userId, users.id))
-    .where(sql`${achievements.hidden} = false and coalesce(${userSettings.showActivity}, true) = true and ${users.status} = 'active'`)
-    .orderBy(desc(userAchievements.unlockedAt))
-    .limit(80);
+    id: chronicleEntries.id,
+    era: chronicleEntries.era,
+    headline: chronicleEntries.headline,
+    body: chronicleEntries.body,
+    occurredOn: chronicleEntries.occurredOn,
+    relatedEventId: chronicleEntries.relatedEventId,
+    relatedObjectId: chronicleEntries.relatedObjectId,
+  }).from(chronicleEntries)
+    .where(eq(chronicleEntries.kind, 'public'))
+    .orderBy(desc(chronicleEntries.occurredOn))
+    .limit(100);
 
   return (
-    <PageShell title="The Chronicle" sub="A living record of the milestones members choose to share.">
+    <PageShell title="The Chronicle" sub="A living record of the society’s public milestones." wide>
       {entries.length === 0 ? (
-        <EmptyState glyph="✦" title="The pages are quiet." body="Shared milestones will appear here as members earn them." />
+        <div className="panel panel-body"><h2>The first page is still unwritten</h2><p className="t-small t-muted">Public milestones will appear here as the society grows.</p></div>
       ) : (
-        <div className="stack stack-2">
-          {entries.map((entry, index) => (
-            <article className="card card-pad-md row row-between" key={`${entry.username}-${entry.label}-${index}`}>
-              <div className="row row-3">
-                <span className="t-section" aria-hidden="true">{entry.glyph}</span>
-                <div className="stack stack-1">
-                  <strong>{entry.displayName} earned {entry.label}</strong>
-                  <span className="t-meta">@{entry.username}</span>
+        <ol className="chronicle-timeline stack stack-3">
+          {entries.map((entry) => (
+            <li key={entry.id} className="panel panel-body stack stack-2">
+              <p className="t-meta">{entry.era} · {entry.occurredOn.toLocaleDateString()}</p>
+              <h2>{entry.headline}</h2>
+              <p className="prose-content">{entry.body}</p>
+              {(entry.relatedEventId || entry.relatedObjectId) && (
+                <div className="row row-3">
+                  {entry.relatedEventId && <Link className="btn btn-ghost btn-sm" href="/events">Related event</Link>}
+                  {entry.relatedObjectId && <Link className="btn btn-ghost btn-sm" href="/archive">Related archive item</Link>}
                 </div>
-              </div>
-              <time className="t-meta" dateTime={entry.unlockedAt.toISOString()}>{relativeTime(entry.unlockedAt)}</time>
-            </article>
+              )}
+            </li>
           ))}
-        </div>
+        </ol>
       )}
     </PageShell>
   );

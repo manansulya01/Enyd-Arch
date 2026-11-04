@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { COPY, MARK } from '~/lib/domain';
 import { currentActor } from '~/server/auth/session';
+import { issueAnonymousCsrf } from '~/server/csrf';
 import { SignInForm } from '~/components/auth/sign-in-form';
 
 export const metadata: Metadata = {
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 export default async function SignInPage() {
   const actor = await currentActor();
   if (actor) redirect(actor.onboarded ? '/home' : '/onboarding');
+  const csrfToken = await issueAnonymousCsrf();
 
   return (
     <div className="auth-shell">
@@ -52,11 +54,14 @@ export default async function SignInPage() {
             </p>
           </header>
 
-          <SignInForm />
+          <SignInForm csrfToken={csrfToken} />
 
           <p className="auth-foot">
             No identity yet? <Link href="/register">Enter the Arch</Link> ·{' '}
             <Link href="/about">What is this place?</Link>
+          </p>
+          <p className="auth-foot">
+            Existing pending identity? <Link href="/register/enrol">Finish device enrollment</Link>
           </p>
 
           <p className="t-meta" style={{ textAlign: 'center' }}>

@@ -1,89 +1,44 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState } from '~/components/ui';
+import { WatchlistButton } from '~/components/cinema/watchlist-button';
 import { requireOnboarded } from '~/server/guard';
-import { db } from '~db';
-import { films, filmReviews, watchlists, watchlistItems } from '~db/schema';
+import { cinemaFilms } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
-import { toggleFilmWatchlist } from '~/server/actions/cinema-client';
 
-export const metadata: Metadata = { title: 'The Cinema' };
+export const metadata: Metadata = { title: 'Cinema' };
 
-function safeWatchUrl(raw: string): string | null {
-  try {
-    const url = new URL(raw);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-export default async function CinemaPage() {
+export default async function CinemaPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { actor } = await requireOnboarded();
-  const [items, csrf] = await Promise.all([
-    db.select({
-      id: films.id,
-      slug: films.slug,
-      title: films.title,
-      year: films.year,
-      director: films.director,
-      synopsis: films.synopsis,
-      cineStatus: films.cineStatus,
-      runtimeMinutes: films.runtimeMinutes,
-      watchLinks: films.watchLinks,
-      rating: sql<number>`coalesce(avg(${filmReviews.rating}), 0)::float`,
-      ratingCount: sql<number>`count(${filmReviews.id})::int`,
-      inWatchlist: sql<boolean>`exists (
-        select 1 from ${watchlistItems} wi
-        inner join ${watchlists} wl on wl.id = wi.watchlist_id
-        where wl.user_id = ${actor.userId} and wi.film_id = ${films.id}
-      )`,
-    })
-      .from(films)
-      .leftJoin(filmReviews, and(eq(filmReviews.filmId, films.id), isNull(filmReviews.removedAt)))
-      .groupBy(films.id)
-      .orderBy(desc(films.createdAt))
-      .limit(48),
+  const params = await searchParams;
+  const [films, csrfToken] = await Promise.all([
+    cinemaFilms(actor.userId, { query: params.q ?? '', limit: 80 }),
     sessionCsrfToken(),
   ]);
-
   return (
-    <PageShell title="The Cinema" sub="A shared shelf of films, reviews and watch nights.">
-      {items.length === 0 ? (
-        <EmptyState glyph="◐" title="The screen is waiting." body="Films added to the community catalogue will appear here." />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {items.map((film) => (
-            <article className="card card-pad-md stack stack-3" key={film.id}>
-              <div className="row row-between">
-                <span className="t-meta">{film.cineStatus}</span>
-                <span className="t-meta">{film.year ?? 'Year unknown'}</span>
+    <PageShell title="Cinema" sub="A film catalogue, thoughtful discussion, and watchlists. Availability links point to official sources." wide>
+      <form className="row row-3" action="/cinema" method="get" role="search">
+        <label className="sr-only" htmlFor="film-search">Search films</label>
+        <input className="input input-search grow" id="film-search" name="q" type="search" maxLength={80} defaultValue={params.q ?? ''} placeholder="Search title or director…" />
+        <button className="btn btn-primary" type="submit">Search</button>
+      </form>
+      <section className="stack stack-3">
+        {films.length === 0 ? <div className="panel panel-body"><h2>No films found</h2><p className="t-small t-muted">Try another title, or check back as the catalogue grows.</p></div> : films.map((film) => (
+          <article className="panel panel-body" key={film.id}>
+            <div className="row row-3">
+              {film.coverUrl && <img src={film.coverUrl} alt="" width={88} height={128} className="film-cover" />}
+              <div className="grow">
+                <p className="t-meta">{film.year ?? 'Year unknown'}{film.director ? ' · ' + film.director : ''}{film.runtimeMinutes ? ' · ' + film.runtimeMinutes + ' min' : ''}</p>
+                <h2><Link href={'/cinema/' + film.slug}>{film.title}</Link></h2>
+                <p className="t-small t-muted">{film.synopsis}</p>
+                <p className="t-meta">{film.averageRating === null ? 'No ratings yet' : film.averageRating.toFixed(1) + ' / 10'} · {film.reviewCount} reviews</p>
+                {film.watchLinks.length > 0 && <div className="row row-wrap row-2">{film.watchLinks.map((link) => <a className="btn btn-ghost btn-sm" key={link.url} href={link.url} target="_blank" rel="noopener noreferrer">{link.service}</a>)}</div>}
               </div>
-              <div className="stack stack-1">
-                <h2 className="t-section"><Link href={`/cinema/${film.slug}`}>{film.title}</Link></h2>
-                {film.director && <p className="t-small t-subtle">Directed by {film.director}</p>}
-                <p className="t-small">{film.synopsis}</p>
-              </div>
-              <div className="row row-between">
-                <span className="t-meta">{film.rating.toFixed(1)}/10 · {film.ratingCount} reviews</span>
-                {film.runtimeMinutes && <span className="t-meta">{film.runtimeMinutes} min</span>}
-              </div>
-              <div className="row row-between">
-                <form action={toggleFilmWatchlist}>
-                  <input type="hidden" name="__csrf" value={csrf} />
-                  <input type="hidden" name="filmId" value={film.id} />
-                  <button className="btn btn-sm btn-ghost" type="submit">{film.inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}</button>
-                </form>
-                {film.watchLinks.map((link) => safeWatchUrl(link.url) ? (
-                <a className="lnk" href={safeWatchUrl(link.url)!} target="_blank" rel="noreferrer noopener" key={link.url}>{link.service}</a>
-              ) : null)}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+              <WatchlistButton filmId={film.id} initial={film.inWatchlist} csrfToken={csrfToken} />
+            </div>
+          </article>
+        ))}
+      </section>
     </PageShell>
   );
 }

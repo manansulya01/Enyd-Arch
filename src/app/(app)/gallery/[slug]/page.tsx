@@ -2,40 +2,52 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageShell } from '~/components/ui/page-shell';
-import { ReactionBar } from '~/components/commons/reaction-bar';
 import { requireOnboarded } from '~/server/guard';
-import { galleryBySlug, galleryMedia } from '~/server/queries';
-import { absoluteDate } from '~/lib/format';
+import { sessionCsrfToken } from '~/server/csrf';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
+import { galleryBySlug, galleryMedia, isBookmarked } from '~/server/queries';
 
-export const metadata: Metadata = { title: 'Gallery work' };
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const { actor } = await requireOnboarded();
+  const piece = await galleryBySlug(slug, actor.userId);
+  return piece ? { title: piece.title, description: piece.caption || piece.body || 'A piece in The Gallery' } : { title: 'Piece not found' };
+}
 
-export default async function GalleryPostPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function GalleryPiecePage({ params }: { params: Promise<{ slug: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
-  const [post, media] = await Promise.all([
-    galleryBySlug(slug, actor.userId),
-    galleryMedia(slug),
+  const [piece, media] = await Promise.all([galleryBySlug(slug, actor.userId), galleryMedia(slug)]);
+  if (!piece) notFound();
+  const [csrfToken, bookmarked] = await Promise.all([
+    sessionCsrfToken(),
+    isBookmarked(actor.userId, 'gallery_post', piece.id),
   ]);
-  if (!post) notFound();
 
   return (
-    <PageShell title={post.title} sub={`${post.author.displayName} · ${absoluteDate(post.createdAt)}`}>
-      <div className="stack stack-5">
-        <Link className="lnk" href="/gallery">← Back to Gallery</Link>
-        {post.caption && <p className="t-lead">{post.caption}</p>}
-        {post.body && <p className="prose">{post.body}</p>}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {media.map((item) => (
-            <a className="card card-pad-md stack stack-2" href={`/files/${item.fileId}`} key={item.fileId}>
-              <strong>{item.displayName}</strong>
-              {item.caption && <span className="t-small t-subtle">{item.caption}</span>}
-              <span className="t-meta">{item.detectedMime} · {Math.ceil(item.byteSize / 1024)} KB</span>
-              <span className="lnk">Open media</span>
-            </a>
-          ))}
+    <PageShell title={piece.title} sub={piece.kind.replaceAll('_', ' ')} wide>
+      <article className="panel panel-body stack-3">
+        <p className="t-meta">By {piece.author.displayName} · {piece.createdAt.toLocaleDateString()} · {piece.viewCount} views</p>
+        {piece.caption && <p className="t-small t-muted">{piece.caption}</p>}
+        {piece.coverUrl && <img src={piece.coverUrl} alt="" className="gallery-hero" />}
+        {piece.body && <div className="prose-content"><p>{piece.body}</p></div>}
+        {media.length > 0 && (
+          <div className="stack stack-3">
+            <h2 className="section-heading">Attached media</h2>
+            {media.map((file) => (
+              <a key={file.fileId} className="row row-3" href={'/objects/' + file.fileId}>
+                <span className="grow">{file.displayName}</span>
+                <span className="t-meta">{Math.round(file.byteSize / 1024)} KB</span>
+              </a>
+            ))}
+          </div>
+        )}
+        <div className="row row-between row-wrap">
+          <p className="t-meta">{piece.reactionCount} reactions · {piece.commentCount} comments</p>
+          {(['public', 'members'].includes(piece.visibility) || bookmarked) && <BookmarkButton targetType="gallery_post" targetId={piece.id} csrfToken={csrfToken} initialSaved={bookmarked} />}
         </div>
-        <ReactionBar targetType="gallery_post" targetId={post.id} myReactions={post.myReactions} count={post.reactionCount} />
-      </div>
+        <Link className="btn btn-ghost" href="/gallery">Back to the Gallery</Link>
+      </article>
     </PageShell>
   );
 }

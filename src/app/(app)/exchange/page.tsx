@@ -6,7 +6,7 @@ import { ExchangeUploader } from '~/components/exchange/uploader';
 import { requireCapability } from '~/server/guard';
 import { recentFilesForUser } from '~/server/storage/uploads';
 import { formatBytes, relativeTime } from '~/lib/format';
-import { CsrfField } from '~/components/shell/csrf-field';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'The Exchange' };
 
@@ -20,7 +20,7 @@ const ALLOWED = [
 
 export default async function ExchangePage() {
   const { actor } = await requireCapability('upload');
-  const mine = await recentFilesForUser(actor.userId, 20);
+  const [mine, csrfToken] = await Promise.all([recentFilesForUser(actor.userId, 20), sessionCsrfToken()]);
 
   return (
     <PageShell
@@ -34,7 +34,7 @@ export default async function ExchangePage() {
     >
       <div className="page-split">
         <div className="stack stack-5">
-          <ExchangeUploader />
+          <ExchangeUploader csrfToken={csrfToken} />
 
           <section className="panel" aria-labelledby="your-uploads">
             <div className="panel-head">
@@ -105,7 +105,6 @@ export default async function ExchangePage() {
           </div>
         </aside>
       </div>
-      <CsrfField />
     </PageShell>
   );
 }

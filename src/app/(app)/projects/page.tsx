@@ -1,37 +1,30 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { PageShell } from '~/components/ui/page-shell';
-import { EmptyState } from '~/components/ui';
+import { ProjectComposer } from '~/components/projects/project-composer';
 import { requireOnboarded } from '~/server/guard';
 import { projectList } from '~/server/queries';
-import { relativeTime } from '~/lib/format';
+import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Projects' };
 
 export default async function ProjectsPage() {
   const { actor } = await requireOnboarded();
-  const projects = await projectList(actor.userId, 36);
-
+  const [projects, csrfToken] = await Promise.all([projectList(actor.userId, 60), sessionCsrfToken()]);
   return (
-    <PageShell title="Projects" sub="Shared workspaces, tasks and resources.">
-      {projects.length === 0 ? (
-        <EmptyState glyph="⌘" title="No projects in your workspace." body="Projects you own or have joined will appear here." />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {projects.map((project) => (
-            <Link className="card card-pad-md stack stack-2" href={`/projects/${project.slug}`} key={project.id}>
-              <div className="row row-between">
-                <span className="t-meta">{project.status}</span>
-                <span className="t-meta">{project.memberCount} members</span>
-              </div>
-              <h2 className="t-section">{project.title}</h2>
-              <p className="t-small t-subtle">{project.summary}</p>
-              <span className="t-meta">Owned by {project.owner.displayName} · {relativeTime(project.createdAt)}</span>
-              <span className="t-meta">{project.openTasks} open of {project.taskCount} tasks</span>
-            </Link>
-          ))}
-        </div>
-      )}
+    <PageShell title="Projects" sub="Shared workspaces for ideas that deserve more than a chat thread." wide>
+      <ProjectComposer csrfToken={csrfToken} />
+      <section className="stack stack-3">
+        <h2 className="section-heading">Projects you can explore</h2>
+        {projects.length === 0 ? <div className="panel panel-body"><h3>Nothing underway yet</h3><p className="t-small t-muted">Start a project or check back when members publish their work.</p></div> : projects.map((project) => (
+          <article key={project.id} className="panel panel-body">
+            <p className="t-meta">{project.status.replaceAll('_', ' ')} · {project.lifespan === 'temporary' ? 'Temporary' : 'Ongoing'}</p>
+            <h3><Link href={'/projects/' + project.slug}>{project.title}</Link></h3>
+            <p className="t-small t-muted">{project.summary}</p>
+            <p className="t-meta">By {project.owner.displayName} · {project.memberCount} members · {project.openTasks} open tasks</p>
+          </article>
+        ))}
+      </section>
     </PageShell>
   );
 }
