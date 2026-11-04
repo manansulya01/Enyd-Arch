@@ -2199,6 +2199,7 @@ export const communityPostComments = pgTable('community_post_comments', {
   id: uuid('id').primaryKey().defaultRandom(),
   postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
   authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  parentId: uuid('parent_id').references((): AnyPgColumn => communityPostComments.id, { onDelete: 'set null' }),
   body: text('body').notNull(),
   status: commentStatusEnum('status').notNull().default('published'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
