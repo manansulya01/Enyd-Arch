@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
-import { communityInvites, communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, moderationActions, reports, users } from '~db/schema';
+import { blocks, communityInvites, communityMembers, communityPostComments, communityPosts, communityPostVotes, communities, moderationActions, reports, users } from '~db/schema';
 import { fail, ok, type ActionResult } from '~/lib/action-result';
 import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
@@ -288,7 +288,7 @@ export async function acceptCommunityInvite(token: string, csrf: string): Promis
       isNull(communityInvites.revokedAt),
     )).for('update').limit(1);
     if (!invite || invite.expiresAt <= new Date() || invite.useCount >= invite.maxUses) return null;
-    const [community] = await tx.select({ id: communities.id, slug: communities.slug })
+    const [community] = await tx.select({ id: communities.id, slug: communities.slug, ownerId: communities.ownerId })
       .from(communities).where(and(
         eq(communities.id, invite.communityId),
         eq(communities.isPrivate, true),
@@ -300,6 +300,21 @@ export async function acceptCommunityInvite(token: string, csrf: string): Promis
         eq(communityMembers.userId, actor.userId),
       )).limit(1);
     if (existing) return { slug: community.slug, communityId: community.id, alreadyMember: true };
+    const activeMembers = await tx.select({ userId: communityMembers.userId })
+      .from(communityMembers)
+      .innerJoin(users, and(
+        eq(users.id, communityMembers.userId),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      ))
+      .where(eq(communityMembers.communityId, community.id));
+    const memberIds = activeMembers.map((member) => member.userId);
+    if (!memberIds.includes(community.ownerId)) return null;
+    const blocked = await tx.select({ id: blocks.id }).from(blocks).where(or(
+      and(eq(blocks.blockerId, actor.userId), inArray(blocks.blockedId, memberIds)),
+      and(inArray(blocks.blockerId, memberIds), eq(blocks.blockedId, actor.userId)),
+    )).limit(1);
+    if (blocked.length) return null;
     await tx.insert(communityMembers).values({
       communityId: community.id,
       userId: actor.userId,
