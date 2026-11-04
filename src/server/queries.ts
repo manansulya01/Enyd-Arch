@@ -2198,7 +2198,7 @@ export async function conversationMessages(
       eq(messageTable.conversationId, conversationId),
       isNull(messageTable.removedAt),
       ...(searchTerm?.trim()
-        ? [ilike(messageTable.body, `%${searchTerm.trim().slice(0, 80).replace(/[\\%_]/g, '\\.where(and(eq(messageTable.conversationId, conversationId), isNull(messageTable.removedAt)))')}%`)]
+        ? [ilike(messageTable.body, '%' + searchTerm.trim().slice(0, 80) + '%')]
         : []),
     ))
     .orderBy(desc(messageTable.createdAt))
