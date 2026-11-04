@@ -10,9 +10,11 @@ import { CommunityPostForm } from '~/components/communities/community-post-form'
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
 import { CommunityReportControl } from '~/components/communities/community-report-control';
+import { CommunityModerationQueue } from '~/components/communities/community-moderation-queue';
 import { setCommunityModerator, transferCommunityOwnership, updateCommunityRules } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
+import { communityReportsForModerator } from '~/server/queries';
 
 export const metadata: Metadata = { title: 'Community' };
 
@@ -30,6 +32,8 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     sessionCsrfToken(),
   ]);
   const joined = membership.length > 0;
+  const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
+  const moderationReports = canModerate ? await communityReportsForModerator(community.id, actor.userId) : [];
   if (community.isPrivate && !joined && community.ownerId !== actor.userId) notFound();
   const transferCandidates = membership[0]?.role === 'owner'
     ? await db.select({
@@ -119,13 +123,13 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     const bHot = bScore / Math.pow(bAgeHours + 2, 1.5);
     return bHot - aHot || b.createdAt.getTime() - a.createdAt.getTime();
   });
-  const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
   return <PageShell title={community.name} sub={community.description || 'Public community'} actions={<Link className="btn btn-ghost btn-sm" href="/communities">All communities</Link>}>
     <div className="stack stack-4">
       {query.transferred === '1' && <p className="notice notice-success" role="status">Community ownership was transferred successfully.</p>}
       {query.role === 'updated' && <p className="notice notice-success" role="status">Community member role updated.</p>}
       {query.rules === 'updated' && <p className="notice notice-success" role="status">Community rules saved.</p>}
       {community.rules && <section className="panel panel-body stack stack-2" aria-labelledby="community-rules-title"><h2 id="community-rules-title">Community rules</h2><p className="prose" style={{ whiteSpace: 'pre-wrap' }}>{community.rules}</p></section>}
+      {canModerate && <CommunityModerationQueue initialReports={moderationReports} csrfToken={csrfToken} />}
       <div className="row row-between row-wrap">
         <p className="t-small">{posts.length} discussions · {community.name}</p>
         <form method="get" action={`/communities/${community.slug}`} className="row row-wrap">
