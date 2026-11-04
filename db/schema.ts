@@ -2194,6 +2194,23 @@ export const communityMembers = pgTable('community_members', {
   index('community_members_role_idx').on(t.communityId, t.role),
 ]);
 
+/** Hashed, expiring, revocable invitation links for private communities. */
+export const communityInvites = pgTable('community_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  maxUses: integer('max_uses').notNull().default(1),
+  useCount: integer('use_count').notNull().default(0),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('community_invites_token_hash_key').on(t.tokenHash),
+  index('community_invites_community_idx').on(t.communityId, t.createdAt),
+  index('community_invites_expiry_idx').on(t.expiresAt),
+]);
+
 export const communityPosts = pgTable('community_posts', {
   id: uuid('id').primaryKey().defaultRandom(),
   communityId: uuid('community_id').notNull().references(() => communities.id, { onDelete: 'cascade' }),
