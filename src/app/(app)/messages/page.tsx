@@ -251,6 +251,7 @@ export default async function MessagesPage({
                 </div>
                 <div className="thread-composer">
                   <MessageComposer
+                    key={active.id}
                     conversationId={active.id}
                     csrf={<CsrfField />}
                     replyToId={replyTarget?.id}
