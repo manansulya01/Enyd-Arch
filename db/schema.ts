@@ -174,6 +174,7 @@ export const reportStateEnum = pgEnum('report_state', [
   'appealed',
 ]);
 
+export const storyAudienceEnum = pgEnum('story_audience', ['followers', 'public']);
 export const reportReasonEnum = pgEnum('report_reason', [
   'harassment',
   'hate_or_discrimination',
@@ -2250,6 +2251,29 @@ export const communityPostComments = pgTable('community_post_comments', {
 }, (t) => [
   index('community_post_comments_post_idx').on(t.postId, t.createdAt),
   index('community_post_comments_author_idx').on(t.authorId, t.createdAt),
+]);
+
+export const stories = pgTable('stories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  authorId: uuid('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: varchar('body', { length: 600 }).notNull(),
+  audience: storyAudienceEnum('audience').notNull().default('followers'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+}, (t) => [
+  index('stories_author_created_idx').on(t.authorId, t.createdAt),
+  index('stories_expiry_idx').on(t.expiresAt),
+  index('stories_audience_expiry_idx').on(t.audience, t.expiresAt),
+]);
+
+export const storyViews = pgTable('story_views', {
+  storyId: uuid('story_id').notNull().references(() => stories.id, { onDelete: 'cascade' }),
+  viewerId: uuid('viewer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  viewedAt: timestamp('viewed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.storyId, t.viewerId] }),
+  index('story_views_viewer_idx').on(t.viewerId, t.viewedAt),
 ]);
 
 export const userFollows = pgTable(
