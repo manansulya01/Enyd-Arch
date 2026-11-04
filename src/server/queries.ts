@@ -2137,6 +2137,7 @@ export interface MessageView {
   removed: boolean;
   replyTo: { id: string; preview: string } | null;
   reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+  seenBy: string[];
 }
 
 /**
@@ -2225,6 +2226,20 @@ export async function conversationMessages(
   }
 
   const senderMap = await membersByIds(rows.map((row) => row.senderId), viewerId);
+  const readRows = await db.select({
+    userId: conversationMembers.userId,
+    displayName: users.displayName,
+    lastReadAt: conversationMembers.lastReadAt,
+  })
+    .from(conversationMembers)
+    .innerJoin(users, eq(users.id, conversationMembers.userId))
+    .where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      ne(conversationMembers.userId, viewerId),
+      isNull(conversationMembers.removedAt),
+      eq(users.status, 'active'),
+      isNull(users.removedAt),
+    ));
 
   await db
     .update(conversationMembers)
@@ -2247,6 +2262,9 @@ export async function conversationMessages(
     removed: Boolean(row.removedAt),
     replyTo: row.replyToId && row.replyPreview !== null ? { id: row.replyToId, preview: row.replyPreview } : null,
     reactions: reactionsByMessage.get(row.id) ?? [],
+    seenBy: row.senderId === viewerId
+      ? readRows.filter((member) => member.lastReadAt && member.lastReadAt >= row.createdAt).map((member) => member.displayName)
+      : [],
     sender: senderMap.get(row.senderId)!,
     isMine: row.senderId === viewerId,
     attachment: row.attachmentId
