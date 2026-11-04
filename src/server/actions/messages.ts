@@ -31,6 +31,7 @@ import { normalizeGroupMembers } from '~/server/auth/group-policy';
 import { normalizeMessageBody } from '~/server/auth/message-content';
 import { isUuid } from '~/server/auth/identifiers';
 import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
+import { notify } from '~/server/notify';
 
 /** Blocks are symmetric for contact purposes: either member can close the path. */
 async function pairIsBlocked(a: string, b: string): Promise<boolean> {
@@ -648,6 +649,17 @@ export async function sendMessage(
     if (!existing) return fail('That message could not be sent safely. Please start a new message.');
     return ok({ messageId: existing.id });
   }
+
+  await Promise.allSettled(otherMembers.map((userId) => notify({
+    userId,
+    actorId: actor.userId,
+    kind: 'message',
+    title: 'New message',
+    href: `/messages?c=${conversationId}`,
+    targetType: 'conversation',
+    targetId: conversationId,
+    conversationId,
+  })));
 
   await db
     .update(conversations)
