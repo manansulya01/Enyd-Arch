@@ -138,13 +138,14 @@ export async function createCommunityPost(input: {
 export async function createCommunityComment(input: {
   postId: string;
   body: string;
+  parentId?: string | null;
   csrf: string;
 }): Promise<ActionResult> {
   await verifyCsrfValue(input.csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!can(actor, 'post')) return fail('Commenting is not available for this identity.');
-  if (!isUuid(input.postId)) return fail('That discussion is not available.');
+  if (!isUuid(input.postId) || (input.parentId && !isUuid(input.parentId))) return fail('That discussion is not available.');
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) return fail('You are commenting too quickly. Wait a moment.');
 
@@ -172,9 +173,26 @@ export async function createCommunityComment(input: {
       .for('update')
       .limit(1);
     if (!row) return null;
+    let parentId: string | null = null;
+    if (input.parentId) {
+      const [parent] = await tx.select({ id: communityPostComments.id })
+        .from(communityPostComments)
+        .where(and(
+          eq(communityPostComments.id, input.parentId),
+          eq(communityPostComments.postId, row.postId),
+          eq(communityPostComments.status, 'published'),
+          isNull(communityPostComments.removedAt),
+          isNull(communityPostComments.parentId),
+        ))
+        .for('update')
+        .limit(1);
+      if (!parent) return null;
+      parentId = parent.id;
+    }
     await tx.insert(communityPostComments).values({
       postId: row.postId,
       authorId: actor.userId,
+      parentId,
       body,
     });
     return row;
