@@ -21,11 +21,19 @@ import { decryptObject } from '../src/server/storage/envelope-core.js';
 const PORT = Number(process.env.SANDBOX_PORT ?? 3101);
 const APP_ORIGIN = process.env.APP_ORIGIN ?? 'http://localhost:3000';
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
-const SHARED_SECRET = process.env.SANDBOX_SECRET ?? 'enyd-sandbox-development-secret';
+const SHARED_SECRET = process.env.SANDBOX_SECRET ?? '';
 const STORAGE_ROOT = path.resolve(process.cwd(), process.env.STORAGE_ROOT ?? './storage');
 
 if (!DATABASE_URL) {
   console.error('DATABASE_URL is required to run the sandbox host.');
+  process.exit(1);
+}
+if (SHARED_SECRET.length < 32) {
+  console.error('SANDBOX_SECRET must be configured with at least 32 characters.');
+  process.exit(1);
+}
+if (process.env.NODE_ENV === 'production' && (!process.env.STORAGE_ENCRYPTION_KEY || process.env.STORAGE_ENCRYPTION_KEY.length < 32)) {
+  console.error('STORAGE_ENCRYPTION_KEY must be configured for the sandbox in production.');
   process.exit(1);
 }
 
@@ -43,7 +51,7 @@ function sign(value: string) {
 }
 
 function mint(gameId: string, checksum: string | null) {
-  const grant = sign(`${gameId}:${checksum ?? ''}:${Date.now()}:${Math.random()}`);
+  const grant = sign(`${gameId}:${checksum ?? ''}:${randomBytes(32).toString('base64url')}`);
   grants.set(grant, { gameId, checksum, expiresAt: Date.now() + GRANT_TTL_MS });
   return grant;
 }
@@ -110,16 +118,30 @@ function send(res: ServerResponse, status: number, body: string | Uint8Array, he
   res.end(body);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, maxBytes = 16 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += Buffer.byteLength(chunk);
+      if (total > maxBytes) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(Buffer.from(chunk));
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
 }
 
 const server = createServer(async (req, res) => {
+  // Expired in-memory grants and sessions are discarded on every request.
+  const now = Date.now();
+  for (const [key, value] of grants) if (value.expiresAt < now) grants.delete(key);
+  for (const [key, value] of sessions) if (value.expiresAt < now) sessions.delete(key);
+
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
 
   // Only the application origin may mint grants or embed games.
@@ -150,6 +172,7 @@ const server = createServer(async (req, res) => {
     const game = rows[0];
     if (!game) return send(res, 404, 'Not approved');
 
+    if (grants.size >= 10_000) return send(res, 429, 'Too many outstanding play grants');
     const grant = mint(gameId, game.package_checksum);
     return send(res, 200, JSON.stringify({ grant }), {
       'Content-Type': 'application/json; charset=utf-8',
@@ -182,7 +205,8 @@ const server = createServer(async (req, res) => {
       return send(res, 409, 'Package changed');
     }
 
-    const session = randomBytes(18).toString('base64url');
+    if (sessions.size >= 50_000) return send(res, 429, 'Arcade runtime is at capacity');
+    const session = randomBytes(24).toString('base64url');
     sessions.set(session, {
       gameId: game.id,
       objectKey: game.object_key,
@@ -203,7 +227,12 @@ const server = createServer(async (req, res) => {
   }
   session.expiresAt = Date.now() + SESSION_TTL_MS;
 
-  const wanted = decodeURIComponent(sessionMatch[2]! || 'index.html');
+  let wanted: string;
+  try {
+    wanted = decodeURIComponent(sessionMatch[2]! || 'index.html');
+  } catch {
+    return send(res, 400, 'Bad path');
+  }
   if (wanted.includes('..')) return send(res, 400, 'Bad path');
 
   const segments = String(session.objectKey).split('/').filter(Boolean);
