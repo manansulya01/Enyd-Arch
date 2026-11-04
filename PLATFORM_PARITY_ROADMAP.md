@@ -26,7 +26,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Per-member conversation mute/unmute for eight hours, backed by active-membership checks and a transaction-locked update; message notification fan-out now centrally suppresses muted-thread notifications while retaining the global per-category preference.
 - [x] Owner-only group member removal with active-membership checks and soft removal.
 - [x] Owner-controlled adding of eligible existing connections to groups, capped at 12, with serialized membership checks, recipient policy checks, block-pair rejection and active-membership validation.
-- [ ] Expiring/revocable invite links, broader group permissions, and a full conversation UI completeness audit.
+- [x] Expiring/revocable group invite links with SHA-256 token hashes, one-time secret display, fragment-only secret transport, explicit signed-in acceptance, 1-hour-to-7-day expiry, use limits, active-owner revocation, capacity/policy/block checks, and transaction-locked use counting.
+- [ ] Broader group permissions and a full conversation UI completeness audit.
 - [x] Message edit (15-minute window), sender-owned removal, and edited markers; actions enforce active conversation membership, CSRF, capability, and rate-limit checks.
 - [x] Message reactions: six allow-listed emoji, per-member toggles, unique member/message/emoji keys, membership-checked server writes, rate limits, and per-message counts in the thread UI. Added on the completion branch; CI verification is pending.
 - [x] Message pin/unpin: per-message pin state, pinning member and timestamp, membership-checked transactional toggles, and visible pin state in the thread UI. Added on the completion branch; CI verification is pending.
