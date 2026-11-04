@@ -331,6 +331,32 @@ export async function memberDirectory(
   return rows.map((row) => projectMember(row, viewerId));
 }
 
+export async function memberFollowLists(viewerId: string): Promise<{
+  following: MemberSummary[];
+  followers: MemberSummary[];
+}> {
+  const followingRows = await memberJoin()
+    .innerJoin(userFollows, eq(userFollows.followedId, users.id))
+    .where(and(
+      eq(userFollows.followerId, viewerId),
+      visibleMemberConditions(viewerId),
+    ))
+    .orderBy(asc(users.displayName))
+    .limit(100);
+  const followerRows = await memberJoin()
+    .innerJoin(userFollows, eq(userFollows.followerId, users.id))
+    .where(and(
+      eq(userFollows.followedId, viewerId),
+      visibleMemberConditions(viewerId),
+    ))
+    .orderBy(asc(users.displayName))
+    .limit(100);
+  return {
+    following: followingRows.map((row) => projectMember(row, viewerId)),
+    followers: followerRows.map((row) => projectMember(row, viewerId)),
+  };
+}
+
 export async function membersByIds(ids: string[], viewerId?: string | null): Promise<Map<string, MemberSummary>> {
   const unique = [...new Set(ids)].filter(Boolean);
   if (unique.length === 0) return new Map();
