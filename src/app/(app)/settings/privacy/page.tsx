@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 const DEFAULTS = {
   profileVisibility: 'members',
   messagePolicy: 'members',
+  showReadReceipts: true,
   discoverable: true,
   searchableByEmail: false,
   showRegion: false,
@@ -114,6 +115,10 @@ export default async function PrivacySettingsPage({
                 <option value="connections">My connections only</option>
                 <option value="nobody">Nobody</option>
               </select>
+            </label>
+            <label className="check-row">
+              <input type="checkbox" name="showReadReceipts" defaultChecked={settings.showReadReceipts} />
+              <span>Let other members see when I have read their messages</span>
             </label>
             <p className="t-small t-subtle">
               Email is never displayed on your public profile. This option only controls account discovery.
