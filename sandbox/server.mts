@@ -155,7 +155,7 @@ async function readStoredObject(driver: string, objectKey: string): Promise<Uint
   const host = new URL(endpoint).host;
   const canonicalUri = `/${[bucket, ...segments].map((part) => encodeURIComponent(part)).join('/')}`;
   const payloadHash = createHash('sha256').update(new Uint8Array()).digest('hex');
-  const canonicalHeaders = `host:${host}\\nx-amz-content-sha256:${payloadHash}\\nx-amz-date:${amzDate}\\n`;
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
   const canonicalRequest = ['GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
   const scope = `${dateStamp}/${region}/s3/aws4_request`;
