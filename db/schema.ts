@@ -2149,6 +2149,7 @@ export const communities = pgTable('communities', {
   slug: varchar('slug', { length: 64 }).notNull(),
   name: varchar('name', { length: 80 }).notNull(),
   description: text('description').notNull().default(''),
+  rules: text('rules').notNull().default(''),
   ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   isPrivate: boolean('is_private').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
