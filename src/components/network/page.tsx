@@ -37,9 +37,10 @@ export default async function NetworkPage({
       title="Network"
       sub="Connect with fellow members."
       actions={
-        <Link className="btn btn-ghost btn-sm" href="/search">
-          Search
-        </Link>
+        <>
+          <Link className="btn btn-ghost btn-sm" href="/network/people">Followers / Following</Link>
+          <Link className="btn btn-ghost btn-sm" href="/search">Search</Link>
+        </>
       }
     >
       <div className="page-split">
