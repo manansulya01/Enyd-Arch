@@ -104,11 +104,6 @@ export function MessageComposer({
       return false;
     }
     setOutbox((current) => current.filter((queued) => queued.id !== item.id));
-    if (body.trim() === item.body && !item.attachmentFileId) setBody('');
-    if (attachment?.fileId === item.attachmentFileId) setAttachment(null);
-    if (!item.attachmentFileId && body.trim() === item.body) {
-      try { window.sessionStorage.removeItem(draftKey); } catch { /* best effort */ }
-    }
     router.refresh();
     return true;
   }
@@ -129,6 +124,10 @@ export function MessageComposer({
       attachmentName: attachment?.name,
     };
     setOutbox((current) => [...current, item]);
+    // Move the content into the durable tab-scoped outbox immediately so a
+    // reload cannot accidentally submit the same draft as a new message.
+    setBody('');
+    setAttachment(null);
     startTransition(async () => {
       await deliver(item);
     });
