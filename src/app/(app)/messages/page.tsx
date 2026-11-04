@@ -230,6 +230,7 @@ export default async function MessagesPage({
                           {new Date(message.createdAt).toISOString().slice(11, 16)} UTC
                           {message.isMine ? ' · sent' : ''}
                           {message.editedAt ? ' · edited' : ''}{message.pinnedAt ? ' · pinned' : ''}
+                          {message.isMine && message.seenBy.length > 0 ? ` · Seen by ${message.seenBy.join(', ')}` : ''}
                         </span>
                         {!message.removed && (
                           <p className="bubble-meta">
