@@ -360,6 +360,11 @@ export async function acceptGroupInvite(token: string, csrf: string): Promise<Ac
     if (activeMembers.length >= 12) return null;
     const owner = activeMembers.find((member) => member.role === 'owner');
     if (!owner || !(await canStartDirectMessage(owner.userId, actor.userId))) return null;
+    // The invitee is about to contact every current group member. Respect
+    // each recipient's own messaging policy, not just the owner's policy.
+    for (const member of activeMembers) {
+      if (!(await canStartDirectMessage(actor.userId, member.userId))) return null;
+    }
 
     const memberIds = activeMembers.map((member) => member.userId);
     const blocked = await tx.select({ id: blocks.id }).from(blocks).where(or(
