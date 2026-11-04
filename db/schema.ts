@@ -818,6 +818,8 @@ export const posts = pgTable(
     repostCount: integer('repost_count').notNull().default(0),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp('edited_at', { withTimezone: true }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    pinnedById: uuid('pinned_by_id').references(() => users.id, { onDelete: 'set null' }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
