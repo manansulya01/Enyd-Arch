@@ -23,6 +23,18 @@ const APP_ORIGIN = process.env.APP_ORIGIN ?? 'http://localhost:3000';
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 const SHARED_SECRET = process.env.SANDBOX_SECRET ?? '';
 const STORAGE_ROOT = path.resolve(process.cwd(), process.env.STORAGE_ROOT ?? './storage');
+const SANDBOX_ORIGIN = process.env.ARCH_GAME_ORIGIN ?? `http://localhost:${PORT}`;
+try {
+  const app = new URL(APP_ORIGIN);
+  const game = new URL(SANDBOX_ORIGIN);
+  if (app.origin === game.origin) throw new Error('The sandbox must use a separate origin from the application.');
+  if (process.env.NODE_ENV === 'production' && (app.protocol !== 'https:' || game.protocol !== 'https:')) {
+    throw new Error('Production application and sandbox origins must both use HTTPS.');
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : 'Invalid Arcade origin configuration.');
+  process.exit(1);
+}
 
 if (!DATABASE_URL) {
   console.error('DATABASE_URL is required to run the sandbox host.');
