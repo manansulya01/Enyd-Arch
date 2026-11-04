@@ -16,10 +16,11 @@ import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = { title: 'Community' };
 
-export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string; role?: string; rules?: string }> }) {
+export default async function CommunityPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ transferred?: string; role?: string; rules?: string; sort?: string }> }) {
   const { actor } = await requireOnboarded();
   const { slug } = await params;
   const query = await searchParams;
+  const sort = query.sort === 'top' || query.sort === 'hot' ? query.sort : 'new';
   const [community] = await db.select().from(communities)
     .where(eq(communities.slug, slug)).limit(1);
   if (!community) notFound();
@@ -99,6 +100,19 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     if (vote.userId === actor.userId) summary.currentVote = vote.value === 1 ? 1 : -1;
     voteSummaryByPost.set(vote.postId, summary);
   }
+  const orderedPosts = [...posts].sort((a, b) => {
+    if (sort === 'new') return b.createdAt.getTime() - a.createdAt.getTime();
+    const aVotes = voteSummaryByPost.get(a.id);
+    const bVotes = voteSummaryByPost.get(b.id);
+    const aScore = (aVotes?.upvotes ?? 0) - (aVotes?.downvotes ?? 0);
+    const bScore = (bVotes?.upvotes ?? 0) - (bVotes?.downvotes ?? 0);
+    if (sort === 'top') return bScore - aScore || b.createdAt.getTime() - a.createdAt.getTime();
+    const aAgeHours = Math.max(0, (Date.now() - a.createdAt.getTime()) / 3_600_000);
+    const bAgeHours = Math.max(0, (Date.now() - b.createdAt.getTime()) / 3_600_000);
+    const aHot = aScore / Math.pow(aAgeHours + 2, 1.5);
+    const bHot = bScore / Math.pow(bAgeHours + 2, 1.5);
+    return bHot - aHot || b.createdAt.getTime() - a.createdAt.getTime();
+  });
   const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
   return <PageShell title={community.name} sub={community.description || 'Public community'} actions={<Link className="btn btn-ghost btn-sm" href="/communities">All communities</Link>}>
     <div className="stack stack-4">
@@ -106,7 +120,13 @@ export default async function CommunityPage({ params, searchParams }: { params: 
       {query.role === 'updated' && <p className="notice notice-success" role="status">Community member role updated.</p>}
       {query.rules === 'updated' && <p className="notice notice-success" role="status">Community rules saved.</p>}
       {community.rules && <section className="panel panel-body stack stack-2" aria-labelledby="community-rules-title"><h2 id="community-rules-title">Community rules</h2><p className="prose" style={{ whiteSpace: 'pre-wrap' }}>{community.rules}</p></section>}
-      <p className="t-small">{posts.length} discussions · {community.name}</p>
+      <div className="row row-between row-wrap">
+        <p className="t-small">{posts.length} discussions · {community.name}</p>
+        <form method="get" action={`/communities/${community.slug}`} className="row row-wrap">
+          <label className="field"><span className="field-label">Sort</span><select className="input" name="sort" defaultValue={sort}><option value="new">New</option><option value="hot">Hot</option><option value="top">Top</option></select></label>
+          <button className="btn btn-ghost btn-sm" type="submit">Apply</button>
+        </form>
+      </div>
       {membership[0]?.role === 'owner' && transferCandidates.some(candidate => candidate.userId !== actor.userId) && (
         <section className="panel panel-body stack stack-3">
           <h2>Transfer community ownership</h2>
@@ -171,8 +191,8 @@ export default async function CommunityPage({ params, searchParams }: { params: 
       )}
       {!joined && <p className="t-small t-muted">Join this community from the directory before posting.</p>}
       {joined && <CommunityPostForm communityId={community.id} csrfToken={csrfToken} />}
-      {posts.length === 0 ? <EmptyState glyph="▦" title="No discussions yet" body="Start a discussion to give this community its first thread." /> :
-        <div className="stack stack-3">{posts.map(post => <article className="panel panel-body stack stack-2" key={post.id}>
+      {orderedPosts.length === 0 ? <EmptyState glyph="▦" title="No discussions yet" body="Start a discussion to give this community its first thread." /> :
+        <div className="stack stack-3">{orderedPosts.map(post => <article className="panel panel-body stack stack-2" key={post.id}>
           {post.title && <h2>{post.title}</h2>}
           <p className="t-meta">by {post.displayName} (@{post.username}) · {post.createdAt.toLocaleDateString()}</p>
           <CommunityPostVoting
