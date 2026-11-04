@@ -6,6 +6,7 @@ import { createCommunityComment, removeCommunityComment } from '~/server/actions
 
 export type CommunityCommentView = {
   id: string;
+  parentId: string | null;
   body: string;
   authorId: string;
   username: string;
@@ -30,6 +31,7 @@ export function CommunityComments({
 }) {
   const router = useRouter();
   const [body, setBody] = useState('');
+  const [replyToId, setReplyToId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -37,12 +39,13 @@ export function CommunityComments({
     setBusy(true);
     setMessage('');
     try {
-      const result = await createCommunityComment({ postId, body, csrf: csrfToken });
+      const result = await createCommunityComment({ postId, body, parentId: replyToId, csrf: csrfToken });
       if (!result.ok) {
         setMessage(result.message ?? 'Could not publish comment.');
         return;
       }
       setBody('');
+      setReplyToId(null);
       setMessage('Comment published.');
       router.refresh();
     } catch {
@@ -83,15 +86,22 @@ export function CommunityComments({
               </button>
             )}
           </div>
+          {comment.parentId && <p className="t-meta">↳ Reply</p>}
           <p className="prose">{comment.body}</p>
+          {joined && !comment.parentId && (
+            <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => setReplyToId(comment.id)}>
+              Reply
+            </button>
+          )}
         </article>
       ))}
       {joined && (
         <div className="stack stack-2">
           <label className="field">
-            <span className="field-label">Add a comment</span>
+            <span className="field-label">{replyToId ? 'Reply to comment' : 'Add a comment'}</span>
             <textarea className="input" value={body} onChange={event => setBody(event.target.value)} maxLength={2500} rows={2} placeholder="Add something useful to the discussion…" />
           </label>
+          {replyToId && <button className="btn btn-ghost btn-sm" type="button" onClick={() => setReplyToId(null)}>Cancel reply</button>}
           <div>
             <button className="btn btn-secondary btn-sm" type="button" disabled={busy || !body.trim()} onClick={() => void publish()}>
               {busy ? 'Working…' : 'Comment'}
