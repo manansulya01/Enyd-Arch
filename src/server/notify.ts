@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '~db';
-import { notifications, userSettings } from '~db/schema';
+import { conversationMembers, notifications, userSettings } from '~db/schema';
 
 /**
  * Notifications
@@ -69,6 +69,8 @@ export interface NotifyInput {
   actorId?: string | null;
   targetType?: string;
   targetId?: string;
+  /** Conversation context allows per-thread notification mutes to be enforced centrally. */
+  conversationId?: string;
 }
 
 const suppressedKinds = cache(async (userId: string): Promise<Set<NotificationKind>> => {
@@ -99,6 +101,18 @@ export async function notify(input: NotifyInput): Promise<boolean> {
   if (!ALWAYS_DELIVER.includes(input.kind)) {
     const suppressed = await suppressedKinds(input.userId);
     if (suppressed.has(input.kind)) return false;
+  }
+
+  if (input.kind === 'message' && input.conversationId) {
+    const [membership] = await db.select({ mutedUntil: conversationMembers.mutedUntil })
+      .from(conversationMembers)
+      .where(and(
+        eq(conversationMembers.conversationId, input.conversationId),
+        eq(conversationMembers.userId, input.userId),
+        sql`${conversationMembers.removedAt} is null`,
+      ))
+      .limit(1);
+    if (membership?.mutedUntil && membership.mutedUntil > new Date()) return false;
   }
 
   await db.insert(notifications).values({
