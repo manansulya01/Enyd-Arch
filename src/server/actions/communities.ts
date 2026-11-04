@@ -343,6 +343,53 @@ export async function voteCommunityPost(input: {
 }
 
 
+/** Owner-only promotion/demotion of a current community member. */
+export async function setCommunityModerator(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'post')) redirect('/communities?error=unavailable');
+
+  const communityId = String(formData.get('communityId') ?? '');
+  const targetUserId = String(formData.get('targetUserId') ?? '');
+  const role = String(formData.get('role') ?? '');
+  if (!isUuid(communityId) || !isUuid(targetUserId) || targetUserId === actor.userId ||
+      !['member', 'moderator'].includes(role) || formData.get('confirmRoleChange') !== 'on') {
+    redirect('/communities?error=invalid-role');
+  }
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/communities?error=slow-down');
+
+  const result = await db.transaction(async (tx) => {
+    const [community] = await tx.select({ id: communities.id, slug: communities.slug, ownerId: communities.ownerId })
+      .from(communities).where(eq(communities.id, communityId)).for('update').limit(1);
+    if (!community || community.ownerId !== actor.userId) return null;
+    const [target] = await tx.select({ userId: communityMembers.userId, role: communityMembers.role })
+      .from(communityMembers)
+      .innerJoin(users, eq(users.id, communityMembers.userId))
+      .where(and(
+        eq(communityMembers.communityId, communityId),
+        eq(communityMembers.userId, targetUserId),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+      ))
+      .for('update')
+      .limit(1);
+    if (!target || target.role === 'owner') return null;
+    await tx.update(communityMembers)
+      .set({ role })
+      .where(and(
+        eq(communityMembers.communityId, communityId),
+        eq(communityMembers.userId, targetUserId),
+      ));
+    return { slug: community.slug };
+  });
+  if (!result) redirect('/communities?error=role-not-allowed');
+  revalidatePath('/communities');
+  revalidatePath(`/communities/${result.slug}`);
+  redirect(`/communities/${result.slug}?role=updated`);
+}
+
 /**
  * Transfer ownership to an existing, active community member.
  * The current owner becomes a moderator so the community is never left without
