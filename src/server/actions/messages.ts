@@ -347,6 +347,12 @@ export async function addGroupMember(formData: FormData): Promise<void> {
       ));
     if (members.some((member) => member.userId === targetUserId)) return 'already-member' as const;
     if (members.length >= 12) return 'full' as const;
+    const memberIds = members.map((member) => member.userId);
+    const blocked = await tx.select({ id: blocks.id }).from(blocks).where(or(
+      and(eq(blocks.blockerId, targetUserId), inArray(blocks.blockedId, memberIds)),
+      and(eq(blocks.blockedId, targetUserId), inArray(blocks.blockerId, memberIds)),
+    )).limit(1);
+    if (blocked.length > 0) return 'blocked' as const;
     await tx.insert(conversationMembers).values({
       conversationId,
       userId: targetUserId,
@@ -354,7 +360,7 @@ export async function addGroupMember(formData: FormData): Promise<void> {
     });
     return 'added' as const;
   });
-  if (outcome !== 'added') redirect(`/messages?c=${conversationId}&error=${outcome === 'full' ? 'group-full' : outcome === 'already-member' ? 'already-member' : 'not-allowed'}`);
+  if (outcome !== 'added') redirect(`/messages?c=${conversationId}&error=${outcome === 'full' ? 'group-full' : outcome === 'already-member' ? 'already-member' : outcome === 'blocked' ? 'invite-unavailable' : 'not-allowed'}`);
   revalidatePath('/messages');
   redirect(`/messages?c=${conversationId}&memberAdded=1`);
 }
