@@ -42,7 +42,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 
 ### Instagram-like visual social
 - [x] Follow/unfollow graph distinct from mutual Connections, discoverable-member controls, and a Following feed.
-- [ ] Follower/following lists and additional per-audience privacy controls.
+- [x] Follower/following lists with discoverability, profile visibility and mutual-block filtering; bounded to 100 visible members per list.
+- [ ] Additional per-audience privacy controls.
 - [ ] Photo/carousel posts, captions, alt text, crop/thumbnail generation, drafts, archive and creator profile grid.
 - [ ] Stories with explicit expiry, viewer list privacy, replies and optional close-friends audience.
 - [ ] Short-form video/reels, transcoding, adaptive bitrate, captions, audio rights checks and upload resumability.
