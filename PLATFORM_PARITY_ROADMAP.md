@@ -74,7 +74,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 ### Reddit-like communities
 - [x] Public topic-based communities with owners, membership, join/leave, text discussion posts, flat comments, and per-member upvotes/downvotes.
 - [x] Authors can remove their own comments; community owners/moderators can remove comments in their space.
-- [ ] Community rules, moderator tools, restricted/private access, invite workflows and full role hierarchy.
+- [x] Owner-controlled moderator promotion/demotion with current active membership checks and transactional community locks.
+- [ ] Community rules, moderator queues/logs, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
 - [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
