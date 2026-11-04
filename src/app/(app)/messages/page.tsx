@@ -8,7 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
-import { leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
+import { toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -185,6 +185,28 @@ export default async function MessagesPage({
                             </span>
                             {message.attachment.displayName}
                           </a>
+                        )}
+                        {!message.removed && (
+                          <div className="row row-wrap" aria-label="Message reactions">
+                            {message.reactions.map((reaction) => (
+                              <form action={toggleMessageReaction} key={reaction.emoji}>
+                                <input type="hidden" name="__csrf" value={csrfToken} />
+                                <input type="hidden" name="messageId" value={message.id} />
+                                <input type="hidden" name="emoji" value={reaction.emoji} />
+                                <button className={reaction.reactedByMe ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} type="submit" aria-pressed={reaction.reactedByMe}>
+                                  {reaction.emoji} {reaction.count}
+                                </button>
+                              </form>
+                            ))}
+                            {(['👍', '❤️', '😂', '🎉', '👀', '🙏'] as const).filter((emoji) => !message.reactions.some((reaction) => reaction.emoji === emoji)).map((emoji) => (
+                              <form action={toggleMessageReaction} key={emoji}>
+                                <input type="hidden" name="__csrf" value={csrfToken} />
+                                <input type="hidden" name="messageId" value={message.id} />
+                                <input type="hidden" name="emoji" value={emoji} />
+                                <button className="btn btn-ghost btn-sm" type="submit" aria-label={`React with ${emoji}`}>{emoji}</button>
+                              </form>
+                            ))}
+                          </div>
                         )}
                         <span className="bubble-meta">
                           {new Date(message.createdAt).toISOString().slice(11, 16)} UTC
