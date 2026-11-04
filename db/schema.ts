@@ -1081,6 +1081,27 @@ export const messages = pgTable(
   ],
 );
 
+/** Hashed, expiring, revocable bearer invitations for small private group conversations. */
+export const conversationInvites = pgTable(
+  'conversation_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+    createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    maxUses: integer('max_uses').notNull().default(1),
+    useCount: integer('use_count').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('conversation_invites_token_hash_key').on(t.tokenHash),
+    index('conversation_invites_conversation_idx').on(t.conversationId, t.createdAt),
+    index('conversation_invites_expiry_idx').on(t.expiresAt),
+  ],
+);
+
 /** Per-member emoji reactions on messages; membership is checked by every write/read path. */
 export const messageReactions = pgTable(
   'message_reactions',
