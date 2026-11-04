@@ -11,10 +11,11 @@ import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
 import { CommunityReportControl } from '~/components/communities/community-report-control';
 import { CommunityModerationQueue } from '~/components/communities/community-moderation-queue';
+import { CommunityInviteManager } from '~/components/communities/community-invite-manager';
 import { setCommunityModerator, transferCommunityOwnership, updateCommunityRules } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
-import { communityReportsForModerator } from '~/server/queries';
+import { communityInvitesForOwner, communityReportsForModerator } from '~/server/queries';
 
 export const metadata: Metadata = { title: 'Community' };
 
@@ -34,6 +35,9 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   const joined = membership.length > 0;
   const canModerate = membership[0]?.role === 'owner' || membership[0]?.role === 'moderator';
   const moderationReports = canModerate ? await communityReportsForModerator(community.id, actor.userId) : [];
+  const privateInvites = community.isPrivate && membership[0]?.role === 'owner'
+    ? await communityInvitesForOwner(community.id, actor.userId)
+    : [];
   if (community.isPrivate && !joined && community.ownerId !== actor.userId) notFound();
   const transferCandidates = membership[0]?.role === 'owner'
     ? await db.select({
@@ -130,6 +134,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
       {query.rules === 'updated' && <p className="notice notice-success" role="status">Community rules saved.</p>}
       {community.rules && <section className="panel panel-body stack stack-2" aria-labelledby="community-rules-title"><h2 id="community-rules-title">Community rules</h2><p className="prose" style={{ whiteSpace: 'pre-wrap' }}>{community.rules}</p></section>}
       {canModerate && <CommunityModerationQueue initialReports={moderationReports} csrfToken={csrfToken} />}
+      {community.isPrivate && membership[0]?.role === 'owner' && <CommunityInviteManager communityId={community.id} csrfToken={csrfToken} initialInvites={privateInvites} />}
       <div className="row row-between row-wrap">
         <p className="t-small">{posts.length} discussions · {community.name}</p>
         <form method="get" action={`/communities/${community.slug}`} className="row row-wrap">
