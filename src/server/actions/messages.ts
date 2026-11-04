@@ -7,7 +7,7 @@
  * Membership is the only authorisation boundary: a conversation's rows are
  * invisible to anyone not in `conversation_members`.
  */
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -36,6 +36,7 @@ export async function startDirectConversation(
 
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!actor.capabilities.includes('message')) return fail('Messaging is not available for this account.');
   if (otherUserId === actor.userId) return fail('You cannot message yourself.');
 
   const limiter = await acquire('write', actor.userId);
@@ -134,6 +135,7 @@ export async function createGroupConversation(
 
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
+  if (!actor.capabilities.includes('message')) return fail('Messaging is not available for this account.');
 
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
@@ -188,6 +190,7 @@ export async function sendMessage(
   const body = String(formData.get('body') ?? '').replace(/\r\n/g, '\n').trim().slice(0, 4000);
   const attachmentFileId = String(formData.get('attachmentFileId') ?? '') || null;
 
+  if (!actor.capabilities.includes('message')) return fail('Messaging is not available for this account.');
   if (!conversationId) return fail('Missing conversation.');
   if (!body && !attachmentFileId) return fail('Write a message or attach a file.');
 
@@ -205,6 +208,35 @@ export async function sendMessage(
     )
     .limit(1);
   if (!membership[0]) return fail('You are not a member of that conversation.');
+
+  const [conversation] = await db
+    .select({ kind: conversations.kind })
+    .from(conversations)
+    .where(and(eq(conversations.id, conversationId), isNull(conversations.removedAt)))
+    .limit(1);
+  if (!conversation) return fail('That conversation is not available.');
+
+  if (conversation.kind === 'direct') {
+    const [otherMember] = await db
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(and(
+        eq(conversationMembers.conversationId, conversationId),
+        ne(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      ))
+      .limit(1);
+    if (!otherMember) return fail('That conversation is not available.');
+    const [blockedPair] = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(or(
+        and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, otherMember.userId)),
+        and(eq(blocks.blockerId, otherMember.userId), eq(blocks.blockedId, actor.userId)),
+      ))
+      .limit(1);
+    if (blockedPair) return fail('Messaging is unavailable for this conversation.');
+  }
 
   if (attachmentFileId) {
     const [owned] = await db

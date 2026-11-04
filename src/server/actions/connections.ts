@@ -151,6 +151,17 @@ export async function respondToRequest(requestId: string, accept: boolean): Prom
     .limit(1);
   if (!request) return fail('That request is not available.');
 
+  const [blockedPair] = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(sql`(${blocks.blockerId} = ${actor.userId} and ${blocks.blockedId} = ${request.fromUserId})
+      or (${blocks.blockerId} = ${request.fromUserId} and ${blocks.blockedId} = ${actor.userId})`)
+    .limit(1);
+  if (blockedPair) {
+    await db.update(connectionRequests).set({ state: 'revoked' }).where(eq(connectionRequests.id, requestId));
+    return fail('This request is no longer available.');
+  }
+
   await db
     .update(connectionRequests)
     .set({ state: accept ? 'accepted' : 'declined', respondedAt: new Date() })
@@ -214,6 +225,18 @@ export async function blockUser(userId: string): Promise<ActionResult> {
     .insert(blocks)
     .values({ blockerId: actor.userId, blockedId: userId })
     .onConflictDoNothing();
+
+  // A block invalidates pending requests in both directions as well as matches.
+  await db
+    .update(connectionRequests)
+    .set({ state: 'revoked' })
+    .where(
+      and(
+        eq(connectionRequests.state, 'pending'),
+        sql`(${connectionRequests.fromUserId} = ${actor.userId} and ${connectionRequests.toUserId} = ${userId})
+          or (${connectionRequests.fromUserId} = ${userId} and ${connectionRequests.toUserId} = ${actor.userId})`,
+      ),
+    );
 
   // Any match or pending request between the pair is dead.
   await db

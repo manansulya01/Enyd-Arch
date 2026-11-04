@@ -5,6 +5,11 @@ import { PageShell } from '~/components/ui/page-shell';
 import { requireOnboarded } from '~/server/guard';
 import { memberByUsername, profileActivity } from '~/server/queries';
 import { relativeTime } from '~/lib/format';
+import { and, eq } from 'drizzle-orm';
+import { db } from '~db';
+import { blocks } from '~db/schema';
+import { sessionCsrfToken } from '~/server/csrf';
+import { blockMember, unblockMember } from '~/server/actions/connections-client';
 
 export const metadata: Metadata = { title: 'Member profile' };
 
@@ -13,7 +18,14 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const { username } = await params;
   const member = await memberByUsername(username, actor.userId);
   if (!member) notFound();
-  const activity = await profileActivity(member.userId, actor.userId);
+  const [activity, csrf, blockRows] = await Promise.all([
+    profileActivity(member.userId, actor.userId),
+    sessionCsrfToken(),
+    member.userId === actor.userId
+      ? Promise.resolve([])
+      : db.select({ id: blocks.id }).from(blocks).where(and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, member.userId))).limit(1),
+  ]);
+  const blockedByMe = blockRows.length > 0;
 
   return (
     <PageShell title={member.displayName} sub={`@${member.username} · ${member.memberId}`}>
@@ -52,6 +64,13 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           <Link className="btn btn-ghost btn-sm" href="/connections">Connections</Link>
           <Link className="btn btn-ghost btn-sm" href="/commons">The Commons</Link>
           <Link className="btn btn-ghost btn-sm" href="/gallery">Gallery</Link>
+          {member.userId !== actor.userId && (
+            <form action={blockedByMe ? unblockMember : blockMember}>
+              <input type="hidden" name="__csrf" value={csrf} />
+              <input type="hidden" name="userId" value={member.userId} />
+              <button className="btn btn-ghost btn-sm" type="submit">{blockedByMe ? 'Unblock member' : 'Block member'}</button>
+            </form>
+          )}
           {member.userId === actor.userId && <Link className="btn btn-primary btn-sm" href="/settings">Account settings</Link>}
         </div>
       </div>
