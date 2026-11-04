@@ -521,6 +521,16 @@ export async function sendMessage(
     .limit(1);
   if (!membership[0]) return fail('You are not a member of that conversation, or it is no longer available.');
 
+  const [alreadySent] = await db.select({ id: messages.id })
+    .from(messages)
+    .where(and(
+      eq(messages.id, clientMessageId),
+      eq(messages.conversationId, conversationId),
+      eq(messages.senderId, actor.userId),
+    ))
+    .limit(1);
+  if (alreadySent) return ok({ messageId: alreadySent.id });
+
   const participants = await db
     .select({ userId: conversationMembers.userId })
     .from(conversationMembers)
