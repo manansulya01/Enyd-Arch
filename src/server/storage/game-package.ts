@@ -148,8 +148,8 @@ const RULES: Rule[] = [
   // ── Storage & credentials ──────────────────────────────────────────────
   {
     id: 'storage.persistent',
-    severity: 'warning',
-    detail: 'Local storage is sandboxed per game and is discarded when the player leaves.',
+    severity: 'blocking',
+    detail: 'Persistent browser storage is not permitted in the shared-origin sandbox. Game save-state support requires a separately isolated storage design.',
     pattern: /\b(?:localStorage|sessionStorage|indexedDB|caches)\b/,
     appliesTo: isSource,
   },
