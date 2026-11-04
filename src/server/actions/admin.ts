@@ -6,7 +6,7 @@
  * Every mutation here re-checks the permission server-side and writes an audit
  * row. Reports disclose nothing about their reporter to the reported member.
  */
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '~db';
@@ -142,35 +142,47 @@ export async function resolveReport(
 ): Promise<ActionResult> {
   await verifyCsrfValue(csrf);
   const { actor } = await requirePermission('reports.resolve');
+  if (!/^[0-9a-f-]{36}$/i.test(reportId) || !['resolved', 'dismissed'].includes(outcome)) {
+    return fail('That report is not available.');
+  }
+  const note = typeof resolution === 'string' ? resolution.trim().slice(0, 2000) : '';
 
-  const [report] = await db
-    .select()
-    .from(reports)
-    .where(eq(reports.id, reportId))
-    .limit(1);
-  if (!report) return fail('Report not found.');
+  const report = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(reports)
+      .where(and(
+        eq(reports.id, reportId),
+        inArray(reports.state, ['open', 'triaged', 'investigating']),
+      ))
+      .for('update')
+      .limit(1);
+    if (!current) return null;
 
-  await db
-    .update(reports)
-    .set({ state: outcome, resolution: resolution.slice(0, 2000), resolvedBy: actor.userId, resolvedAt: new Date() })
-    .where(eq(reports.id, reportId));
+    await tx.update(reports).set({
+      state: outcome,
+      resolution: note,
+      resolvedBy: actor.userId,
+      resolvedAt: new Date(),
+    }).where(eq(reports.id, reportId));
 
-  await db.insert(moderationActions).values({
-    actorId: actor.userId,
-    actorLabel: `ARCH-${actor.memberId}`,
-    targetUserId: report.targetOwnerId,
-    targetType: report.targetType,
-    targetId: report.targetId,
-    action: outcome === 'dismissed' ? 'dismiss_report' : 'note',
-    reason: resolution.slice(0, 2000),
-    reportId,
+    await tx.insert(moderationActions).values({
+      actorId: actor.userId,
+      actorLabel: `ARCH-${actor.memberId}`,
+      targetUserId: current.targetOwnerId,
+      targetType: current.targetType,
+      targetId: current.targetId,
+      action: outcome === 'dismissed' ? 'dismiss_report' : 'note',
+      reason: note,
+      reportId,
+    });
+    return current;
   });
+  if (!report) return fail('That report is already closed or no longer available.');
 
   await writeAudit({ id: actor.userId, label: `ARCH-${actor.memberId}` }, {
     action: 'report.resolved',
     targetType: 'report',
     targetId: reportId,
-    reason: `${outcome}: ${resolution}`.slice(0, 400),
+    reason: `${outcome}: ${note}`.slice(0, 400),
   });
 
   revalidatePath('/admin');
