@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '~db';
 import { notifications, userSettings } from '~db/schema';
@@ -70,12 +71,7 @@ export interface NotifyInput {
   targetId?: string;
 }
 
-const preferenceCache = new Map<string, Set<NotificationKind>>();
-
-async function suppressedKinds(userId: string): Promise<Set<NotificationKind>> {
-  const cached = preferenceCache.get(userId);
-  if (cached) return cached;
-
+const suppressedKinds = cache(async (userId: string): Promise<Set<NotificationKind>> => {
   const rows = await db
     .select()
     .from(userSettings)
@@ -93,15 +89,8 @@ async function suppressedKinds(userId: string): Promise<Set<NotificationKind>> {
     }
   }
 
-  preferenceCache.set(userId, suppressed);
   return suppressed;
-}
-
-/** Clears the memo after a settings change so the next write re-reads them. */
-export function invalidatePreferences(userId?: string): void {
-  if (userId) preferenceCache.delete(userId);
-  else preferenceCache.clear();
-}
+});
 
 export async function notify(input: NotifyInput): Promise<boolean> {
   // Never notify someone about their own action.
