@@ -40,8 +40,13 @@ if (!DATABASE_URL) {
   console.error('DATABASE_URL is required to run the sandbox host.');
   process.exit(1);
 }
-if ((process.env.STORAGE_DRIVER ?? 'local') !== 'local') {
-  console.error('The Arcade sandbox currently requires STORAGE_DRIVER=local; S3-backed game package retrieval is not implemented.');
+if (!['local', 's3'].includes(process.env.STORAGE_DRIVER ?? 'local')) {
+  console.error('STORAGE_DRIVER must be local or s3.');
+  process.exit(1);
+}
+if ((process.env.STORAGE_DRIVER ?? 'local') === 's3' &&
+    (!process.env.S3_BUCKET || !process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY)) {
+  console.error('S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required for the Arcade sandbox.');
   process.exit(1);
 }
 if (SHARED_SECRET.length < 32) {
@@ -122,6 +127,56 @@ const SECURITY_HEADERS = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
 };
+
+async function readStoredObject(driver: string, objectKey: string): Promise<Uint8Array | null> {
+  const segments = objectKey.split('/');
+  if (!objectKey || objectKey.startsWith('/') || segments.some((part) => !part || part === '.' || part === '..' || part.includes('\\\\'))) {
+    throw new Error('Invalid storage object key');
+  }
+  if (driver === 'local') {
+    const absolute = path.resolve(STORAGE_ROOT, ...segments);
+    if (!absolute.startsWith(STORAGE_ROOT + path.sep)) throw new Error('Invalid storage object key');
+    try {
+      return new Uint8Array(await readFile(absolute));
+    } catch {
+      return null;
+    }
+  }
+  if (driver !== 's3') throw new Error('Unsupported storage driver');
+
+  const bucket = process.env.S3_BUCKET!;
+  const region = process.env.S3_REGION ?? 'us-east-1';
+  const endpoint = process.env.S3_ENDPOINT ?? `https://s3.${region}.amazonaws.com`;
+  const accessKey = process.env.S3_ACCESS_KEY_ID!;
+  const secretKey = process.env.S3_SECRET_ACCESS_KEY!;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\\.\\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const host = new URL(endpoint).host;
+  const canonicalUri = `/${[bucket, ...segments].map((part) => encodeURIComponent(part)).join('/')}`;
+  const payloadHash = createHash('sha256').update(new Uint8Array()).digest('hex');
+  const canonicalHeaders = `host:${host}\\nx-amz-content-sha256:${payloadHash}\\nx-amz-date:${amzDate}\\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = ['GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\\n');
+  const scope = `${dateStamp}/${region}/s3/aws4_request`;
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonicalRequest).digest('hex')].join('\\n');
+  const hmac = (key: Buffer | string, data: string) => createHmac('sha256', key).update(data).digest();
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${secretKey}`, dateStamp), region), 's3'), 'aws4_request');
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const response = await fetch(`${endpoint}${canonicalUri}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+      Host: host,
+    },
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`S3 object retrieval failed: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
 
 function send(res: ServerResponse, status: number, body: string | Uint8Array, headers: Record<string, string> = {}) {
   res.writeHead(status, {
@@ -206,7 +261,7 @@ const server = createServer(async (req, res) => {
 
     const rows = await sql`
       select g.id, g.title, g.entry_file, g.package_checksum,
-             o.object_key, o.checksum as storage_checksum, o.byte_size as storage_byte_size
+             o.object_key, o.driver as storage_driver, o.checksum as storage_checksum, o.byte_size as storage_byte_size
       from games g
       join storage_objects o on o.id = g.package_object_id
       where g.id = ${entry.gameId}
@@ -251,13 +306,10 @@ const server = createServer(async (req, res) => {
   }
   if (wanted.includes('..')) return send(res, 400, 'Bad path');
 
-  const segments = String(session.objectKey).split('/').filter(Boolean);
-  const absolute = path.resolve(STORAGE_ROOT, ...segments);
-  if (!absolute.startsWith(STORAGE_ROOT + path.sep)) return send(res, 400, 'Bad key');
-
   let entries: ReturnType<typeof readZip>;
   try {
-    const storedBytes = new Uint8Array(await readFile(absolute));
+    const storedBytes = await readStoredObject(String(game.storage_driver), String(game.object_key));
+    if (!storedBytes) return send(res, 404, 'Package unavailable');
     const decoded = decryptObject(storedBytes);
     const actualChecksum = createHash('sha256').update(decoded.data).digest('hex');
     if (
