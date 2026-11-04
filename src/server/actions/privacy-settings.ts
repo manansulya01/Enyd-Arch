@@ -41,6 +41,13 @@ export async function savePrivacySettings(formData: FormData): Promise<void> {
     showActivity: checked(formData, 'showActivity'),
     showCreations: checked(formData, 'showCreations'),
     showArchiveContributions: checked(formData, 'showArchiveContributions'),
+    notifyOnMessage: checked(formData, 'notifyOnMessage'),
+    notifyOnReply: checked(formData, 'notifyOnReply'),
+    notifyOnMention: checked(formData, 'notifyOnMention'),
+    notifyOnReaction: checked(formData, 'notifyOnReaction'),
+    notifyOnConnection: checked(formData, 'notifyOnConnection'),
+    notifyOnProject: checked(formData, 'notifyOnProject'),
+    notifyOnEvent: checked(formData, 'notifyOnEvent'),
     messagePolicy,
     updatedAt: new Date(),
   };
