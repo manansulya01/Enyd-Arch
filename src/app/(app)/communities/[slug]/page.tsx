@@ -9,6 +9,7 @@ import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
+import { CommunityReportControl } from '~/components/communities/community-report-control';
 import { setCommunityModerator, transferCommunityOwnership, updateCommunityRules } from '~/server/actions/communities';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
@@ -183,6 +184,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
             csrfToken={csrfToken}
           />
           <p className="prose">{post.body}</p>
+          <CommunityReportControl targetType="community_post" targetId={post.id} csrfToken={csrfToken} />
           <CommunityComments
             postId={post.id}
             comments={(commentsByPost.get(post.id) ?? []).map(comment => ({
