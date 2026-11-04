@@ -10,6 +10,7 @@ import {
   collectionItems as collectionItemTable,
   collections as collectionTable,
   comments as commentTable,
+  communityInvites,
   communityMembers,
   communityPostComments,
   communityPosts,
@@ -2150,6 +2151,28 @@ export async function conversationList(viewerId: string): Promise<ConversationSu
       myRole: roleByConversation.get(row.id) ?? 'member',
     };
   });
+}
+
+export async function communityInvitesForOwner(
+  communityId: string,
+  viewerId: string,
+): Promise<import('~/server/actions/communities').CommunityInviteView[]> {
+  const [membership] = await db.select({ role: communityMembers.role })
+    .from(communityMembers).where(and(
+      eq(communityMembers.communityId, communityId),
+      eq(communityMembers.userId, viewerId),
+    )).limit(1);
+  if (membership?.role !== 'owner') return [];
+  return db.select({
+    id: communityInvites.id,
+    expiresAt: communityInvites.expiresAt,
+    maxUses: communityInvites.maxUses,
+    useCount: communityInvites.useCount,
+    revokedAt: communityInvites.revokedAt,
+  }).from(communityInvites)
+    .where(eq(communityInvites.communityId, communityId))
+    .orderBy(desc(communityInvites.createdAt))
+    .limit(30);
 }
 
 export interface CommunityModerationReportView {
