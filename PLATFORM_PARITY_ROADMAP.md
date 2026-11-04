@@ -31,7 +31,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Search within a private conversation by message text, capped to 80 characters and scoped to the authenticated member's conversation. Added on the completion branch; CI verification is pending.
 - [x] Per-member read receipts: sender-visible “Seen by” names are derived from active conversation members’ read timestamps; membership-scoped query and private thread UI. Requires CI and staging verification.
 - [x] Message drafts: automatically saved per conversation in browser session storage (not sent to the server), restored on return, bounded to 4,000 characters, and cleared only after successful send. Drafts are tab-session scoped; cross-device sync is intentionally not provided.
-- [ ] Richer attachment previews, retry/offline queue, notification preferences.
+- [x] Message attachment previews for safe raster images, browser-native audio and video playback, plus download links and file sizes; media bytes still flow through the existing membership/block-authorized file route.
+- [ ] Retry/offline queue, notification preferences.
 - [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
