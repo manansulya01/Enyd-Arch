@@ -78,7 +78,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Authors can remove their own comments; community owners/moderators can remove comments in their space.
 - [x] Owner-controlled moderator promotion/demotion with current active membership checks and transactional community locks.
 - [x] Owner-managed community rules, rendered as plain text to viewers and editable only through a CSRF-protected, rate-limited, owner-checked transaction.
-- [ ] Moderator queues/logs, restricted/private access, invite workflows and full role hierarchy.
+- [x] Member reporting for community posts/comments with visibility/membership checks, target-owner attribution, reporter-private admin moderation queue, CSRF-protected state-checked resolution/dismissal, and moderation/audit records.
+- [ ] Community-specific moderator queues/logs, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
 - [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
