@@ -94,6 +94,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
     .where(inArray(communityPostVotes.postId, rows.map(post => post.id)));
   const voteSummaryByPost = new Map<string, { upvotes: number; downvotes: number; currentVote: -1 | 0 | 1 }>();
   for (const vote of voteRows) {
+    if (hidden.has(vote.userId)) continue;
     const summary = voteSummaryByPost.get(vote.postId) ?? { upvotes: 0, downvotes: 0, currentVote: 0 as const };
     if (vote.value === 1) summary.upvotes += 1;
     if (vote.value === -1) summary.downvotes += 1;
