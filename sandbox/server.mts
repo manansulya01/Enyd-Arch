@@ -130,7 +130,7 @@ const SECURITY_HEADERS = {
 
 async function readStoredObject(driver: string, objectKey: string): Promise<Uint8Array | null> {
   const segments = objectKey.split('/');
-  if (!objectKey || objectKey.startsWith('/') || segments.some((part) => !part || part === '.' || part === '..' || part.includes('\\\\'))) {
+  if (!objectKey || objectKey.startsWith('/') || segments.some((part) => !part || part === '.' || part === '..' || part.includes('\\'))) {
     throw new Error('Invalid storage object key');
   }
   if (driver === 'local') {
@@ -150,16 +150,16 @@ async function readStoredObject(driver: string, objectKey: string): Promise<Uint
   const accessKey = process.env.S3_ACCESS_KEY_ID!;
   const secretKey = process.env.S3_SECRET_ACCESS_KEY!;
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\\.\\d{3}/g, '');
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
   const host = new URL(endpoint).host;
   const canonicalUri = `/${[bucket, ...segments].map((part) => encodeURIComponent(part)).join('/')}`;
   const payloadHash = createHash('sha256').update(new Uint8Array()).digest('hex');
   const canonicalHeaders = `host:${host}\\nx-amz-content-sha256:${payloadHash}\\nx-amz-date:${amzDate}\\n`;
   const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
-  const canonicalRequest = ['GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\\n');
+  const canonicalRequest = ['GET', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
   const scope = `${dateStamp}/${region}/s3/aws4_request`;
-  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonicalRequest).digest('hex')].join('\\n');
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
   const hmac = (key: Buffer | string, data: string) => createHmac('sha256', key).update(data).digest();
   const signingKey = hmac(hmac(hmac(hmac(`AWS4${secretKey}`, dateStamp), region), 's3'), 'aws4_request');
   const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
