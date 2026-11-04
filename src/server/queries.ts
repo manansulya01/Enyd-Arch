@@ -2259,12 +2259,14 @@ export async function conversationMessages(
   })
     .from(conversationMembers)
     .innerJoin(users, eq(users.id, conversationMembers.userId))
+    .leftJoin(userSettings, eq(userSettings.userId, conversationMembers.userId))
     .where(and(
       eq(conversationMembers.conversationId, conversationId),
       ne(conversationMembers.userId, viewerId),
       isNull(conversationMembers.removedAt),
       eq(users.status, 'active'),
       isNull(users.removedAt),
+      or(eq(userSettings.showReadReceipts, true), isNull(userSettings.userId)),
     ));
 
   await db
