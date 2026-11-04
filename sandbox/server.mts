@@ -28,6 +28,10 @@ if (!DATABASE_URL) {
   console.error('DATABASE_URL is required to run the sandbox host.');
   process.exit(1);
 }
+if ((process.env.STORAGE_DRIVER ?? 'local') !== 'local') {
+  console.error('The Arcade sandbox currently requires STORAGE_DRIVER=local; S3-backed game package retrieval is not implemented.');
+  process.exit(1);
+}
 if (SHARED_SECRET.length < 32) {
   console.error('SANDBOX_SECRET must be configured with at least 32 characters.');
   process.exit(1);
