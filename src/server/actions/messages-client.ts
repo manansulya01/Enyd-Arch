@@ -22,6 +22,7 @@ export async function onCreateGroup(input: { title: string; memberUserIds: strin
 export async function onSendMessage(
   input: {
     conversationId: string;
+    clientMessageId: string;
     body: string;
     attachmentFileId: string | null;
     replyToId?: string | null;
@@ -34,6 +35,7 @@ export async function onSendMessage(
   const formData = new FormData();
   formData.set('__csrf', csrfToken);
   formData.set('conversationId', input.conversationId);
+  formData.set('clientMessageId', input.clientMessageId);
   formData.set('body', input.body);
   if (input.attachmentFileId) formData.set('attachmentFileId', input.attachmentFileId);
   if (input.replyToId) formData.set('replyToId', input.replyToId);
