@@ -8,7 +8,7 @@ import { GroupConversationComposer } from '~/components/messages/group-conversat
 import { ConversationPoller } from '~/components/messages/conversation-poller';
 import { ConversationReadMarker } from '~/components/messages/conversation-read-marker';
 import { MessageActions } from '~/components/messages/message-actions';
-import { toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
+import { toggleMessagePin, toggleMessageReaction, leaveGroupConversation, removeGroupMember, renameGroupConversation, transferGroupOwnership } from '~/server/actions/messages';
 import { conversationList, conversationMessages, matchesFor } from '~/server/queries';
 import { sessionCsrfToken } from '~/server/csrf';
 import { requireCapability } from '~/server/guard';
@@ -187,6 +187,15 @@ export default async function MessagesPage({
                           </a>
                         )}
                         {!message.removed && (
+                          <form action={toggleMessagePin} className="row row-wrap">
+                            <input type="hidden" name="__csrf" value={csrfToken} />
+                            <input type="hidden" name="messageId" value={message.id} />
+                            <button className="btn btn-ghost btn-sm" type="submit" aria-label={message.pinnedAt ? 'Unpin message' : 'Pin message'}>
+                              {message.pinnedAt ? '📌 Pinned · Unpin' : 'Pin message'}
+                            </button>
+                          </form>
+                        )}
+                        {!message.removed && (
                           <div className="row row-wrap" aria-label="Message reactions">
                             {message.reactions.map((reaction) => (
                               <form action={toggleMessageReaction} key={reaction.emoji}>
@@ -211,7 +220,7 @@ export default async function MessagesPage({
                         <span className="bubble-meta">
                           {new Date(message.createdAt).toISOString().slice(11, 16)} UTC
                           {message.isMine ? ' · sent' : ''}
-                          {message.editedAt ? ' · edited' : ''}
+                          {message.editedAt ? ' · edited' : ''}{message.pinnedAt ? ' · pinned' : ''}
                         </span>
                         {!message.removed && (
                           <p className="bubble-meta">
