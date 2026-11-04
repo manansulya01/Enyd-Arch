@@ -18,6 +18,7 @@ import {
   files,
   matches,
   messages,
+  messageReactions,
   storageObjects,
   userSettings,
   users,
@@ -699,4 +700,66 @@ export async function markConversationRead(input: {
   revalidatePath('/messages');
   revalidatePath(`/messages?c=${member.conversationId}`);
   return ok();
+}
+
+
+const ALLOWED_MESSAGE_REACTIONS = ['👍', '❤️', '😂', '🎉', '👀', '🙏'] as const;
+
+/** Toggle a member's reaction after rechecking live conversation membership. */
+export async function toggleMessageReaction(formData: FormData): Promise<void> {
+  await verifyCsrf(formData);
+  const actor = await currentActor();
+  if (!actor) redirect('/sign-in');
+  if (!can(actor, 'message')) redirect('/messages?error=unavailable');
+
+  const messageId = String(formData.get('messageId') ?? '');
+  const emoji = String(formData.get('emoji') ?? '');
+  if (!isUuid(messageId) || !ALLOWED_MESSAGE_REACTIONS.includes(emoji as typeof ALLOWED_MESSAGE_REACTIONS[number])) {
+    redirect('/messages?error=invalid-reaction');
+  }
+
+  const limiter = await acquire('write', actor.userId);
+  if (!limiter.allowed) redirect('/messages?error=slow-down');
+
+  const conversationId = await db.transaction(async (tx) => {
+    const [target] = await tx.select({ id: messages.id, conversationId: messages.conversationId })
+      .from(messages)
+      .innerJoin(conversations, and(
+        eq(conversations.id, messages.conversationId),
+        isNull(conversations.removedAt),
+      ))
+      .innerJoin(conversationMembers, and(
+        eq(conversationMembers.conversationId, messages.conversationId),
+        eq(conversationMembers.userId, actor.userId),
+        isNull(conversationMembers.removedAt),
+      ))
+      .where(and(eq(messages.id, messageId), isNull(messages.removedAt)))
+      .for('update')
+      .limit(1);
+    if (!target) return null;
+
+    const [existing] = await tx.select({ messageId: messageReactions.messageId })
+      .from(messageReactions)
+      .where(and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.userId, actor.userId),
+        eq(messageReactions.emoji, emoji),
+      ))
+      .limit(1);
+
+    if (existing) {
+      await tx.delete(messageReactions).where(and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.userId, actor.userId),
+        eq(messageReactions.emoji, emoji),
+      ));
+    } else {
+      await tx.insert(messageReactions).values({ messageId, userId: actor.userId, emoji });
+    }
+    return target.conversationId;
+  });
+
+  if (!conversationId) redirect('/messages?error=not-allowed');
+  revalidatePath('/messages');
+  redirect(`/messages?c=${conversationId}`);
 }
