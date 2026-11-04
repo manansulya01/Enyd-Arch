@@ -79,7 +79,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Owner-controlled moderator promotion/demotion with current active membership checks and transactional community locks.
 - [x] Owner-managed community rules, rendered as plain text to viewers and editable only through a CSRF-protected, rate-limited, owner-checked transaction.
 - [x] Member reporting for community posts/comments with visibility/membership checks, target-owner attribution, reporter-private admin moderation queue, CSRF-protected state-checked resolution/dismissal, and moderation/audit records.
-- [x] Per-community `New`, `Hot`, and `Top` feed sorting using vote score and recency, with stable newest-first tie-breaking.
+- [x] Per-community `New`, `Hot`, and `Top` feed sorting using vote score and recency, with stable newest-first tie-breaking; vote totals exclude blocked, removed, and inactive accounts. Full CI passed at `8aef095`.
 - [ ] Community-specific moderator queues/logs, restricted/private access, invite workflows and full role hierarchy.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
