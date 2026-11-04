@@ -19,10 +19,10 @@ export const metadata: Metadata = { title: 'Messages' };
 export default async function MessagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; error?: string }>;
+  searchParams: Promise<{ c?: string; q?: string; reply?: string; updated?: string; ownership?: string; left?: string; memberRemoved?: string; error?: string }>;
 }) {
   const { actor } = await requireCapability('message');
-  const [{ c, reply, updated, ownership, left, memberRemoved, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
+  const [{ c, q, reply, updated, ownership, left, memberRemoved, error }, conversations, acceptedConnections, csrfToken] = await Promise.all([
     searchParams,
     conversationList(actor.userId),
     matchesFor(actor.userId, 'accepted'),
@@ -34,7 +34,7 @@ export default async function MessagesPage({
     displayName: match.partner.displayName,
   }])).values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
   const active = c ? conversations.find((conversation) => conversation.id === c) : undefined;
-  const messages = active ? await conversationMessages(active.id, actor.userId) : null;
+  const messages = active ? await conversationMessages(active.id, actor.userId, q) : null;
   const replyTarget = reply && messages ? messages.find((message) => message.id === reply && !message.removed) : undefined;
 
   return (
@@ -149,6 +149,15 @@ export default async function MessagesPage({
                     <button className="btn btn-ghost btn-sm" type="submit">Leave group</button>
                   </form>
                 )}
+                <form method="get" action="/messages" className="panel-body row row-wrap" role="search" aria-label="Search messages">
+                  <input type="hidden" name="c" value={active.id} />
+                  <label className="field" style={{ flex: 1 }}>
+                    <span className="field-label">Search this conversation</span>
+                    <input className="input" type="search" name="q" defaultValue={q ?? ''} maxLength={80} placeholder="Find a message…" />
+                  </label>
+                  <button className="btn btn-secondary" type="submit">Search</button>
+                  {q && <Link className="btn btn-ghost" href={`/messages?c=${active.id}`}>Clear</Link>}
+                </form>
                 <ConversationPoller conversationId={active.id} />
                 <ConversationReadMarker conversationId={active.id} csrfToken={csrfToken} />
                 <div className="thread-scroll">
