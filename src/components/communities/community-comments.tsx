@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCommunityComment, removeCommunityComment } from '~/server/actions/communities';
+import { CommunityReportControl } from '~/components/communities/community-report-control';
 
 export type CommunityCommentView = {
   id: string;
@@ -88,6 +89,7 @@ export function CommunityComments({
           </div>
           {comment.parentId && <p className="t-meta">↳ Reply</p>}
           <p className="prose">{comment.body}</p>
+          <CommunityReportControl targetType="community_comment" targetId={comment.id} csrfToken={csrfToken} />
           {joined && !comment.parentId && (
             <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => setReplyToId(comment.id)}>
               Reply
