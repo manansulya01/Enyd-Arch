@@ -10,6 +10,7 @@ import { can, currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
 import { verifyCsrfValue } from '~/server/csrf';
 import { isUuid } from '~/server/auth/identifiers';
+import { mayViewStory } from '~/server/auth/story-policy';
 
 function storyText(value: string): string {
   return value.replace(/\r\n/g, '\n').replace(/[<>]/g, '').trim().slice(0, 600);
@@ -83,21 +84,25 @@ export async function viewStory(storyId: string, csrf: string): Promise<ActionRe
         isNull(stories.removedAt),
       )).for('update').limit(1);
     if (!story) return false;
-    if (story.authorId !== actor.userId) {
-      const [blocked] = await tx.select({ id: blocks.id }).from(blocks).where(or(
+    const [blocked] = story.authorId === actor.userId ? [undefined] : await tx.select({ id: blocks.id })
+      .from(blocks).where(or(
         and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, story.authorId)),
         and(eq(blocks.blockerId, story.authorId), eq(blocks.blockedId, actor.userId)),
       )).limit(1);
-      if (blocked) return false;
-      if (story.audience === 'followers') {
-        const [follow] = await tx.select({ followerId: userFollows.followerId })
-          .from(userFollows).where(and(
-            eq(userFollows.followerId, actor.userId),
-            eq(userFollows.followedId, story.authorId),
-          )).limit(1);
-        if (!follow) return false;
-      }
-    }
+    const [follow] = story.authorId === actor.userId || story.audience === 'public'
+      ? [undefined]
+      : await tx.select({ followerId: userFollows.followerId })
+        .from(userFollows).where(and(
+          eq(userFollows.followerId, actor.userId),
+          eq(userFollows.followedId, story.authorId),
+        )).limit(1);
+    if (!mayViewStory({
+      viewerId: actor.userId,
+      authorId: story.authorId,
+      audience: story.audience,
+      blocked: Boolean(blocked),
+      followsAuthor: Boolean(follow),
+    })) return false;
     await tx.insert(storyViews).values({
       storyId,
       viewerId: actor.userId,
