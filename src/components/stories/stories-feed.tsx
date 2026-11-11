@@ -16,11 +16,8 @@ export type StoryItem = {
   isMine: boolean;
 };
 
-function ageLabel(value: string): string {
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return minutes + 'm ago';
-  return Math.floor(minutes / 60) + 'h ago';
+function timestampLabel(value: string): string {
+  return new Date(value).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 }
 
 export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrfToken: string }) {
@@ -108,8 +105,8 @@ export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrf
             <div className="row row-between">
               <div>
                 <strong>{story.displayName}</strong>
-                <span className="t-meta"> · @{story.username} · {ageLabel(story.createdAt)}</span>
-                <p className="t-meta">{story.audience === 'public' ? 'All members' : 'Followers'} · expires {new Date(story.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+                <span className="t-meta"> · @{story.username} · {timestampLabel(story.createdAt)}</span>
+                <p className="t-meta">{story.audience === 'public' ? 'All members' : 'Followers'} · expires {timestampLabel(story.expiresAt)}</p>
               </div>
               {story.isMine && <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => remove(story.id)}>Remove</button>}
             </div>
