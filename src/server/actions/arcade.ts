@@ -104,7 +104,9 @@ export async function submitGame(
     genre,
     controls,
     creatorId: actor.userId,
-    status: 'approved',
+    // Passing package validation is not staff approval. Keep the game
+    // unplayable until an authorised reviewer explicitly approves it.
+    status: 'submitted',
     entryFile: processed.entryFile ?? 'index.html',
     packageObjectId: stored.id,
     packageChecksum: processed.checksum,
