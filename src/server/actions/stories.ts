@@ -18,7 +18,7 @@ function storyText(value: string): string {
 
 export async function createStory(input: {
   body: string;
-  audience: 'followers' | 'public';
+  audience: 'followers' | 'mutuals' | 'public';
   csrf: string;
 }): Promise<ActionResult<{ storyId: string }>> {
   await verifyCsrfValue(input?.csrf);
@@ -27,7 +27,7 @@ export async function createStory(input: {
   if (!can(actor, 'post')) return fail('Stories are not available for this identity.');
   const body = storyText(input.body);
   if (!body) return fail('Write a short story before publishing.');
-  if (input.audience !== 'followers' && input.audience !== 'public') return fail('Choose a valid story audience.');
+  if (!['followers', 'mutuals', 'public'].includes(input.audience)) return fail('Choose a valid story audience.');
   const limiter = await acquire('post', actor.userId);
   if (!limiter.allowed) return fail('You are posting too quickly. Wait a moment.');
 
@@ -96,12 +96,20 @@ export async function viewStory(storyId: string, csrf: string): Promise<ActionRe
           eq(userFollows.followerId, actor.userId),
           eq(userFollows.followedId, story.authorId),
         )).limit(1);
+    const [followBack] = story.authorId === actor.userId || story.audience !== 'mutuals'
+      ? [undefined]
+      : await tx.select({ followerId: userFollows.followerId })
+        .from(userFollows).where(and(
+          eq(userFollows.followerId, story.authorId),
+          eq(userFollows.followedId, actor.userId),
+        )).limit(1);
     if (!mayViewStory({
       viewerId: actor.userId,
       authorId: story.authorId,
       audience: story.audience,
       blocked: Boolean(blocked),
       followsAuthor: Boolean(follow),
+      followsViewer: Boolean(followBack),
     })) return false;
     await tx.insert(storyViews).values({
       storyId,
