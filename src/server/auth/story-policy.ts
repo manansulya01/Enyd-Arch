@@ -1,4 +1,4 @@
-export type StoryAudience = 'public' | 'followers';
+export type StoryAudience = 'public' | 'followers' | 'mutuals';
 
 export function mayViewStory(input: {
   viewerId: string;
@@ -6,9 +6,11 @@ export function mayViewStory(input: {
   audience: StoryAudience;
   blocked: boolean;
   followsAuthor: boolean;
+  followsViewer: boolean;
 }): boolean {
   if (input.viewerId === input.authorId) return true;
   if (input.blocked) return false;
   if (input.audience === 'public') return true;
-  return input.followsAuthor;
+  if (!input.followsAuthor) return false;
+  return input.audience === 'followers' || input.followsViewer;
 }
