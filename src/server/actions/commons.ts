@@ -8,7 +8,7 @@
  * notification, and every count is maintained in the same statement as the row
  * that changed it so a feed can never disagree with the row it rendered from.
  */
-import { and, asc, desc, eq, inArray, isNull, lt, sql, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '~db';
 import {
