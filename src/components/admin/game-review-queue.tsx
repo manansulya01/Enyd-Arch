@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { reviewGame } from '~/server/actions/admin';
 
 export type GameReviewItem = {
   id: string;
   title: string;
   tagline: string;
+  description: string;
+  slug: string;
   creatorName: string;
   creatorUsername: string;
   createdAt: string;
@@ -60,6 +63,8 @@ export function GameReviewQueue({
             <span className="t-meta">{new Date(game.createdAt).toLocaleString()}</span>
           </div>
           <p className="t-small">{game.tagline}</p>
+          {game.description && <p className="prose">{game.description}</p>}
+          <p><Link className="lnk" href={`/arcade/${game.slug}`}>Inspect submission details</Link></p>
           <p className="t-meta">Submitted by {game.creatorName} (@{game.creatorUsername})</p>
           {game.findings.length > 0 ? (
             <div className="notice notice-info stack stack-1">
