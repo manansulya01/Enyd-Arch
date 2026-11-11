@@ -41,6 +41,7 @@ export const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { href: '/archive', label: 'The Archive', glyph: '▤', primary: true, description: 'Everything interesting' },
       { href: '/arcade', label: 'The Arcade', glyph: '◱', description: 'Play what members build' },
       { href: '/gallery', label: 'The Gallery', glyph: '❖', description: 'Creative work' },
+      { href: '/stories', label: 'Stories', glyph: '◉', description: 'Short-lived member updates' },
       { href: '/network', label: 'The Network', glyph: '◌', description: 'Find members' },
       { href: '/communities', label: 'Communities', glyph: '▦', requires: ['post'], description: 'Join topic-based spaces' },
       { href: '/events', label: 'Events', glyph: '✧', description: 'Gatherings' },
