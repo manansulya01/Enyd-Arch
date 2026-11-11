@@ -1513,6 +1513,7 @@ export async function arcadeGames(options: {
   sort?: 'popular' | 'recent' | 'rating' | 'saved';
   limit?: number;
   includeUnapproved?: boolean;
+  moderator?: boolean;
   creatorId?: string | null;
   slug?: string | null;
 }): Promise<GameView[]> {
@@ -1556,7 +1557,7 @@ export async function arcadeGames(options: {
         isNull(gameTable.removedAt),
         eq(users.status, 'active'),
         isNull(users.removedAt),
-        options.viewerId ? sql`not exists (
+        options.viewerId && !options.moderator ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
              or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${options.viewerId})
@@ -1627,6 +1628,7 @@ export async function gameBySlug(slug: string, viewerId: string | null, canRevie
   const [game] = await arcadeGames({
     viewerId,
     includeUnapproved: true,
+    moderator: canReview,
     limit: 1,
     slug,
   });
