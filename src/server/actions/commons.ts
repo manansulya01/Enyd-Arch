@@ -913,7 +913,6 @@ export async function toggleBookmark(
       sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
     available = Boolean(row);
-  }
   } else if (input.targetType === 'community_post') {
     const [row] = await db.select({ id: communityPosts.id }).from(communityPosts)
       .innerJoin(communities, eq(communities.id, communityPosts.communityId))
