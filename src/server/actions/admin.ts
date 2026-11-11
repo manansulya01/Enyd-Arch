@@ -69,6 +69,8 @@ export interface GameReviewSummary {
   id: string;
   title: string;
   tagline: string;
+  description: string;
+  slug: string;
   creatorName: string;
   creatorUsername: string;
   createdAt: Date;
@@ -82,6 +84,8 @@ export async function listGamesForReview(): Promise<GameReviewSummary[]> {
     id: games.id,
     title: games.title,
     tagline: games.tagline,
+    description: games.description,
+    slug: games.slug,
     creatorName: users.displayName,
     creatorUsername: users.username,
     createdAt: games.createdAt,
@@ -98,6 +102,8 @@ export async function listGamesForReview(): Promise<GameReviewSummary[]> {
     id: row.id,
     title: row.title,
     tagline: row.tagline,
+    description: row.description,
+    slug: row.slug,
     creatorName: row.creatorName,
     creatorUsername: row.creatorUsername,
     createdAt: row.createdAt,
