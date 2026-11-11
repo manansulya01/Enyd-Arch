@@ -45,13 +45,12 @@ export default async function StoriesPage() {
       isNull(users.removedAt),
     ))
     .where(and(
-      inArray(stories.authorId, authorIds),
       gt(stories.expiresAt, new Date()),
       isNull(stories.removedAt),
       or(
-        eq(stories.audience, 'public'),
         eq(stories.authorId, actor.userId),
-        eq(stories.audience, 'followers'),
+        eq(stories.audience, 'public'),
+        and(eq(stories.audience, 'followers'), inArray(stories.authorId, authorIds)),
       ),
     ))
     .orderBy(desc(stories.createdAt))
