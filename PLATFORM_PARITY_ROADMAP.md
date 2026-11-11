@@ -48,7 +48,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Follower/following lists with discoverability, profile visibility and mutual-block filtering; bounded to 100 visible members per list.
 - [ ] Additional per-audience privacy controls.
 - [ ] Photo/carousel posts, captions, alt text, crop/thumbnail generation, drafts, archive and creator profile grid.
-- [ ] Stories with explicit expiry, viewer list privacy, replies and optional close-friends audience.
+- [x] Text-only 24-hour stories with follower/public audiences, owner removal, signed-in viewing, mutual-block filtering, and expiry enforcement; richer media, viewer-list controls, replies, and close-friends audiences remain open.
 - [ ] Short-form video/reels, transcoding, adaptive bitrate, captions, audio rights checks and upload resumability.
 - [ ] Likes/comments/shares/saves, mentions, tagged media, collaborative posts and creator insights with privacy-conscious analytics.
 - [ ] Recommendation/discovery controls, hidden words, comment filters, restrict/mute/block, reporting and copyright takedown workflow.
