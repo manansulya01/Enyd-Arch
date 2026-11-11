@@ -109,7 +109,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Existing Arcade at `/arcade`: submissions, package validation/scanning, isolated playback, genre filters, ratings, comments, tags and play counts.
 - [x] Harden per-game sandbox boundaries: separate-origin and HTTPS production checks, `connect-src 'none'`, no ambient app credentials, single-use grants, bounded session/grant maps, bounded mint request bodies, encrypted-package decryption and checksum verification; persistent browser storage APIs are blocked to prevent cross-game data leakage. Runtime supports the configured local or S3 storage driver.
 - [ ] Add runtime CPU/memory/process quotas, runtime S3 retrieval, anti-cheat expectations and expanded moderation/reporting.
-- [ ] Add save-state/high scores/leaderboards/achievements, game collections, favorites and controller/mobile accessibility where the game API supports them.
+- [x] Add member-owned Arcade favorites using the existing private bookmark system, with a dedicated saved-games discovery filter.
+- [ ] Add save-state/high scores/leaderboards/achievements, richer game collections and controller/mobile accessibility where the game API supports them.
 - [ ] Add multiplayer only via an isolated, rate-limited game-session service; do not give games direct database or app-session access.
 
 ### FTP/SFTP-style personal file access
