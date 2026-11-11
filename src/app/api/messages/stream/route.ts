@@ -18,7 +18,7 @@ function parseCursor(value: string | null): { createdAt: Date; id: string } {
   const match = value?.match(/^(\d{10,13}):([0-9a-f-]{36})$/i);
   if (!match) return { createdAt: new Date(), id: '00000000-0000-0000-0000-000000000000' };
   const createdAt = new Date(Number(match[1]));
-  if (!Number.isFinite(createdAt.getTime())) {
+  if (!Number.isFinite(createdAt.getTime()) || createdAt.getTime() > Date.now()) {
     return { createdAt: new Date(), id: '00000000-0000-0000-0000-000000000000' };
   }
   return { createdAt, id: match[2]! };
