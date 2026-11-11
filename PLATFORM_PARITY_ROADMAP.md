@@ -86,7 +86,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] Richer moderator role hierarchy and permission overwrites.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
-- [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
+- [x] Add private saved bookmarks for accessible community discussions to the shared Saved items shelf.
+- [ ] Deeper comment trees, collapse/expand, advanced sorting, awards/reputation without pay-to-win moderation.
 - [ ] Community wiki/resources, pinned posts, recurring threads, polls, mod queue, reports, automod rules and appeal history.
 - [ ] Community discovery, search, related communities, spam brigades/rate limits and moderator audit logs.
 - [ ] Export, delete, and retention behavior for user-generated content and mod actions.
