@@ -7,7 +7,7 @@ import { createStory, removeStory, viewStory } from '~/server/actions/stories';
 export type StoryItem = {
   id: string;
   body: string;
-  audience: 'followers' | 'public';
+  audience: 'followers' | 'mutuals' | 'public';
   createdAt: string;
   expiresAt: string;
   authorId: string;
@@ -24,7 +24,7 @@ function timestampLabel(value: string): string {
 export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrfToken: string }) {
   const router = useRouter();
   const [body, setBody] = useState('');
-  const [audience, setAudience] = useState<'followers' | 'public'>('followers');
+  const [audience, setAudience] = useState<'followers' | 'mutuals' | 'public'>('followers');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -85,8 +85,9 @@ export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrf
         <label className="field">
           <span className="field-label">Audience</span>
           <select className="input" value={audience}
-            onChange={(event) => setAudience(event.target.value as 'followers' | 'public')}>
+            onChange={(event) => setAudience(event.target.value as 'followers' | 'mutuals' | 'public')}>
             <option value="followers">People who follow me</option>
+            <option value="mutuals">Mutual follows only</option>
             <option value="public">All signed-in members</option>
           </select>
         </label>
@@ -108,7 +109,7 @@ export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrf
               <div>
                 <strong>{story.displayName}</strong>
                 <span className="t-meta"> · @{story.username} · {timestampLabel(story.createdAt)}</span>
-                <p className="t-meta">{story.audience === 'public' ? 'All members' : 'Followers'} · expires {timestampLabel(story.expiresAt)}</p>
+                <p className="t-meta">{story.audience === 'public' ? 'All members' : story.audience === 'mutuals' ? 'Mutual follows' : 'Followers'} · expires {timestampLabel(story.expiresAt)}</p>
               </div>
               {story.isMine && <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => remove(story.id)}>Remove</button>}
             </div>
