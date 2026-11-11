@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
 import { StoriesFeed, type StoryItem } from '~/components/stories/stories-feed';
 import { requireOnboarded } from '~/server/guard';
 import { sessionCsrfToken } from '~/server/csrf';
 import { db } from '~db';
-import { blocks, stories, userFollows, users } from '~db/schema';
+import { blocks, stories, storyViews, userFollows, users } from '~db/schema';
 
 export const metadata: Metadata = {
   title: 'Stories',
@@ -56,19 +56,28 @@ export default async function StoriesPage() {
     .orderBy(desc(stories.createdAt))
     .limit(60);
 
-  const items: StoryItem[] = rows
-    .filter((row) => row.authorId === actor.userId || !blockedIds.has(row.authorId))
-    .map((row) => ({
-      id: row.id,
-      body: row.body,
-      audience: row.audience,
-      createdAt: row.createdAt.toISOString(),
-      expiresAt: row.expiresAt.toISOString(),
-      authorId: row.authorId,
-      username: row.username,
-      displayName: row.displayName,
-      isMine: row.authorId === actor.userId,
-    }));
+  const visibleRows = rows.filter((row) => row.authorId === actor.userId || !blockedIds.has(row.authorId));
+  const ownStoryIds = visibleRows.filter((row) => row.authorId === actor.userId).map((row) => row.id);
+  const viewCounts = ownStoryIds.length
+    ? await db.select({ storyId: storyViews.storyId, total: count() })
+        .from(storyViews)
+        .where(inArray(storyViews.storyId, ownStoryIds))
+        .groupBy(storyViews.storyId)
+    : [];
+  const countByStory = new Map(viewCounts.map((row) => [row.storyId, row.total]));
+
+  const items: StoryItem[] = visibleRows.map((row) => ({
+    id: row.id,
+    body: row.body,
+    audience: row.audience,
+    createdAt: row.createdAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    authorId: row.authorId,
+    username: row.username,
+    displayName: row.displayName,
+    isMine: row.authorId === actor.userId,
+    viewCount: countByStory.get(row.id) ?? 0,
+  }));
 
   return (
     <PageShell
@@ -79,7 +88,7 @@ export default async function StoriesPage() {
       <div className="stack stack-4" style={{ maxWidth: 760 }}>
         <StoriesFeed stories={items} csrfToken={csrfToken} />
         <p className="t-small t-subtle">
-          Stories are currently text-only. Public stories can be seen by signed-in members; follower stories are limited to members you follow. Blocking either way hides stories between those accounts.
+          Stories are currently text-only. Public stories can be seen by signed-in members; follower stories are limited to members you follow. Blocking either way hides stories between those accounts. Only you can see view counts for your own stories.
         </p>
       </div>
     </PageShell>
