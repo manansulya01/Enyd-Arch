@@ -182,7 +182,6 @@ export async function rateGame(gameId: string, stars: number, csrf: string): Pro
   if (!rated) return fail('That game is not available.');
 
   revalidatePath('/arcade');
-  revalidatePath(`/arcade`);
   return ok();
 }
 
