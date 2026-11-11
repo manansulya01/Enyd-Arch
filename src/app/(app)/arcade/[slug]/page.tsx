@@ -52,8 +52,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
                 ◌
               </span>
               <span className="notice-body">
-                This submission is <strong>{game.status.replace('_', ' ')}</strong> and is visible
-                only to you. It becomes playable once a reviewer approves it.
+                This submission is <strong>{game.status.replace('_', ' ')}</strong> and is visible only to its creator and authorised reviewers. It becomes playable once a reviewer approves it.
               </span>
             </p>
           )}
