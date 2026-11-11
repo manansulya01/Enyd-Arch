@@ -1,72 +1,53 @@
 import { createServer } from 'node:http';
-import { once } from 'node:events';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 
-const client = postgres(process.env.DATABASE_URL, { max: 2, prepare: false });
+const client = postgres(process.env.DATABASE_URL, {
+  max: 1,
+  prepare: false,
+  connect_timeout: 3,
+  idle_timeout: 5,
+});
 const db = drizzle(client, { schema });
 
-const server = createServer(async (req, res) => {
+const server = createServer(async (_req, res) => {
   const started = Date.now();
-  let status = 200;
-  let body = '';
-
   try {
-    // Realtime queue depth — the SSE notifier drains this.
-    const [queue] = await db.execute(sql`
-      select count(*)::int as depth from realtime_queue where delivered_at is null
-    `);
-    const queueDepth = Number((queue as unknown as Array<{ depth: number }>)[0]?.depth ?? 0);
-
-    const [counts] = await db.execute(sql`
-      select
-        (select count(*)::int from users where status = 'active') as members,
-        (select count(*)::int from posts where status = 'published' and removed_at is null) as posts,
-        (select count(*)::int from archive_objects where removed_at is null) as objects,
-        (select count(*)::int from games where status = 'approved') as games,
-        (select count(*)::int from messages where removed_at is null) as messages,
-        (select count(*)::int from reports where state not in ('resolved','dismissed')) as open_reports
-    `);
-    const row = (counts as unknown as Array<Record<string, number>>)[0] ?? {};
-
-    body = JSON.stringify({
-      ok: true,
-      queueDepth,
-      latencyMs: Date.now() - started,
-      members: Number(row.members ?? 0),
-      posts: Number(row.posts ?? 0),
-      archiveObjects: Number(row.objects ?? 0),
-      approvedGames: Number(row.games ?? 0),
-      messages: Number(row.messages ?? 0),
-      openReports: Number(row.open_reports ?? 0),
-      uptimeSeconds: Math.round(process.uptime()),
+    // Readiness is intentionally minimal: do not disclose member counts,
+    // message volume, moderation queue depth, or database error details.
+    await db.execute(sql`select 1`);
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+      'Referrer-Policy': 'no-referrer',
     });
-  } catch (error) {
-    status = 503;
-    body = JSON.stringify({
-      ok: false,
-      error: (error as Error).message,
-      latencyMs: Date.now() - started,
+    res.end(JSON.stringify({ ok: true, latencyMs: Date.now() - started }));
+  } catch {
+    res.writeHead(503, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+      'Referrer-Policy': 'no-referrer',
     });
+    res.end(JSON.stringify({ ok: false, error: 'dependency_unavailable' }));
   }
-
-  res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-  });
-  res.end(body);
 });
 
-server.listen(Number(process.env.PORT ?? 3002), () => {
-  console.log(`Enyd Arch health probe on :${process.env.PORT ?? 3002}`);
+server.listen(Number(process.env.PORT ?? 3002), '127.0.0.1', () => {
+  // Bind to loopback by default; expose through a private health-check network
+  // only when the deployment explicitly changes the bind address.
+  process.stdout.write(`Enyd Arch health probe on 127.0.0.1:${process.env.PORT ?? 3002}\\n`);
 });
 
-process.on('SIGINT', async () => {
+async function shutdown() {
+  server.close();
   await client.end();
-  process.exit(0);
-});
+}
 
-void once;
+process.on('SIGINT', () => { void shutdown(); });
+process.on('SIGTERM', () => { void shutdown(); });
