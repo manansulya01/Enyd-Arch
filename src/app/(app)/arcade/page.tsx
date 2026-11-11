@@ -51,14 +51,14 @@ export default async function ArcadePage({
 
       <div className="row row-wrap row-between" style={{ marginBottom: 'var(--sp-5)' }}>
         <div className="btn-group" role="group" aria-label="Filter by genre">
-          <Link className={`btn btn-sm ${!genre ? 'btn-primary' : 'btn-ghost'}`} href="/arcade">
+          <Link className={`btn btn-sm ${!genre ? 'btn-primary' : 'btn-ghost'}`} href={`/arcade${query ? `?q=${encodeURIComponent(query)}` : ''}${sortKey !== 'popular' ? `${query ? '&' : '?'}sort=${sortKey}` : ''}`}>
             All
           </Link>
           {GAME_GENRES.map((entry) => (
             <Link
               key={entry.value}
               className={`btn btn-sm ${genre === entry.value ? 'btn-primary' : 'btn-ghost'}`}
-              href={`/arcade?genre=${entry.value}`}
+              href={`/arcade?genre=${entry.value}${sortKey !== 'popular' ? `&sort=${sortKey}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`}
             >
               {entry.label}
             </Link>
@@ -69,7 +69,7 @@ export default async function ArcadePage({
             <Link
               key={option}
               className={`btn btn-sm ${sortKey === option ? 'btn-primary' : 'btn-ghost'}`}
-              href={`/arcade?sort=${option}${genre ? `&genre=${genre}` : ''}`}
+              href={`/arcade?sort=${option}${genre ? `&genre=${genre}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`}
             >
               {option === 'popular' ? 'Most played' : option === 'recent' ? 'Newest' : option === 'rating' ? 'Best rated' : 'Saved'}
             </Link>
