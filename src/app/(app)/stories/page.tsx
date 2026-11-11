@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { and, count, desc, eq, exists, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, exists, gt, isNull, notExists, or } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
 import { StoriesFeed, type StoryItem } from '~/components/stories/stories-feed';
 import { requireOnboarded } from '~/server/guard';
@@ -16,18 +16,7 @@ export const metadata: Metadata = {
 
 export default async function StoriesPage() {
   const { actor } = await requireOnboarded();
-  const [following, blockRows, csrfToken] = await Promise.all([
-    db.select({ userId: userFollows.followedId }).from(userFollows)
-      .where(eq(userFollows.followerId, actor.userId)).limit(500),
-    db.select({ blockerId: blocks.blockerId, blockedId: blocks.blockedId }).from(blocks)
-      .where(or(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, actor.userId))),
-    sessionCsrfToken(),
-  ]);
-
-  const authorIds = [...new Set([actor.userId, ...following.map((row) => row.userId)])];
-  const blockedIds = new Set(blockRows.map((row) =>
-    row.blockerId === actor.userId ? row.blockedId : row.blockerId
-  ));
+  const csrfToken = await sessionCsrfToken();
 
   const rows = await db.select({
     id: stories.id,
@@ -50,21 +39,37 @@ export default async function StoriesPage() {
       or(
         eq(stories.authorId, actor.userId),
         eq(stories.audience, 'public'),
-        and(eq(stories.audience, 'followers'), inArray(stories.authorId, authorIds)),
+        and(
+          eq(stories.audience, 'followers'),
+          exists(db.select({ followerId: userFollows.followerId }).from(userFollows).where(and(
+            eq(userFollows.followerId, actor.userId),
+            eq(userFollows.followedId, stories.authorId),
+          ))),
+        ),
         and(
           eq(stories.audience, 'mutuals'),
-          inArray(stories.authorId, authorIds),
+          exists(db.select({ followerId: userFollows.followerId }).from(userFollows).where(and(
+            eq(userFollows.followerId, actor.userId),
+            eq(userFollows.followedId, stories.authorId),
+          ))),
           exists(db.select({ followerId: userFollows.followerId }).from(userFollows).where(and(
             eq(userFollows.followerId, stories.authorId),
             eq(userFollows.followedId, actor.userId),
           ))),
         ),
       ),
+      or(
+        eq(stories.authorId, actor.userId),
+        notExists(db.select({ id: blocks.id }).from(blocks).where(or(
+          and(eq(blocks.blockerId, actor.userId), eq(blocks.blockedId, stories.authorId)),
+          and(eq(blocks.blockerId, stories.authorId), eq(blocks.blockedId, actor.userId)),
+        ))),
+      ),
     ))
     .orderBy(desc(stories.createdAt))
     .limit(60);
 
-  const visibleRows = rows.filter((row) => row.authorId === actor.userId || !blockedIds.has(row.authorId));
+  const visibleRows = rows;
   const ownStoryIds = visibleRows.filter((row) => row.authorId === actor.userId).map((row) => row.id);
   const viewCounts = ownStoryIds.length
     ? await db.select({ storyId: storyViews.storyId, total: count() })
