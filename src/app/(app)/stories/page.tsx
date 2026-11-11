@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { and, count, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, exists, gt, inArray, isNull, or } from 'drizzle-orm';
 import { PageShell } from '~/components/ui/page-shell';
 import { StoriesFeed, type StoryItem } from '~/components/stories/stories-feed';
 import { requireOnboarded } from '~/server/guard';
@@ -51,6 +51,14 @@ export default async function StoriesPage() {
         eq(stories.authorId, actor.userId),
         eq(stories.audience, 'public'),
         and(eq(stories.audience, 'followers'), inArray(stories.authorId, authorIds)),
+        and(
+          eq(stories.audience, 'mutuals'),
+          inArray(stories.authorId, authorIds),
+          exists(db.select({ followerId: userFollows.followerId }).from(userFollows).where(and(
+            eq(userFollows.followerId, stories.authorId),
+            eq(userFollows.followedId, actor.userId),
+          ))),
+        ),
       ),
     ))
     .orderBy(desc(stories.createdAt))
@@ -88,7 +96,7 @@ export default async function StoriesPage() {
       <div className="stack stack-4" style={{ maxWidth: 760 }}>
         <StoriesFeed stories={items} csrfToken={csrfToken} />
         <p className="t-small t-subtle">
-          Stories are currently text-only. Public stories can be seen by signed-in members; follower stories are limited to members you follow. Blocking either way hides stories between those accounts. Only you can see view counts for your own stories.
+          Stories are currently text-only. Public stories can be seen by signed-in members; follower stories are limited to members you follow; mutual stories require a follow in both directions. Blocking either way hides stories between those accounts. Only you can see view counts for your own stories.
         </p>
       </div>
     </PageShell>
