@@ -38,10 +38,11 @@ const server = createServer(async (_req, res) => {
   }
 });
 
-server.listen(Number(process.env.PORT ?? 3002), '127.0.0.1', () => {
-  // Bind to loopback by default; expose through a private health-check network
-  // only when the deployment explicitly changes the bind address.
-  process.stdout.write(`Enyd Arch health probe on 127.0.0.1:${process.env.PORT ?? 3002}\n`);
+const bindAddress = process.env.HEALTH_BIND_ADDRESS ?? '127.0.0.1';
+server.listen(Number(process.env.PORT ?? 3002), bindAddress, () => {
+  // Keep loopback as the default; only bind a private interface when the
+  // deployment's network policy explicitly restricts health-check access.
+  process.stdout.write(`Enyd Arch health probe on ${bindAddress}:${process.env.PORT ?? 3002}\n`);
 });
 
 async function shutdown() {
