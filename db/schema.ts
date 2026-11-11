@@ -174,7 +174,7 @@ export const reportStateEnum = pgEnum('report_state', [
   'appealed',
 ]);
 
-export const storyAudienceEnum = pgEnum('story_audience', ['followers', 'public']);
+export const storyAudienceEnum = pgEnum('story_audience', ['followers', 'mutuals', 'public']);
 export const reportReasonEnum = pgEnum('report_reason', [
   'harassment',
   'hate_or_discrimination',
