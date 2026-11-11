@@ -4,7 +4,7 @@ import { db } from '~db';
 import { conversationMembers, messages } from '~db/schema';
 import { acquire } from '~/server/auth/rate-limit';
 import { isUuid } from '~/server/auth/identifiers';
-import { requireOnboarded } from '~/server/guard';
+import { requireCapability } from '~/server/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,7 @@ const pause = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 export async function GET(request: Request) {
-  const { actor } = await requireOnboarded();
+  const { actor } = await requireCapability('message');
   const conversationId = new URL(request.url).searchParams.get('conversation');
   if (!isUuid(conversationId)) {
     return NextResponse.json({ error: 'Conversation not available.' }, { status: 404, headers: { 'Cache-Control': 'private, no-store' } });
