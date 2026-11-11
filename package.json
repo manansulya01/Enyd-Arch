@@ -21,7 +21,8 @@
     "clock:start": "node scripts/crypto-clock.mjs start",
     "clock:stop": "node scripts/crypto-clock.mjs stop",
     "storage:encrypt-existing": "node --conditions=react-server --import tsx scripts/encrypt-existing-objects.ts",
-    "typecheck:sandbox": "tsc -p tsconfig.sandbox.json --noEmit"
+    "typecheck:sandbox": "tsc -p tsconfig.sandbox.json --noEmit",
+    "stories:cleanup": "node --conditions=react-server --import tsx scripts/cleanup-expired-stories.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",

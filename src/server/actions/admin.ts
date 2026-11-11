@@ -65,6 +65,52 @@ export async function listInvitations(): Promise<InvitationSummary[]> {
     .limit(100);
 }
 
+export interface GameReviewSummary {
+  id: string;
+  title: string;
+  tagline: string;
+  description: string;
+  slug: string;
+  creatorName: string;
+  creatorUsername: string;
+  createdAt: Date;
+  findings: Array<{ rule: string; detail: string; severity: string }>;
+}
+
+/** Pending Arcade submissions are visible only to members with review permission. */
+export async function listGamesForReview(): Promise<GameReviewSummary[]> {
+  await requirePermission('games.review');
+  const rows = await db.select({
+    id: games.id,
+    title: games.title,
+    tagline: games.tagline,
+    description: games.description,
+    slug: games.slug,
+    creatorName: users.displayName,
+    creatorUsername: users.username,
+    createdAt: games.createdAt,
+    scanReport: games.scanReport,
+  }).from(games)
+    .innerJoin(users, eq(users.id, games.creatorId))
+    .where(and(
+      inArray(games.status, ['submitted', 'changes_requested']),
+      isNull(games.removedAt),
+    ))
+    .orderBy(desc(games.createdAt))
+    .limit(100);
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    tagline: row.tagline,
+    description: row.description,
+    slug: row.slug,
+    creatorName: row.creatorName,
+    creatorUsername: row.creatorUsername,
+    createdAt: row.createdAt,
+    findings: Array.isArray(row.scanReport?.findings) ? row.scanReport.findings : [],
+  }));
+}
+
 export async function createInvitationAction(
   _previous: FormState<{ code: string }> | null,
   formData: FormData,
@@ -238,19 +284,30 @@ export async function reviewGame(
   gameId: string,
   decision: 'approved' | 'rejected' | 'changes_requested',
   note: string,
+  csrf: string,
 ): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const { actor } = await requirePermission('games.review');
+  if (!/^[0-9a-f-]{36}$/i.test(gameId) || !['approved', 'rejected', 'changes_requested'].includes(decision)) {
+    return fail('That game review is not available.');
+  }
+  const reason = typeof note === 'string' ? note.trim().slice(0, 1000) : '';
 
-  await db
-    .update(games)
-    .set({ status: decision, reviewNote: note.slice(0, 1000), reviewedBy: actor.userId, reviewedAt: new Date() })
-    .where(eq(games.id, gameId));
+  const [reviewed] = await db.update(games)
+    .set({ status: decision, reviewNote: reason, reviewedBy: actor.userId, reviewedAt: new Date() })
+    .where(and(
+      eq(games.id, gameId),
+      inArray(games.status, ['submitted', 'changes_requested']),
+      isNull(games.removedAt),
+    ))
+    .returning({ id: games.id });
+  if (!reviewed) return fail('That game is no longer awaiting review.');
 
   await writeAudit({ id: actor.userId, label: `ARCH-${actor.memberId}` }, {
     action: `game.${decision}`,
     targetType: 'game',
     targetId: gameId,
-    reason: note.slice(0, 400),
+    reason: reason.slice(0, 400),
   });
 
   revalidatePath('/admin');

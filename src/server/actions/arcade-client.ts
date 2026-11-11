@@ -10,19 +10,13 @@ import { commentOnGame, rateGame, recordPlay, submitGame } from './arcade';
 export async function onRecordPlay(gameId: string, seconds: number, csrf: string): Promise<ActionResult> {
   const actor = await currentActor();
   if (!actor) return fail('Sign in to record plays.');
-  const formData = new FormData();
-  formData.set('__csrf', csrf);
-  await verifyCsrf(formData);
-  return recordPlay(gameId, seconds);
+  return recordPlay(gameId, seconds, csrf);
 }
 
 export async function onRateGame(gameId: string, stars: number, csrf: string): Promise<ActionResult> {
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
-  const formData = new FormData();
-  formData.set('__csrf', csrf);
-  await verifyCsrf(formData);
-  return rateGame(gameId, stars);
+  return rateGame(gameId, stars, csrf);
 }
 
 export async function onSubmitGame(

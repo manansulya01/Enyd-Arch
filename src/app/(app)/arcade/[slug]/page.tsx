@@ -10,6 +10,7 @@ import { BookmarkButton } from '~/components/commons/bookmark-button';
 import { gameBySlug, getGameComments, isBookmarked } from '~/server/queries';
 import { mintPlayGrant } from '~/server/arcade/play-grant';
 import { requireOnboarded } from '~/server/guard';
+import { adminCan, adminContextFor } from '~/server/security/audit';
 import { formatCount, starString } from '~/lib/format';
 import { CsrfField } from '~/components/shell/csrf-field';
 import { sessionCsrfToken } from '~/server/csrf';
@@ -24,7 +25,9 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
   const { actor } = await requireOnboarded();
   const { slug } = await params;
 
-  const game = await gameBySlug(slug, actor.userId);
+  const admin = await adminContextFor(actor.userId);
+  const canReview = Boolean(admin && adminCan(admin, 'games.review'));
+  const game = await gameBySlug(slug, actor.userId, canReview);
   if (!game) notFound();
 
   const grant = game.status === 'approved' ? await mintPlayGrant(game.id) : { ok: false };
@@ -49,8 +52,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
                 ◌
               </span>
               <span className="notice-body">
-                This submission is <strong>{game.status.replace('_', ' ')}</strong> and is visible
-                only to you. It becomes playable once a reviewer approves it.
+                This submission is <strong>{game.status.replace('_', ' ')}</strong> and is visible only to its creator and authorised reviewers. It becomes playable once a reviewer approves it.
               </span>
             </p>
           )}

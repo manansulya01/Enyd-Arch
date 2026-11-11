@@ -10,7 +10,7 @@ import { sessionCsrfToken } from '~/server/csrf';
 
 export const metadata: Metadata = {
   title: 'Saved items',
-  description: 'Your private collection of saved posts, Archive objects, games, and Gallery pieces.',
+  description: 'Your private collection of saved posts, community discussions, Archive objects, games, and Gallery pieces.',
   robots: { index: false, follow: false, noarchive: true, nosnippet: true },
 };
 
@@ -25,14 +25,14 @@ export default async function SavedPostsPage() {
   return (
     <PageShell
       title="Saved items"
-      sub="A private shelf for posts, Archive objects, approved games, and Gallery pieces. Only you can see this list."
+      sub="A private shelf for posts, community discussions, Archive objects, approved games, and Gallery pieces. Only you can see this list."
       actions={<Link className="btn btn-ghost btn-sm" href="/commons">The Commons</Link>}
     >
       {posts.length === 0 && otherItems.length === 0 ? (
         <EmptyState
           glyph="☆"
           title="Nothing saved yet."
-          body="Use Save on a post to keep it here for later. Your saved list is private."
+          body="Use Save on a post or community discussion to keep it here for later. Your saved list is private."
         />
       ) : (
         <div className="stack stack-5">

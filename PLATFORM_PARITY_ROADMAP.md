@@ -37,7 +37,7 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [x] Message attachment previews for safe raster images, browser-native audio and video playback, plus download links and file sizes; media bytes still flow through the existing membership/block-authorized file route.
 - [x] Per-category in-app notification preferences for messages, replies, mentions, reactions, connections, projects, events and file activity; notification writes enforce saved preferences with request-scoped preference reads.
 - [x] Tab-scoped offline outbox for up to 10 text/file-reference messages, explicit retry/discard controls, and client-generated idempotency IDs so retries after a lost response do not duplicate messages. Attachment bytes must already have completed the validated upload; outbox contents remain in session storage and are not cross-device or browser-restart durable. Full CI passed at `40f4d6b`; staging verification remains.
-- [ ] Typing/presence indicators and real-time delivery (WebSocket/SSE infrastructure; polling is only a fallback).
+- [x] Authenticated, per-member rate-limited Server-Sent Events for live in-app notifications; connections are short-lived and resume from a server-issued event cursor. Message threads also receive membership-scoped SSE events that carry only message IDs, with bounded polling as a host-compatibility fallback. Typing/presence remains open.
 - [ ] Server/workspace model: channels, roles, permission overwrites, categories, announcements, moderation logs and audit trails.
 - [ ] Voice/video rooms, screen sharing, noise controls and call signaling; requires a dedicated media service and capacity/security planning.
 - [ ] Community onboarding, custom emoji/stickers, events, polls, scheduled messages, bot/app integrations and scoped API tokens.
@@ -46,9 +46,10 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 ### Instagram-like visual social
 - [x] Follow/unfollow graph distinct from mutual Connections, discoverable-member controls, and a Following feed.
 - [x] Follower/following lists with discoverability, profile visibility and mutual-block filtering; bounded to 100 visible members per list.
-- [ ] Additional per-audience privacy controls.
+- [x] Add a mutual-follow story audience alongside follower-only and signed-in-public visibility, enforced in both feed queries and the view action.
+- [ ] Custom close-friends lists and remaining per-audience privacy controls.
 - [ ] Photo/carousel posts, captions, alt text, crop/thumbnail generation, drafts, archive and creator profile grid.
-- [ ] Stories with explicit expiry, viewer list privacy, replies and optional close-friends audience.
+- [x] Text-only 24-hour stories with follower/public audiences, owner removal, signed-in viewing, mutual-block filtering, expiry enforcement, aggregate owner-only view counts, and a tested seven-day post-expiry purge command; viewer identities are not exposed. Richer media, replies, and close-friends audiences remain open.
 - [ ] Short-form video/reels, transcoding, adaptive bitrate, captions, audio rights checks and upload resumability.
 - [ ] Likes/comments/shares/saves, mentions, tagged media, collaborative posts and creator insights with privacy-conscious analytics.
 - [ ] Recommendation/discovery controls, hidden words, comment filters, restrict/mute/block, reporting and copyright takedown workflow.
@@ -85,7 +86,8 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 - [ ] Richer moderator role hierarchy and permission overwrites.
 - [ ] Text/link/image/video/self posts, flairs, post scheduling, crossposts and per-community feeds.
 - [x] One-level threaded community replies with parent-comment validation, same-post enforcement, and no unbounded reply nesting.
-- [ ] Deeper comment trees, collapse/expand, sorting, voting policy, saved items, awards/reputation without pay-to-win moderation.
+- [x] Add private saved bookmarks for accessible community discussions to the shared Saved items shelf.
+- [ ] Deeper comment trees, collapse/expand, advanced sorting, awards/reputation without pay-to-win moderation.
 - [ ] Community wiki/resources, pinned posts, recurring threads, polls, mod queue, reports, automod rules and appeal history.
 - [ ] Community discovery, search, related communities, spam brigades/rate limits and moderator audit logs.
 - [ ] Export, delete, and retention behavior for user-generated content and mod actions.
@@ -107,9 +109,12 @@ This roadmap translates the request for Discord-, Instagram-, YouTube-, X/Twitte
 
 ### Arcade
 - [x] Existing Arcade at `/arcade`: submissions, package validation/scanning, isolated playback, genre filters, ratings, comments, tags and play counts.
+- [x] Keep scanned submissions unplayable until staff approval; provide a permission-gated review queue with scanner findings, reviewer notes, approve/reject/change-request decisions and audit records.
 - [x] Harden per-game sandbox boundaries: separate-origin and HTTPS production checks, `connect-src 'none'`, no ambient app credentials, single-use grants, bounded session/grant maps, bounded mint request bodies, encrypted-package decryption and checksum verification; persistent browser storage APIs are blocked to prevent cross-game data leakage. Runtime supports the configured local or S3 storage driver.
 - [ ] Add runtime CPU/memory/process quotas, runtime S3 retrieval, anti-cheat expectations and expanded moderation/reporting.
-- [ ] Add save-state/high scores/leaderboards/achievements, game collections, favorites and controller/mobile accessibility where the game API supports them.
+- [x] Add member-owned Arcade favorites using the existing private bookmark system, with a dedicated saved-games discovery filter.
+- [x] Add bounded title/tagline search while preserving selected genre and sort filters.
+- [ ] Add save-state/high scores/leaderboards/achievements, richer game collections and controller/mobile accessibility where the game API supports them.
 - [ ] Add multiplayer only via an isolated, rate-limited game-session service; do not give games direct database or app-session access.
 
 ### FTP/SFTP-style personal file access

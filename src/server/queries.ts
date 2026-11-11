@@ -705,7 +705,7 @@ export async function feed(options: {
 }
 
 export type SavedNonPostView = {
-  targetType: 'archive_object' | 'game' | 'gallery_post';
+  targetType: 'archive_object' | 'game' | 'gallery_post' | 'community_post';
   targetId: string;
   title: string;
   href: string;
@@ -714,7 +714,7 @@ export type SavedNonPostView = {
 
 /** Return only saved items that the member can still legitimately view. */
 export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostView[]> {
-  const [archives, arcadeGames, galleryPieces] = await Promise.all([
+  const [archives, arcadeGames, galleryPieces, communityDiscussions] = await Promise.all([
     db.select({
       targetId: bookmarkTable.targetId,
       title: archiveObjectTable.title,
@@ -791,18 +791,52 @@ export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostV
       ))
       .orderBy(desc(bookmarkTable.createdAt))
       .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: sql<string>`coalesce(${communityPosts.title}, left(${communityPosts.body}, 80))`,
+      slug: communities.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(communityPosts, eq(communityPosts.id, bookmarkTable.targetId))
+      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+      .innerJoin(users, eq(users.id, communityPosts.authorId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'community_post'),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+        or(
+          eq(communities.isPrivate, false),
+          sql`exists (
+            select 1 from community_members cm
+            where cm.community_id = ${communities.id}
+              and cm.user_id = ${viewerId}
+          )`,
+        ),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${communityPosts.authorId})
+             or (b.blocker_id = ${communityPosts.authorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
   ]);
 
   return [
     ...archives.map((item) => ({ ...item, targetType: 'archive_object' as const, href: `/archive/${item.slug}` })),
     ...arcadeGames.map((item) => ({ ...item, targetType: 'game' as const, href: `/arcade/${item.slug}` })),
     ...galleryPieces.map((item) => ({ ...item, targetType: 'gallery_post' as const, href: `/gallery/${item.slug}` })),
+    ...communityDiscussions.map((item) => ({ ...item, targetType: 'community_post' as const, href: `/communities/${item.slug}#post-${item.targetId}` })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80);
 }
 
 export async function isBookmarked(
   viewerId: string,
-  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post',
+  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post' | 'community_post',
   targetId: string,
 ): Promise<boolean> {
   const [row] = await db.select({ targetId: bookmarkTable.targetId })
@@ -1476,9 +1510,10 @@ export async function arcadeGames(options: {
   viewerId: string | null;
   genre?: string | null;
   query?: string | null;
-  sort?: 'popular' | 'recent' | 'rating';
+  sort?: 'popular' | 'recent' | 'rating' | 'saved';
   limit?: number;
   includeUnapproved?: boolean;
+  moderator?: boolean;
   creatorId?: string | null;
   slug?: string | null;
 }): Promise<GameView[]> {
@@ -1520,15 +1555,17 @@ export async function arcadeGames(options: {
     .where(
       and(
         isNull(gameTable.removedAt),
-        eq(users.status, 'active'),
-        isNull(users.removedAt),
-        options.viewerId ? sql`not exists (
+        options.moderator ? sql`true` : and(eq(users.status, 'active'), isNull(users.removedAt)),
+        options.viewerId && !options.moderator ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
              or (b.blocker_id = ${gameTable.creatorId} and b.blocked_id = ${options.viewerId})
         )` : sql`true`,
         options.includeUnapproved ? sql`true` : eq(gameTable.status, 'approved'),
         options.genre ? eq(gameTable.genre, options.genre) : sql`true`,
+        options.sort === 'saved' && options.viewerId
+          ? sql`exists (select 1 from bookmarks bm where bm.user_id = ${options.viewerId} and bm.target_type = 'game' and bm.target_id = ${gameTable.id})`
+          : sql`true`,
         options.creatorId ? eq(gameTable.creatorId, options.creatorId) : sql`true`,
         options.slug ? eq(gameTable.slug, options.slug) : sql`true`,
         options.query
@@ -1586,17 +1623,19 @@ export async function arcadeGames(options: {
   }));
 }
 
-export async function gameBySlug(slug: string, viewerId: string | null): Promise<GameView | null> {
+export async function gameBySlug(slug: string, viewerId: string | null, canReview = false): Promise<GameView | null> {
   const [game] = await arcadeGames({
     viewerId,
     includeUnapproved: true,
+    moderator: canReview,
     limit: 1,
     slug,
   });
   if (!game) return null;
 
   // Unapproved games are only visible to their creator.
-  if (game.status !== 'approved' && game.creator.userId !== viewerId) return null;
+  if (game.status !== 'approved' && game.creator.userId !== viewerId &&
+      !(canReview && (game.status === 'submitted' || game.status === 'changes_requested'))) return null;
   return game;
 }
 

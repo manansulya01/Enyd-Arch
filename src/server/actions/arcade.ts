@@ -24,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { isUuid } from '~/server/auth/identifiers';
 import { currentActor } from '~/server/auth/session';
 import { acquire } from '~/server/auth/rate-limit';
-import { verifyCsrf } from '~/server/csrf';
+import { verifyCsrf, verifyCsrfValue } from '~/server/csrf';
 import { putObject } from '~/server/storage/driver';
 import { processGamePackage } from '~/server/storage/game-package';
 import { scanBytes } from '~/server/storage/scanner';
@@ -104,7 +104,9 @@ export async function submitGame(
     genre,
     controls,
     creatorId: actor.userId,
-    status: 'approved',
+    // Passing package validation is not staff approval. Keep the game
+    // unplayable until an authorised reviewer explicitly approves it.
+    status: 'submitted',
     entryFile: processed.entryFile ?? 'index.html',
     packageObjectId: stored.id,
     packageChecksum: processed.checksum,
@@ -135,7 +137,8 @@ async function uniqueSlug(title: string): Promise<string> {
   return `${base}-${Date.now()}`;
 }
 
-export async function rateGame(gameId: string, stars: number): Promise<ActionResult> {
+export async function rateGame(gameId: string, stars: number, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) redirect('/sign-in');
   if (!isUuid(gameId)) return fail('That game is not available.');
@@ -143,35 +146,42 @@ export async function rateGame(gameId: string, stars: number): Promise<ActionRes
   const limiter = await acquire('write', actor.userId);
   if (!limiter.allowed) return fail('Slow down a moment.');
 
-  const [game] = await db
-    .select({ id: games.id, status: games.status })
-    .from(games)
-    .where(and(eq(games.id, gameId), eq(games.status, 'approved'), isNull(games.removedAt)))
-    .limit(1);
-  if (!game) return fail('That game is not available.');
+  // Serialize ratings per game so simultaneous first-time ratings cannot
+  // duplicate rows or drift the cached aggregate counters.
+  const rated = await db.transaction(async (tx) => {
+    const [game] = await tx
+      .select({ id: games.id })
+      .from(games)
+      .where(and(eq(games.id, gameId), eq(games.status, 'approved'), isNull(games.removedAt)))
+      .for('update')
+      .limit(1);
+    if (!game) return false;
 
-  const existing = await db
-    .select({ stars: gameRatings.stars })
-    .from(gameRatings)
-    .where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.userId, actor.userId)))
-    .limit(1);
+    const [existing] = await tx
+      .select({ stars: gameRatings.stars })
+      .from(gameRatings)
+      .where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.userId, actor.userId)))
+      .limit(1);
 
-  if (existing[0]) {
-    await db
-      .update(gameRatings)
-      .set({ stars })
-      .where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.userId, actor.userId)));
-    await db
-      .update(games)
-      .set({ ratingSum: sql`${games.ratingSum} - ${existing[0].stars} + ${stars}` })
-      .where(eq(games.id, gameId));
-  } else {
-    await db.insert(gameRatings).values({ gameId, userId: actor.userId, stars });
-    await db
-      .update(games)
-      .set({ ratingSum: sql`${games.ratingSum} + ${stars}`, ratingCount: sql`${games.ratingCount} + 1` })
-      .where(eq(games.id, gameId));
-  }
+    if (existing) {
+      await tx.update(gameRatings)
+        .set({ stars })
+        .where(and(eq(gameRatings.gameId, gameId), eq(gameRatings.userId, actor.userId)));
+      await tx.update(games)
+        .set({ ratingSum: sql`${games.ratingSum} - ${existing.stars} + ${stars}` })
+        .where(eq(games.id, gameId));
+    } else {
+      await tx.insert(gameRatings).values({ gameId, userId: actor.userId, stars });
+      await tx.update(games)
+        .set({
+          ratingSum: sql`${games.ratingSum} + ${stars}`,
+          ratingCount: sql`${games.ratingCount} + 1`,
+        })
+        .where(eq(games.id, gameId));
+    }
+    return true;
+  });
+  if (!rated) return fail('That game is not available.');
 
   revalidatePath('/arcade');
   return ok();
@@ -225,7 +235,8 @@ export async function commentOnGame(
   return ok();
 }
 
-export async function recordPlay(gameId: string, seconds: number): Promise<ActionResult> {
+export async function recordPlay(gameId: string, seconds: number, csrf: string): Promise<ActionResult> {
+  await verifyCsrfValue(csrf);
   const actor = await currentActor();
   if (!actor) return fail('Sign in to record play.');
   if (!isUuid(gameId) || !Number.isFinite(seconds) || seconds < 3) return fail('That play is not available.');

@@ -36,6 +36,8 @@ export const RATE_LIMITS = {
   /** Arcade game submissions — deliberately slow to prevent package spam */
   gameSubmit: { windowSeconds: 86400, max: 6 },
   connectionRequest: { windowSeconds: 3600, max: 30 },
+  /** Long-lived authenticated event streams; reconnects are bounded per member. */
+  stream: { windowSeconds: 60, max: 8 },
   /** Anything an authenticated member can trigger at volume */
   write: { windowSeconds: 60, max: 90 },
   search: { windowSeconds: 60, max: 60 },

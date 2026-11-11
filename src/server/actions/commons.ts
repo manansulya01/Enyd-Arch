@@ -8,7 +8,7 @@
  * notification, and every count is maintained in the same statement as the row
  * that changed it so a feed can never disagree with the row it rendered from.
  */
-import { and, asc, desc, eq, inArray, isNull, lt, sql, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '~db';
 import {
@@ -16,6 +16,8 @@ import {
   blocks,
   bookmarks,
   comments,
+  communityPosts,
+  communities,
   files,
   galleryPosts,
   games,
@@ -824,11 +826,11 @@ export async function voteInPoll(
 
 export async function toggleBookmark(
   actor: SessionActor,
-  input: { targetType: 'post' | 'archive_object' | 'game' | 'gallery_post'; targetId: string; note?: string },
+  input: { targetType: 'post' | 'archive_object' | 'game' | 'gallery_post' | 'community_post'; targetId: string; note?: string },
 ): Promise<ActionResult<{ saved: boolean }>> {
   if (!can(actor, 'bookmark')) return fail('You do not have permission to save.');
   if (!isUuid(input.targetId)) return fail('That item is not available.');
-  if (!['post', 'archive_object', 'game', 'gallery_post'].includes(input.targetType)) {
+  if (!['post', 'archive_object', 'game', 'gallery_post', 'community_post'].includes(input.targetType)) {
     return fail('That item cannot be saved.');
   }
   const limiter = await acquire('write', actor.userId);
@@ -910,6 +912,31 @@ export async function toggleBookmark(
       )`,
       sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
+    available = Boolean(row);
+  } else if (input.targetType === 'community_post') {
+    const [row] = await db.select({ id: communityPosts.id }).from(communityPosts)
+      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+      .innerJoin(users, eq(users.id, communityPosts.authorId))
+      .where(and(
+        eq(communityPosts.id, input.targetId),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+        or(
+          eq(communities.isPrivate, false),
+          sql`exists (
+            select 1 from community_members cm
+            where cm.community_id = ${communities.id}
+              and cm.user_id = ${actor.userId}
+          )`,
+        ),
+        sql`not exists (
+          select 1 from blocks b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${communityPosts.authorId})
+             or (b.blocker_id = ${communityPosts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+      )).limit(1);
     available = Boolean(row);
   }
   if (!available) return fail('That item is no longer available.');

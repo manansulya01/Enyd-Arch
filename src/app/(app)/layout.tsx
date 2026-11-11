@@ -5,6 +5,7 @@ import { notificationCounts } from '~/server/queries';
 import { levelLabel } from '~/lib/domain';
 import { ThemeScript } from '~/components/shell/theme';
 import { CsrfField } from '~/components/shell/csrf-field';
+import { NotificationStreamRefresh } from '~/components/notifications/notification-stream-refresh';
 
 /**
  * The application shell.
@@ -39,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <div className="main">
         <CsrfField />
+        <NotificationStreamRefresh />
         <MobileBar member={member} />
         <ThemeScript reduceMotion={false} />
         {children}

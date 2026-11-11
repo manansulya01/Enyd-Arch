@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { onToggleBookmark } from '~/server/actions/commons-client';
 
-type BookmarkTarget = 'post' | 'archive_object' | 'game' | 'gallery_post';
+type BookmarkTarget = 'post' | 'archive_object' | 'game' | 'gallery_post' | 'community_post';
 
 export function BookmarkButton({
   targetType,
