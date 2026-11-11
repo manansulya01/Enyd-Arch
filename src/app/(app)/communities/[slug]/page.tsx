@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { and, asc, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { db } from '~db';
-import { blocks, communities, communityMembers, communityPostComments, communityPostVotes, communityPosts, users } from '~db/schema';
+import { blocks, bookmarks, communities, communityMembers, communityPostComments, communityPostVotes, communityPosts, users } from '~db/schema';
 import { PageShell } from '~/components/ui/page-shell';
 import { EmptyState } from '~/components/ui';
 import { CommunityPostForm } from '~/components/communities/community-post-form';
 import { CommunityComments } from '~/components/communities/community-comments';
 import { CommunityPostVoting } from '~/components/communities/community-post-voting';
+import { BookmarkButton } from '~/components/commons/bookmark-button';
 import { CommunityReportControl } from '~/components/communities/community-report-control';
 import { CommunityModerationQueue } from '~/components/communities/community-moderation-queue';
 import { CommunityInviteManager } from '~/components/communities/community-invite-manager';
@@ -65,6 +66,13 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   ]);
   const hidden = new Set(blockRows.map(row => row.blockerId === actor.userId ? row.blockedId : row.blockerId));
   const posts = rows.filter(post => !hidden.has(post.authorId));
+  const savedRows = posts.length ? await db.select({ targetId: bookmarks.targetId })
+    .from(bookmarks).where(and(
+      eq(bookmarks.userId, actor.userId),
+      eq(bookmarks.targetType, 'community_post'),
+      inArray(bookmarks.targetId, posts.map(post => post.id)),
+    )) : [];
+  const savedPostIds = new Set(savedRows.map(row => row.targetId));
   const commentRows = rows.length === 0 ? [] : await db.select({
     id: communityPostComments.id,
     postId: communityPostComments.postId,
@@ -207,7 +215,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
       {!joined && <p className="t-small t-muted">Join this community from the directory before posting.</p>}
       {joined && <CommunityPostForm communityId={community.id} csrfToken={csrfToken} />}
       {orderedPosts.length === 0 ? <EmptyState glyph="▦" title="No discussions yet" body="Start a discussion to give this community its first thread." /> :
-        <div className="stack stack-3">{orderedPosts.map(post => <article className="panel panel-body stack stack-2" key={post.id}>
+        <div className="stack stack-3">{orderedPosts.map(post => <article id={`post-${post.id}`} className="panel panel-body stack stack-2" key={post.id}>
           {post.title && <h2>{post.title}</h2>}
           <p className="t-meta">by {post.displayName} (@{post.username}) · {post.createdAt.toLocaleDateString()}</p>
           <CommunityPostVoting
@@ -219,7 +227,10 @@ export default async function CommunityPage({ params, searchParams }: { params: 
             csrfToken={csrfToken}
           />
           <p className="prose">{post.body}</p>
-          <CommunityReportControl targetType="community_post" targetId={post.id} csrfToken={csrfToken} />
+          <div className="row row-between row-wrap">
+            <BookmarkButton targetType="community_post" targetId={post.id} csrfToken={csrfToken} initialSaved={savedPostIds.has(post.id)} />
+            <CommunityReportControl targetType="community_post" targetId={post.id} csrfToken={csrfToken} />
+          </div>
           <CommunityComments
             postId={post.id}
             comments={(commentsByPost.get(post.id) ?? []).map(comment => ({
