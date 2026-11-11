@@ -705,7 +705,7 @@ export async function feed(options: {
 }
 
 export type SavedNonPostView = {
-  targetType: 'archive_object' | 'game' | 'gallery_post';
+  targetType: 'archive_object' | 'game' | 'gallery_post' | 'community_post';
   targetId: string;
   title: string;
   href: string;
@@ -714,7 +714,7 @@ export type SavedNonPostView = {
 
 /** Return only saved items that the member can still legitimately view. */
 export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostView[]> {
-  const [archives, arcadeGames, galleryPieces] = await Promise.all([
+  const [archives, arcadeGames, galleryPieces, communityDiscussions] = await Promise.all([
     db.select({
       targetId: bookmarkTable.targetId,
       title: archiveObjectTable.title,
@@ -791,18 +791,52 @@ export async function savedNonPostItems(viewerId: string): Promise<SavedNonPostV
       ))
       .orderBy(desc(bookmarkTable.createdAt))
       .limit(40),
+    db.select({
+      targetId: bookmarkTable.targetId,
+      title: sql<string>`coalesce(${communityPosts.title}, left(${communityPosts.body}, 80))`,
+      slug: communities.slug,
+      createdAt: bookmarkTable.createdAt,
+    })
+      .from(bookmarkTable)
+      .innerJoin(communityPosts, eq(communityPosts.id, bookmarkTable.targetId))
+      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+      .innerJoin(users, eq(users.id, communityPosts.authorId))
+      .where(and(
+        eq(bookmarkTable.userId, viewerId),
+        eq(bookmarkTable.targetType, 'community_post'),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+        or(
+          eq(communities.isPrivate, false),
+          sql`exists (
+            select 1 from community_members cm
+            where cm.community_id = ${communities.id}
+              and cm.user_id = ${viewerId}
+          )`,
+        ),
+        sql`not exists (
+          select 1 from ${blocks} b
+          where (b.blocker_id = ${viewerId} and b.blocked_id = ${communityPosts.authorId})
+             or (b.blocker_id = ${communityPosts.authorId} and b.blocked_id = ${viewerId})
+        )`,
+      ))
+      .orderBy(desc(bookmarkTable.createdAt))
+      .limit(40),
   ]);
 
   return [
     ...archives.map((item) => ({ ...item, targetType: 'archive_object' as const, href: `/archive/${item.slug}` })),
     ...arcadeGames.map((item) => ({ ...item, targetType: 'game' as const, href: `/arcade/${item.slug}` })),
     ...galleryPieces.map((item) => ({ ...item, targetType: 'gallery_post' as const, href: `/gallery/${item.slug}` })),
+    ...communityDiscussions.map((item) => ({ ...item, targetType: 'community_post' as const, href: `/communities/${item.slug}#post-${item.targetId}` })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80);
 }
 
 export async function isBookmarked(
   viewerId: string,
-  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post',
+  targetType: 'post' | 'archive_object' | 'game' | 'gallery_post' | 'community_post',
   targetId: string,
 ): Promise<boolean> {
   const [row] = await db.select({ targetId: bookmarkTable.targetId })
