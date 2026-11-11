@@ -21,7 +21,7 @@ function parseCursor(value: string | null): { createdAt: Date; id: string } {
   }
   const timestamp = Number(match[1]);
   const createdAt = new Date(timestamp);
-  if (!Number.isFinite(createdAt.getTime())) {
+  if (!Number.isFinite(createdAt.getTime()) || createdAt.getTime() > Date.now()) {
     return { createdAt: new Date(), id: '00000000-0000-0000-0000-000000000000' };
   }
   return { createdAt, id: match[2]! };
