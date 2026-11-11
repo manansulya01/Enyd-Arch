@@ -1,6 +1,7 @@
 import { lt } from 'drizzle-orm';
 import { db, sql } from '../db/index';
 import { stories } from '../db/schema';
+import { storyPurgeCutoff } from '../src/server/auth/story-retention';
 
 /**
  * Purge text-only story rows seven days after expiry.
@@ -11,8 +12,7 @@ import { stories } from '../db/schema';
  * Schedule this command from a trusted private cron/worker, never an HTTP route.
  */
 async function main(): Promise<void> {
-  const retentionMs = 7 * 24 * 60 * 60 * 1000;
-  const cutoff = new Date(Date.now() - retentionMs);
+  const cutoff = storyPurgeCutoff();
   const removed = await db.delete(stories)
     .where(lt(stories.expiresAt, cutoff))
     .returning({ id: stories.id });
