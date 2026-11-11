@@ -1623,7 +1623,7 @@ export async function arcadeGames(options: {
   }));
 }
 
-export async function gameBySlug(slug: string, viewerId: string | null): Promise<GameView | null> {
+export async function gameBySlug(slug: string, viewerId: string | null, canReview = false): Promise<GameView | null> {
   const [game] = await arcadeGames({
     viewerId,
     includeUnapproved: true,
@@ -1633,7 +1633,7 @@ export async function gameBySlug(slug: string, viewerId: string | null): Promise
   if (!game) return null;
 
   // Unapproved games are only visible to their creator.
-  if (game.status !== 'approved' && game.creator.userId !== viewerId) return null;
+  if (game.status !== 'approved' && game.creator.userId !== viewerId && !canReview) return null;
   return game;
 }
 
