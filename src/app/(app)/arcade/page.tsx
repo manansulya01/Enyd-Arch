@@ -16,7 +16,7 @@ export default async function ArcadePage({
 }) {
   const { actor } = await requireOnboarded();
   const { genre, sort } = await searchParams;
-  const sortKey = sort === 'recent' || sort === 'rating' ? sort : 'popular';
+  const sortKey = sort === 'recent' || sort === 'rating' || sort === 'saved' ? sort : 'popular';
 
   const games = await arcadeGames({
     viewerId: actor.userId,
@@ -52,13 +52,13 @@ export default async function ArcadePage({
           ))}
         </div>
         <div className="btn-group" role="group" aria-label="Sort games">
-          {(['popular', 'recent', 'rating'] as const).map((option) => (
+          {(['popular', 'recent', 'rating', 'saved'] as const).map((option) => (
             <Link
               key={option}
               className={`btn btn-sm ${sortKey === option ? 'btn-primary' : 'btn-ghost'}`}
               href={`/arcade?sort=${option}${genre ? `&genre=${genre}` : ''}`}
             >
-              {option === 'popular' ? 'Most played' : option === 'recent' ? 'Newest' : 'Best rated'}
+              {option === 'popular' ? 'Most played' : option === 'recent' ? 'Newest' : option === 'rating' ? 'Best rated' : 'Saved'}
             </Link>
           ))}
         </div>
