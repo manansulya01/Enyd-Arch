@@ -62,7 +62,7 @@ export function GameReviewQueue({
           <p className="t-small">{game.tagline}</p>
           <p className="t-meta">Submitted by {game.creatorName} (@{game.creatorUsername})</p>
           {game.findings.length > 0 ? (
-            <div className="notice notice-warning stack stack-1">
+            <div className="notice notice-info stack stack-1">
               <strong className="t-small">Automated scan findings</strong>
               {game.findings.map((finding, index) => (
                 <p className="t-small" key={`${finding.rule}:${index}`}>
