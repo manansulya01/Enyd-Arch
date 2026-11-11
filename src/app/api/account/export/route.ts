@@ -3,6 +3,33 @@ import { NextResponse } from 'next/server';
 import { db } from '~db';
 import {
   archiveObjects,
+  archiveComments,
+  archiveObjectTags,
+  appeals,
+  blocks,
+  chronicleEntries,
+  communityMembers,
+  conversationMembers,
+  eventFiles,
+  filmComments,
+  galleryAttachments,
+  galleryComments,
+  governanceProposals,
+  governanceVotes,
+  innerArchMembers,
+  invitationRedemptions,
+  messageReactions,
+  polls,
+  pollOptions,
+  postAttachments,
+  postHashtags,
+  postMentions,
+  reports,
+  stories,
+  storyViews,
+  userRestrictions,
+  watchEventAttendees,
+  watchEvents,
   bookmarks,
   comments,
   collectionItems,
@@ -75,7 +102,14 @@ export async function GET() {
     ownWatchlistItems, ownRsvps, hostedEvents, ownMusicPlaylists, ownPlaylistTracks, ownLikedTracks,
     ownProjects, ownProjectMemberships, ownProjectTasks, ownProjectResources, ownPollVotes,
     ownGameRatings, ownGameComments, ownGamePlays, ownEventComments, ownLevelHistory, ownCollectionItems,
-    ownCommunityPosts, ownCommunityComments, ownCommunityVotes] = await Promise.all([
+    ownCommunityPosts, ownCommunityComments, ownCommunityVotes,
+    ownArchiveComments, ownArchiveTags, ownPostAttachments, ownPolls, ownPollOptions,
+    ownPostHashtags, ownPostMentions, ownConversationMemberships, ownMessageReactions,
+    ownGalleryAttachments, ownGalleryComments, ownFilmComments, ownWatchEvents,
+    ownWatchEventAttendance, ownEventFiles, ownCommunityMemberships, ownStories,
+    ownStoryViews, ownGovernanceProposals, ownGovernanceVotes, ownChronicleEntries,
+    ownInvitationRedemptions, ownBlocks, ownReports, ownAppeals, ownRestrictions,
+    ownInnerArchMembership] = await Promise.all([
     db.select({
       id: users.id, memberId: users.memberId, username: users.username,
       displayName: users.displayName, email: users.email, emailVerifiedAt: users.emailVerifiedAt,
@@ -177,10 +211,60 @@ export async function GET() {
     db.select().from(communityPosts).where(eq(communityPosts.authorId, userId)),
     db.select().from(communityPostComments).where(eq(communityPostComments.authorId, userId)),
     db.select().from(communityPostVotes).where(eq(communityPostVotes.userId, userId)),
+    db.select().from(archiveComments).where(eq(archiveComments.authorId, userId)),
+    db.select().from(archiveObjectTags).innerJoin(archiveObjects, eq(archiveObjects.id, archiveObjectTags.objectId))
+      .where(eq(archiveObjects.contributorId, userId)),
+    db.select().from(postAttachments).innerJoin(posts, eq(posts.id, postAttachments.postId))
+      .where(eq(posts.authorId, userId)),
+    db.select().from(polls).innerJoin(posts, eq(posts.id, polls.postId))
+      .where(eq(posts.authorId, userId)),
+    db.select().from(pollOptions).innerJoin(polls, eq(polls.id, pollOptions.pollId))
+      .innerJoin(posts, eq(posts.id, polls.postId)).where(eq(posts.authorId, userId)),
+    db.select().from(postHashtags).innerJoin(posts, eq(posts.id, postHashtags.postId))
+      .where(eq(posts.authorId, userId)),
+    db.select().from(postMentions).where(eq(postMentions.mentionedUserId, userId)),
+    db.select({
+      conversationId: conversationMembers.conversationId, role: conversationMembers.role,
+      joinedAt: conversationMembers.joinedAt, lastReadAt: conversationMembers.lastReadAt,
+      mutedUntil: conversationMembers.mutedUntil, removedAt: conversationMembers.removedAt,
+    }).from(conversationMembers).where(eq(conversationMembers.userId, userId)),
+    db.select().from(messageReactions).where(eq(messageReactions.userId, userId)),
+    db.select().from(galleryAttachments).innerJoin(galleryPosts, eq(galleryPosts.id, galleryAttachments.postId))
+      .where(eq(galleryPosts.authorId, userId)),
+    db.select().from(galleryComments).where(eq(galleryComments.authorId, userId)),
+    db.select().from(filmComments).where(eq(filmComments.authorId, userId)),
+    db.select().from(watchEvents).where(eq(watchEvents.hostId, userId)),
+    db.select().from(watchEventAttendees).where(eq(watchEventAttendees.userId, userId)),
+    db.select().from(eventFiles).where(eq(eventFiles.addedBy, userId)),
+    db.select().from(communityMembers).where(eq(communityMembers.userId, userId)),
+    db.select().from(stories).where(eq(stories.authorId, userId)),
+    db.select().from(storyViews).where(eq(storyViews.viewerId, userId)),
+    db.select().from(governanceProposals).where(eq(governanceProposals.authorId, userId)),
+    db.select().from(governanceVotes).where(eq(governanceVotes.userId, userId)),
+    db.select().from(chronicleEntries).where(eq(chronicleEntries.authorId, userId)),
+    db.select({ id: invitationRedemptions.id, invitationId: invitationRedemptions.invitationId, createdAt: invitationRedemptions.createdAt })
+      .from(invitationRedemptions).where(eq(invitationRedemptions.userId, userId)),
+    db.select({ blockerId: blocks.blockerId, blockedId: blocks.blockedId, createdAt: blocks.createdAt })
+      .from(blocks).where(or(eq(blocks.blockerId, userId), eq(blocks.blockedId, userId))),
+    db.select({
+      id: reports.id, targetType: reports.targetType, targetId: reports.targetId,
+      reason: reports.reason, detail: reports.detail, state: reports.state,
+      resolution: reports.resolution, createdAt: reports.createdAt, updatedAt: reports.updatedAt,
+    }).from(reports).where(eq(reports.reporterId, userId)),
+    db.select({
+      id: appeals.id, actionId: appeals.actionId, body: appeals.body, state: appeals.state,
+      outcome: appeals.outcome, reviewedAt: appeals.reviewedAt, createdAt: appeals.createdAt,
+    }).from(appeals).where(eq(appeals.userId, userId)),
+    db.select({
+      id: userRestrictions.id, capability: userRestrictions.capability, reason: userRestrictions.reason,
+      startsAt: userRestrictions.startsAt, endsAt: userRestrictions.endsAt, liftedAt: userRestrictions.liftedAt,
+      createdAt: userRestrictions.createdAt,
+    }).from(userRestrictions).where(eq(userRestrictions.userId, userId)),
+    db.select().from(innerArchMembers).where(eq(innerArchMembers.userId, userId)),
   ]);
 
   const payload = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     account: accountRows[0] ?? null,
     profile: profileRows[0] ?? null,
@@ -236,7 +320,29 @@ export async function GET() {
       communityPosts: ownCommunityPosts,
       communityComments: ownCommunityComments,
       communityVotes: ownCommunityVotes,
+      communityMemberships: ownCommunityMemberships,
     },
+    archive: { comments: ownArchiveComments, tagsOnYourContributions: ownArchiveTags },
+    commons: {
+      attachmentsOnYourPosts: ownPostAttachments,
+      pollsOnYourPosts: ownPolls,
+      optionsOnYourPolls: ownPollOptions,
+      hashtagsOnYourPosts: ownPostHashtags,
+      postsMentioningYou: ownPostMentions,
+    },
+    messaging: {
+      membershipsAndYourReadPreferences: ownConversationMemberships,
+      reactionsYouAdded: ownMessageReactions,
+    },
+    gallery: { attachmentsOnYourPosts: ownGalleryAttachments, commentsYouWrote: ownGalleryComments },
+    cinema: { commentsYouWrote: ownFilmComments, watchEventsHosted: ownWatchEvents, watchEventAttendance: ownWatchEventAttendance },
+    events: { filesYouAdded: ownEventFiles },
+    stories: { authoredStories: ownStories, storiesYouViewed: ownStoryViews },
+    governance: { proposalsAuthored: ownGovernanceProposals, votes: ownGovernanceVotes, innerArchMembership: ownInnerArchMembership },
+    chronicleEntriesAuthored: ownChronicleEntries,
+    invitationRedemptions: ownInvitationRedemptions,
+    blockRelationships: ownBlocks,
+    safety: { reportsYouSubmitted: ownReports, appeals: ownAppeals, restrictionsOnYourAccount: ownRestrictions },
     exclusions: [
       'Passwords, passkeys, session tokens, recovery secrets, encryption keys, IP hashes, and internal security audit records are not included.',
       'File contents are not embedded; this export includes file metadata only.',
@@ -248,7 +354,7 @@ export async function GET() {
     action: 'account.export',
     targetType: 'account',
     targetId: userId,
-    metadata: { schemaVersion: 1 },
+    metadata: { schemaVersion: 2 },
   });
 
   const date = new Date().toISOString().slice(0, 10);
