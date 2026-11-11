@@ -1476,7 +1476,7 @@ export async function arcadeGames(options: {
   viewerId: string | null;
   genre?: string | null;
   query?: string | null;
-  sort?: 'popular' | 'recent' | 'rating';
+  sort?: 'popular' | 'recent' | 'rating' | 'saved';
   limit?: number;
   includeUnapproved?: boolean;
   creatorId?: string | null;
@@ -1529,6 +1529,9 @@ export async function arcadeGames(options: {
         )` : sql`true`,
         options.includeUnapproved ? sql`true` : eq(gameTable.status, 'approved'),
         options.genre ? eq(gameTable.genre, options.genre) : sql`true`,
+        options.sort === 'saved' && options.viewerId
+          ? sql`exists (select 1 from bookmarks bm where bm.user_id = ${options.viewerId} and bm.target_type = 'game' and bm.target_id = ${gameTable.id})`
+          : sql`true`,
         options.creatorId ? eq(gameTable.creatorId, options.creatorId) : sql`true`,
         options.slug ? eq(gameTable.slug, options.slug) : sql`true`,
         options.query
