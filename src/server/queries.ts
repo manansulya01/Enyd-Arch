@@ -1635,7 +1635,8 @@ export async function gameBySlug(slug: string, viewerId: string | null, canRevie
   if (!game) return null;
 
   // Unapproved games are only visible to their creator.
-  if (game.status !== 'approved' && game.creator.userId !== viewerId && !canReview) return null;
+  if (game.status !== 'approved' && game.creator.userId !== viewerId &&
+      !(canReview && (game.status === 'submitted' || game.status === 'changes_requested'))) return null;
   return game;
 }
 
