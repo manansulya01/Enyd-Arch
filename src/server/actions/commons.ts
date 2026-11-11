@@ -584,31 +584,6 @@ export async function toggleReaction(
       ))
       .limit(1);
     if (!visibleComment) return fail('That item is no longer available.');
-  } else if (input.targetType === 'community_post') {
-    const [row] = await db.select({ id: communityPosts.id }).from(communityPosts)
-      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
-      .innerJoin(users, eq(users.id, communityPosts.authorId))
-      .where(and(
-        eq(communityPosts.id, input.targetId),
-        eq(communityPosts.status, 'published'),
-        isNull(communityPosts.removedAt),
-        eq(users.status, 'active'),
-        isNull(users.removedAt),
-        or(
-          eq(communities.isPrivate, false),
-          sql`exists (
-            select 1 from community_members cm
-            where cm.community_id = ${communities.id}
-              and cm.user_id = ${actor.userId}
-          )`,
-        ),
-        sql`not exists (
-          select 1 from blocks b
-          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${communityPosts.authorId})
-             or (b.blocker_id = ${communityPosts.authorId} and b.blocked_id = ${actor.userId})
-        )`,
-      )).limit(1);
-    available = Boolean(row);
   } else if (input.targetType === 'gallery_post') {
     const [visibleGalleryPost] = await db
       .select({ id: galleryPosts.id })
@@ -937,6 +912,32 @@ export async function toggleBookmark(
       )`,
       sql`exists (select 1 from users u where u.id = ${galleryPosts.authorId} and u.status = 'active' and u.removed_at is null)`,
     )).limit(1);
+    available = Boolean(row);
+  }
+  } else if (input.targetType === 'community_post') {
+    const [row] = await db.select({ id: communityPosts.id }).from(communityPosts)
+      .innerJoin(communities, eq(communities.id, communityPosts.communityId))
+      .innerJoin(users, eq(users.id, communityPosts.authorId))
+      .where(and(
+        eq(communityPosts.id, input.targetId),
+        eq(communityPosts.status, 'published'),
+        isNull(communityPosts.removedAt),
+        eq(users.status, 'active'),
+        isNull(users.removedAt),
+        or(
+          eq(communities.isPrivate, false),
+          sql`exists (
+            select 1 from community_members cm
+            where cm.community_id = ${communities.id}
+              and cm.user_id = ${actor.userId}
+          )`,
+        ),
+        sql`not exists (
+          select 1 from blocks b
+          where (b.blocker_id = ${actor.userId} and b.blocked_id = ${communityPosts.authorId})
+             or (b.blocker_id = ${communityPosts.authorId} and b.blocked_id = ${actor.userId})
+        )`,
+      )).limit(1);
     available = Boolean(row);
   }
   if (!available) return fail('That item is no longer available.');
