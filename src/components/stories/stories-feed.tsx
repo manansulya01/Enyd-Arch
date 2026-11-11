@@ -14,6 +14,7 @@ export type StoryItem = {
   username: string;
   displayName: string;
   isMine: boolean;
+  viewCount: number;
 };
 
 function timestampLabel(value: string): string {
@@ -54,6 +55,7 @@ export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrf
       return;
     }
     setExpanded((current) => current.includes(storyId) ? current : [...current, storyId]);
+    router.refresh();
   }
 
   async function remove(storyId: string) {
@@ -111,7 +113,9 @@ export function StoriesFeed({ stories, csrfToken }: { stories: StoryItem[]; csrf
               {story.isMine && <button className="btn btn-ghost btn-sm" type="button" disabled={busy} onClick={() => remove(story.id)}>Remove</button>}
             </div>
             <p className="story-body">{story.body}</p>
-            {!story.isMine && (
+            {story.isMine ? (
+              <p className="t-meta" aria-label="Story views">{story.viewCount} {story.viewCount === 1 ? 'view' : 'views'} · visible only to you</p>
+            ) : (
               <div>
                 <button className="btn btn-ghost btn-sm" type="button" onClick={() => markViewed(story.id)} disabled={expanded.includes(story.id)}>
                   {expanded.includes(story.id) ? 'Viewed' : 'Mark as viewed'}
