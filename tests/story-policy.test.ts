@@ -8,6 +8,7 @@ const base = {
   audience: 'followers' as const,
   blocked: false,
   followsAuthor: false,
+  followsViewer: false,
 };
 
 test('an author can always view their own active story', () => {
@@ -25,4 +26,10 @@ test('public stories are visible to signed-in non-blocked members', () => {
 test('follower stories require the viewer to follow the author', () => {
   assert.equal(mayViewStory({ ...base, followsAuthor: false }), false);
   assert.equal(mayViewStory({ ...base, followsAuthor: true }), true);
+});
+
+test('mutual stories require both members to follow each other', () => {
+  assert.equal(mayViewStory({ ...base, audience: 'mutuals', followsAuthor: true, followsViewer: false }), false);
+  assert.equal(mayViewStory({ ...base, audience: 'mutuals', followsAuthor: false, followsViewer: true }), false);
+  assert.equal(mayViewStory({ ...base, audience: 'mutuals', followsAuthor: true, followsViewer: true }), true);
 });
