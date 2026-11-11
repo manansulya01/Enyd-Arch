@@ -1555,8 +1555,7 @@ export async function arcadeGames(options: {
     .where(
       and(
         isNull(gameTable.removedAt),
-        eq(users.status, 'active'),
-        isNull(users.removedAt),
+        options.moderator ? sql`true` : and(eq(users.status, 'active'), isNull(users.removedAt)),
         options.viewerId && !options.moderator ? sql`not exists (
           select 1 from ${blocks} b
           where (b.blocker_id = ${options.viewerId} and b.blocked_id = ${gameTable.creatorId})
