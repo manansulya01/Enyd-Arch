@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { db } from '~db';
 import { notifications } from '~db/schema';
 import { requireOnboarded } from '~/server/guard';
+import { acquire } from '~/server/auth/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ export const maxDuration = 30;
 
 const encoder = new TextEncoder();
 const STREAM_WINDOW_MS = 25_000;
-const POLL_INTERVAL_MS = 1_500;
+const POLL_INTERVAL_MS = 3_000;
 const HEARTBEAT_MS = 10_000;
 
 function parseCursor(value: string | null): { createdAt: Date; id: string } {
@@ -31,6 +32,13 @@ const pause = (milliseconds: number) =>
 
 export async function GET(request: Request) {
   const { actor } = await requireOnboarded();
+  const limiter = await acquire('stream', actor.userId);
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { error: 'Too many live connections. Reconnect shortly.' },
+      { status: 429, headers: { 'Cache-Control': 'private, no-store', 'Retry-After': String(limiter.retryAfterSeconds) } },
+    );
+  }
   const cursor = parseCursor(request.headers.get('last-event-id'));
 
   const stream = new ReadableStream<Uint8Array>({
