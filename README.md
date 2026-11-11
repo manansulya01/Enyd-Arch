@@ -30,6 +30,7 @@ Do not run `db:reset` against a database containing data you need; it is destruc
 - Expired text stories are hidden at 24 hours and can be purged seven days later by the private `pnpm stories:cleanup` maintenance command; deployments must schedule it through a trusted worker/cron.
 - New stored objects are wrapped with AES-256-GCM authenticated encryption at rest; legacy objects are checksum-verified and lazily re-encrypted on read. Before launch, run `pnpm storage:encrypt-existing` with the production storage driver and `STORAGE_ENCRYPTION_KEY` configured to migrate older, untouched objects. Keep the key stable and backed up. This is at-rest encryption, not end-to-end encryption.
 - Security headers include a per-response CSP nonce, a restrictive referrer policy, and no-store caching for private responses and objects.
+- In-app notification delivery uses a short-lived authenticated Server-Sent Events connection; it is rate-limited per member and does not expose another member's notifications.
 - Arcade packages are decrypted and checksum-verified by the isolated runtime; its CSP denies network egress, and package scanning blocks persistent browser storage until a per-game storage boundary exists.
 - Block relationships and resource visibility are enforced at feed, detail, message, and stored-media boundaries; these paths still require end-to-end adversarial tests.
 - Search-engine directives are not access control. Keep private data out of public repositories, logs, URLs, and analytics.
