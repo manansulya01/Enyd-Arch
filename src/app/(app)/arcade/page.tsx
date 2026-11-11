@@ -12,15 +12,17 @@ export const metadata: Metadata = { title: 'The Arcade' };
 export default async function ArcadePage({
   searchParams,
 }: {
-  searchParams: Promise<{ genre?: string; sort?: string }>;
+  searchParams: Promise<{ genre?: string; sort?: string; q?: string }>;
 }) {
   const { actor } = await requireOnboarded();
-  const { genre, sort } = await searchParams;
+  const { genre, sort, q } = await searchParams;
+  const query = typeof q === 'string' ? q.trim().slice(0, 80) : '';
   const sortKey = sort === 'recent' || sort === 'rating' || sort === 'saved' ? sort : 'popular';
 
   const games = await arcadeGames({
     viewerId: actor.userId,
     genre: genre ?? null,
+    query: query || null,
     sort: sortKey,
     limit: 36,
   });
@@ -36,6 +38,17 @@ export default async function ArcadePage({
         </Link>
       }
     >
+      <form method="get" action="/arcade" className="row row-wrap" role="search" aria-label="Search games" style={{ marginBottom: 'var(--sp-4)' }}>
+        <label className="field" style={{ flex: 1, minWidth: 'min(100%, 240px)' }}>
+          <span className="field-label">Find a game</span>
+          <input className="input" type="search" name="q" maxLength={80} defaultValue={query} placeholder="Search titles and taglines…" />
+        </label>
+        {genre && <input type="hidden" name="genre" value={genre} />}
+        {sortKey !== 'popular' && <input type="hidden" name="sort" value={sortKey} />}
+        <button className="btn btn-secondary" type="submit">Search</button>
+        {query && <Link className="btn btn-ghost" href={`/arcade?sort=${sortKey}${genre ? `&genre=${genre}` : ''}`}>Clear</Link>}
+      </form>
+
       <div className="row row-wrap row-between" style={{ marginBottom: 'var(--sp-5)' }}>
         <div className="btn-group" role="group" aria-label="Filter by genre">
           <Link className={`btn btn-sm ${!genre ? 'btn-primary' : 'btn-ghost'}`} href="/arcade">
